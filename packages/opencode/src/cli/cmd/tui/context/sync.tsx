@@ -18,6 +18,11 @@ import type {
   ProviderAuthMethod,
   VcsInfo,
 } from "@opencode-ai/sdk/v2"
+
+type IndexerStatus =
+  | { type: "disabled" }
+  | { type: "indexing"; progress: number }
+  | { type: "complete" }
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
 import { Binary } from "@opencode-ai/util/binary"
@@ -73,6 +78,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
       path: Path
+      indexer_status: IndexerStatus | undefined
     }>({
       provider_next: {
         all: [],
@@ -100,6 +106,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       formatter: [],
       vcs: undefined,
       path: { state: "", config: "", worktree: "", directory: "" },
+      indexer_status: undefined,
     })
 
     const sdk = useSDK()
@@ -340,6 +347,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("vcs", { branch: event.properties.branch })
           break
         }
+
+        case "indexer.updated": {
+          void (sdk.client as any).client
+            .get({ url: "/indexer" })
+            .then((x: any) => {
+              if (x.data) setStore("indexer_status", x.data)
+            })
+          break
+        }
       }
     })
 
@@ -413,6 +429,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.provider.auth().then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data))),
             sdk.client.path.get().then((x) => setStore("path", reconcile(x.data!))),
+            (sdk.client as any).client
+              .get({ url: "/indexer" })
+              .then((x: any) => {
+                if (x.data) setStore("indexer_status", x.data)
+              }),
           ]).then(() => {
             setStore("status", "complete")
           })

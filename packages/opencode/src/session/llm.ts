@@ -1,5 +1,6 @@
 import { Installation } from "@/installation"
 import { Provider } from "@/provider/provider"
+import { Indexer } from "@/indexer"
 import { Log } from "@/util/log"
 import {
   streamText,
@@ -78,6 +79,31 @@ export namespace LLM {
         .filter((x) => x)
         .join("\n"),
     )
+
+    if (!input.small && Indexer.status().type === "complete") {
+      const lastUserContent = input.messages.findLast((m) => m.role === "user")?.content
+      const userText = Array.isArray(lastUserContent)
+        ? (lastUserContent as any[])
+            .filter((p: any) => p.type === "text")
+            .map((p: any) => p.text)
+            .join(" ")
+        : typeof lastUserContent === "string"
+          ? lastUserContent
+          : ""
+      if (userText.trim()) {
+        const chunks = await Indexer.search(userText, 5).catch((e) => {
+          l.warn("indexer search failed", { error: String(e) })
+          return [] as string[]
+        })
+        if (chunks.length > 0) {
+          system.push(
+            "<codebase_context>\nRelevant code from this project:\n\n" +
+              chunks.join("\n\n") +
+              "\n</codebase_context>",
+          )
+        }
+      }
+    }
 
     const header = system[0]
     await Plugin.trigger(

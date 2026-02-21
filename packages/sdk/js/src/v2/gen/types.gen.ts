@@ -941,6 +941,11 @@ export type EventWorktreeFailed = {
   }
 }
 
+export type EventIndexerUpdated = {
+  type: "indexer.updated"
+  properties: Record<string, never>
+}
+
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -985,6 +990,7 @@ export type Event =
   | EventPtyDeleted
   | EventWorktreeReady
   | EventWorktreeFailed
+  | EventIndexerUpdated
 
 export type GlobalEvent = {
   directory: string
