@@ -13,8 +13,8 @@ const PII_COLUMN =
 /**
  * Load PII column config.
  * Lookup order:
- *   1. {worktree}/.sensible.yaml   (project-local, not committed)
- *   2. {worktree}/.opencode/pii.yml (opencode folder fallback)
+ *   1. {worktree}/.vuhitra/sensible.yaml  (project-local, not committed)
+ *   2. {worktree}/.opencode/pii.yml     (opencode folder fallback)
  *
  * Format (same for both files):
  *   customers.csv:
@@ -25,7 +25,7 @@ const PII_COLUMN =
  */
 async function loadPiiConfig(): Promise<Map<string, Set<string>>> {
   const candidates = [
-    path.join(Instance.worktree, ".sensible.yaml"),
+    path.join(Instance.worktree, ".vuhitra", "sensible.yaml"),
     path.join(Instance.worktree, ".opencode", "pii.yml"),
   ]
 
@@ -93,8 +93,15 @@ export namespace Faker {
   function fakeEnv(content: string): string {
     // Matches: KEY=value  KEY="value"  KEY='value'  export KEY=value
     return content.replace(/^(\s*(?:export\s+)?([A-Z_][A-Z0-9_.]*)\s*=\s*)(.*)/gim, (_match, prefix, key, rawVal) => {
-      if (!SENSITIVE_KEY.test(key)) return _match
       const val = rawVal.trim().replace(/^(["'])(.*)\1$/, "$2")
+      if (!val || /^(true|false|yes|no|on|off)$/i.test(val) || /^\d+$/.test(val)) return _match
+      // Fake if the key matches known sensitive patterns OR indicates an infrastructure endpoint/model,
+      // OR if the value itself is a URL/connection string (may expose private network details).
+      const isKeySensitive =
+        SENSITIVE_KEY.test(key) ||
+        /(?:_|^)(?:url|uri|host|endpoint|model|server|addr(?:ess)?)(?:_|$)/i.test(key)
+      const isValueSensitive = /^[a-z][a-z0-9+\-.]*:\/\//i.test(val)
+      if (!isKeySensitive && !isValueSensitive) return _match
       const quote = rawVal.trim().startsWith('"') ? '"' : rawVal.trim().startsWith("'") ? "'" : ""
       return `${prefix}${quote}${fakeValue(val)}${quote}`
     })

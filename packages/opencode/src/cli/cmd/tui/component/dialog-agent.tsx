@@ -2,6 +2,7 @@ import { createMemo } from "solid-js"
 import { useLocal } from "@tui/context/local"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
+import { DialogReviewFocus } from "./dialog-review-focus"
 
 export function DialogAgent() {
   const local = useLocal()
@@ -24,7 +25,11 @@ export function DialogAgent() {
       options={options()}
       onSelect={(option) => {
         local.agent.set(option.value)
-        dialog.clear()
+        if (option.value === "review") {
+          dialog.replace(() => <DialogReviewFocus />)
+        } else {
+          dialog.clear()
+        }
       }}
     />
   )

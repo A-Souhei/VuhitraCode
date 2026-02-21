@@ -6,6 +6,13 @@
     },
   },
   "mcp": {},
+  "agent": {
+    "review": {
+      "permission": {
+        "question": "allow",
+      },
+    },
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,

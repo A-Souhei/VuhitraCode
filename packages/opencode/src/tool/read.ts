@@ -38,13 +38,16 @@ export const ReadTool = Tool.define("read", {
     }
     const title = path.relative(Instance.worktree, filepath)
 
-    // Resolve symlinks and verify the real path stays within the worktree
+    // Resolve symlinks and verify the real path stays within the worktree.
+    // Track resolvedFilepath for subsequent gitignore checks so that a
+    // non-gitignored symlink pointing to a gitignored target is still blocked.
+    let resolvedFilepath = filepath
     const lstat = await fs.lstat(filepath).catch((e: NodeJS.ErrnoException) => {
       if (e.code === "ENOENT") return undefined
       throw e
     })
     if (lstat?.isSymbolicLink()) {
-      let real: string | undefined
+      let real: string
       try {
         real = await fs.realpath(filepath)
       } catch {
@@ -53,6 +56,7 @@ export const ReadTool = Tool.define("read", {
       if (!Instance.containsPath(real)) {
         throw new Error(`Access denied: "${title}" is a symlink pointing outside the project directory`)
       }
+      resolvedFilepath = real
     }
 
     const stat = Filesystem.stat(filepath)
@@ -71,9 +75,11 @@ export const ReadTool = Tool.define("read", {
 
     let shouldFake = false
     if (ctx.agent !== "secret") {
-      const gitignored = await isGitignored(filepath)
+      const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (Env.get("OLLAMA_MODEL")) {
+        const ollamaModel = Env.get("OLLAMA_MODEL")
+        const ollamaToolCall = Env.get("OLLAMA_TOOLCALL") !== "false"
+        if (ollamaModel && ollamaToolCall) {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
               `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
