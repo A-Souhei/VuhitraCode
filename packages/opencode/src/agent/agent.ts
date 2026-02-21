@@ -13,12 +13,14 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_SECRET from "./prompt/secret.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
+import { Env } from "../env"
 
 export namespace Agent {
   export const Info = z
@@ -200,6 +202,30 @@ export namespace Agent {
         ),
         prompt: PROMPT_SUMMARY,
       },
+    }
+
+    const ollamaModel = Env.get("OLLAMA_MODEL")
+    if (ollamaModel) {
+      result.secret = {
+        name: "secret",
+        description: `Private agent for analyzing gitignored (sensitive) files. Runs locally on ollama — data never leaves the machine. Never outputs raw sensitive values, only logical abstractions. Use this agent whenever you need to reason about files that are gitignored.`,
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            todoread: "deny",
+            todowrite: "deny",
+          }),
+          user,
+        ),
+        model: {
+          providerID: "ollama",
+          modelID: ollamaModel,
+        },
+        prompt: PROMPT_SECRET,
+        options: {},
+        mode: "subagent",
+        native: true,
+      }
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {

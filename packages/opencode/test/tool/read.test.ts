@@ -6,6 +6,7 @@ import { Filesystem } from "../../src/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 import { PermissionNext } from "../../src/permission/next"
 import { Agent } from "../../src/agent/agent"
+import { Env } from "../../src/env"
 
 const FIXTURES_DIR = path.join(import.meta.dir, "fixtures")
 
@@ -498,6 +499,121 @@ describe("tool.read binary detection", () => {
         await expect(read.execute({ filePath: path.join(tmp.path, "module.wasm") }, ctx)).rejects.toThrow(
           "Cannot read binary file",
         )
+      },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Privacy — gitignore interception
+// ---------------------------------------------------------------------------
+
+describe("tool.read privacy — gitignore interception", () => {
+  const sensitiveEnv = [
+    "APP_NAME=myapp",
+    "DATABASE_URL=postgres://admin:s3cr3t@prod.db/mydb",
+    "API_KEY=sk-realkey123456",
+  ].join("\n")
+
+  test("when OLLAMA_MODEL is set: throws redirect error for gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), ".env\n")
+        await Bun.write(path.join(dir, ".env"), sensitiveEnv)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          await expect(
+            read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "build" }),
+          ).rejects.toThrow("@secret")
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
+      },
+    })
+  })
+
+  test("when OLLAMA_MODEL is not set: returns faked content with privacy notice", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), ".env\n")
+        await Bun.write(path.join(dir, ".env"), sensitiveEnv)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.remove("OLLAMA_MODEL")
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "build" })
+
+        // Real sensitive values must not appear
+        expect(result.output).not.toContain("s3cr3t")
+        expect(result.output).not.toContain("sk-realkey123456")
+        // Structure is preserved
+        expect(result.output).toContain("APP_NAME=myapp")
+        expect(result.output).toContain("DATABASE_URL=")
+        expect(result.output).toContain("API_KEY=")
+        // Privacy notice is present
+        expect(result.output).toContain("privacy-notice")
+        expect(result.output).toContain("gitignored")
+      },
+    })
+  })
+
+  test("secret agent bypasses gitignore — reads real content", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), ".env\n")
+        await Bun.write(path.join(dir, ".env"), sensitiveEnv)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "secret" })
+          expect(result.output).toContain("s3cr3t")
+          expect(result.output).toContain("sk-realkey123456")
+          expect(result.output).not.toContain("privacy-notice")
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
+      },
+    })
+  })
+
+  test("non-gitignored file reads normally regardless of OLLAMA_MODEL", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "other.env\n")
+        await Bun.write(path.join(dir, "config.env"), "DB_HOST=localhost\nDB_PORT=5432")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          const result = await read.execute({ filePath: path.join(tmp.path, "config.env") }, { ...ctx, agent: "build" })
+          expect(result.output).toContain("localhost")
+          expect(result.output).toContain("5432")
+          expect(result.output).not.toContain("privacy-notice")
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
       },
     })
   })

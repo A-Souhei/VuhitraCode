@@ -11,6 +11,9 @@ import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
 import { Filesystem } from "../util/filesystem"
+import { Env } from "../env"
+import { Faker } from "../util/faker"
+import { isGitignored } from "../util/gitignore"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -35,6 +38,23 @@ export const ReadTool = Tool.define("read", {
     }
     const title = path.relative(Instance.worktree, filepath)
 
+    // Resolve symlinks and verify the real path stays within the worktree
+    const lstat = await fs.lstat(filepath).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return undefined
+      throw e
+    })
+    if (lstat?.isSymbolicLink()) {
+      let real: string | undefined
+      try {
+        real = await fs.realpath(filepath)
+      } catch {
+        throw new Error(`Access denied: "${title}" is a symlink whose target could not be resolved`)
+      }
+      if (!Instance.containsPath(real)) {
+        throw new Error(`Access denied: "${title}" is a symlink pointing outside the project directory`)
+      }
+    }
+
     const stat = Filesystem.stat(filepath)
 
     await assertExternalDirectory(ctx, filepath, {
@@ -48,6 +68,21 @@ export const ReadTool = Tool.define("read", {
       always: ["*"],
       metadata: {},
     })
+
+    let shouldFake = false
+    if (ctx.agent !== "secret") {
+      const gitignored = await isGitignored(filepath)
+      if (gitignored) {
+        if (Env.get("OLLAMA_MODEL")) {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+              `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
+              `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
+          )
+        }
+        shouldFake = true
+      }
+    }
 
     if (!stat) {
       const dir = path.dirname(filepath)
@@ -190,6 +225,13 @@ export const ReadTool = Tool.define("read", {
       throw new Error(`Offset ${offset} is out of range for this file (${lines} lines)`)
     }
 
+    if (shouldFake) {
+      const faked = await Faker.fakeContent(raw.join("\n"), filepath)
+      const fakedLines = faked.split("\n")
+      raw.length = 0
+      raw.push(...fakedLines)
+    }
+
     const content = raw.map((line, index) => {
       return `${index + offset}: ${line}`
     })
@@ -212,6 +254,10 @@ export const ReadTool = Tool.define("read", {
     }
     output += "\n</content>"
 
+    if (shouldFake) {
+      output += `\n\n<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`
+    }
+
     // just warms the lsp client
     LSP.touchFile(filepath, false)
     FileTime.read(ctx.sessionID, filepath)
@@ -231,6 +277,7 @@ export const ReadTool = Tool.define("read", {
     }
   },
 })
+
 
 async function isBinaryFile(filepath: string, fileSize: number): Promise<boolean> {
   const ext = path.extname(filepath).toLowerCase()

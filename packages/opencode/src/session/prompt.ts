@@ -45,6 +45,8 @@ import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
+import { isGitignored } from "@/util/gitignore"
+import { Env } from "@/env"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1230,6 +1232,22 @@ export namespace SessionPrompt {
                     ...part,
                     messageID: info.id,
                     sessionID: input.sessionID,
+                  },
+                ]
+              }
+
+              if (await isGitignored(filepath)) {
+                const rel = path.relative(Instance.worktree, filepath)
+                const guidance = Env.get("OLLAMA_MODEL")
+                  ? `Use the @secret agent (task tool with subagent_type="secret") to analyze it privately.`
+                  : `This file is gitignored and contains binary content that cannot be faked. Remove it from the context.`
+                return [
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Attachment blocked: "${rel}" is gitignored (private). Binary content cannot be included in context. ${guidance}`,
                   },
                 ]
               }
