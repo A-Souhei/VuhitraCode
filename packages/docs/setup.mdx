@@ -1,0 +1,167 @@
+---
+title: "Setup"
+description: "Get OpenCode running on your machine from scratch."
+---
+
+## Prerequisites
+
+Before installing OpenCode, make sure you have:
+
+- **Git** — OpenCode uses your repository's `.gitignore` for context and privacy
+- **A terminal** — OpenCode runs in your terminal (Linux, macOS, or Windows via WSL)
+- **An LLM provider** — at least one API key from a supported provider (see below)
+
+---
+
+## Install OpenCode
+
+Choose the method that fits your setup:
+
+<CodeGroup>
+
+```bash curl
+curl -fsSL https://opencode.ai/install | bash
+```
+
+```bash npm
+npm install -g opencode-ai
+```
+
+```bash bun
+bun install -g opencode-ai
+```
+
+</CodeGroup>
+
+Verify the installation:
+
+```bash
+opencode --version
+```
+
+---
+
+## Configure a provider
+
+OpenCode needs at least one LLM provider to work. Set your API key as an environment variable:
+
+<CodeGroup>
+
+```bash Anthropic (Claude)
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+```bash OpenAI
+export OPENAI_API_KEY=sk-...
+```
+
+```bash Google Gemini
+export GOOGLE_GENERATIVE_AI_API_KEY=...
+```
+
+</CodeGroup>
+
+<Tip>
+  Add your export to `~/.bashrc` or `~/.zshrc` so it persists across sessions.
+</Tip>
+
+OpenCode auto-detects which providers are available based on which keys are set — no config file required for basic use.
+
+---
+
+## First run
+
+Navigate to any project directory and launch OpenCode:
+
+```bash
+cd ~/my-project
+opencode
+```
+
+The TUI opens. Type your first message and press **Enter** to send.
+
+---
+
+## Optional: Ollama for local/private inference
+
+If you want to keep sensitive files (gitignored data) off cloud LLMs, install [Ollama](https://ollama.com) and set:
+
+```bash
+# Pull a model
+ollama pull llama3.2
+
+# Tell OpenCode to use it
+export OLLAMA_MODEL=llama3.2
+export OLLAMA_URL=http://localhost:11434  # default, optional
+```
+
+With these set, OpenCode registers a `@secret` agent that handles gitignored files entirely on your machine. See the [Privacy](/privacy) page for details.
+
+---
+
+## Choosing a model
+
+On first launch, OpenCode uses your provider's default model. To switch:
+
+- Press `ctrl+p` → **Models** to browse and select interactively
+- Or pass `--model` on startup:
+
+```bash
+opencode --model anthropic/claude-sonnet-4-5
+```
+
+---
+
+## Configuration file (optional)
+
+For persistent settings, create `opencode.json` in your project root or home directory:
+
+```json opencode.json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "agent": "build"
+}
+```
+
+Run `opencode config` to see all available options.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+
+  <Accordion title="'command not found: opencode' after install">
+    The install script adds OpenCode to `~/.opencode/bin`. Make sure that path is in your `PATH`:
+
+    ```bash
+    export PATH="$HOME/.opencode/bin:$PATH"
+    ```
+
+    Add it to your shell profile (`~/.bashrc`, `~/.zshrc`) to make it permanent.
+  </Accordion>
+
+  <Accordion title="No models available / API key not detected">
+    OpenCode reads keys from the environment. Confirm your key is exported:
+
+    ```bash
+    echo $ANTHROPIC_API_KEY
+    ```
+
+    If empty, export it in your current session or add it to your shell profile.
+  </Accordion>
+
+  <Accordion title="TUI doesn't display correctly">
+    OpenCode requires a terminal that supports 256 colors and UTF-8. Try a modern terminal emulator (Ghostty, Kitty, iTerm2, Windows Terminal). If running over SSH, make sure `TERM` is set correctly:
+
+    ```bash
+    export TERM=xterm-256color
+    ```
+  </Accordion>
+
+  <Accordion title="Running on Windows">
+    OpenCode is not natively supported on Windows. Use **WSL 2** (Windows Subsystem for Linux) and follow the Linux install instructions inside your WSL terminal.
+  </Accordion>
+
+</AccordionGroup>
