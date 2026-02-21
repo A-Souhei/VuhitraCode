@@ -11,35 +11,48 @@ const PII_COLUMN =
   /\b(?:first[_\-.]?name|last[_\-.]?name|full[_\-.]?name|display[_\-.]?name|email|phone|mobile|tel(?:ephone)?|address|street|city|zip|postal|dob|birth(?:day|date)?|ssn|social[_\-.]?security|credit[_\-.]?card|card[_\-.]?number|iban|ip[_\-.]?(?:addr(?:ess)?)?|user(?:name)?|login|account[_\-.]?(?:name|number))\b/i
 
 /**
- * Load PII column config from .opencode/pii.yml.
- * Format:
+ * Load PII column config.
+ * Lookup order:
+ *   1. {worktree}/.sensible.yaml   (project-local, not committed)
+ *   2. {worktree}/.opencode/pii.yml (opencode folder fallback)
+ *
+ * Format (same for both files):
  *   customers.csv:
  *     - email
  *     - phone
+ *
  * Returns a map of filename → Set of column names.
  */
 async function loadPiiConfig(): Promise<Map<string, Set<string>>> {
-  const configPath = path.join(Instance.worktree, ".opencode", "pii.yml")
-  try {
-    const content = await fs.readFile(configPath, "utf-8")
-    const result = new Map<string, Set<string>>()
-    let currentFile: string | null = null
-    for (const line of content.split("\n")) {
-      const fileMatch = line.match(/^([^\s#:][^:]*\.(?:csv|tsv))\s*:\s*$/)
-      if (fileMatch) {
-        currentFile = fileMatch[1].trim()
-        result.set(currentFile, new Set())
-        continue
+  const candidates = [
+    path.join(Instance.worktree, ".sensible.yaml"),
+    path.join(Instance.worktree, ".opencode", "pii.yml"),
+  ]
+
+  for (const configPath of candidates) {
+    try {
+      const content = await fs.readFile(configPath, "utf-8")
+      const result = new Map<string, Set<string>>()
+      let currentFile: string | null = null
+      for (const line of content.split("\n")) {
+        const fileMatch = line.match(/^([^\s#:][^:]*\.(?:csv|tsv))\s*:\s*$/)
+        if (fileMatch) {
+          currentFile = fileMatch[1].trim()
+          result.set(currentFile, new Set())
+          continue
+        }
+        if (currentFile) {
+          const colMatch = line.match(/^\s+-\s+(\S+)/)
+          if (colMatch) result.get(currentFile)!.add(colMatch[1].trim())
+        }
       }
-      if (currentFile) {
-        const colMatch = line.match(/^\s+-\s+(\S+)/)
-        if (colMatch) result.get(currentFile)!.add(colMatch[1].trim())
-      }
+      return result
+    } catch {
+      // file not found, try next candidate
     }
-    return result
-  } catch {
-    return new Map()
   }
+
+  return new Map()
 }
 
 export namespace Faker {
