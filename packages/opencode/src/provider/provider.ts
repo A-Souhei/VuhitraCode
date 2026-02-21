@@ -790,7 +790,11 @@ export namespace Provider {
         throw new Error(`Invalid OLLAMA_URL: "${rawOllamaURL}". Must be a valid URL (e.g., http://localhost:11434)`)
       }
       const ollamaBaseURL = rawOllamaURL.replace(/\/+$/, "") + "/v1"
-      const ollamaContextSize = parseInt(Env.get("OLLAMA_CONTEXT_SIZE") ?? "8192")
+      const rawContextSize = Env.get("OLLAMA_CONTEXT_SIZE")
+      const ollamaContextSize = rawContextSize ? parseInt(rawContextSize) : 8192
+      if (isNaN(ollamaContextSize) || ollamaContextSize <= 0) {
+        throw new Error(`Invalid OLLAMA_CONTEXT_SIZE: "${rawContextSize}". Must be a positive integer.`)
+      }
       const ollamaToolCall = Env.get("OLLAMA_TOOLCALL") !== "false"
       const ollamaModelEntry: Model = {
         id: ollamaModel,
