@@ -2289,6 +2289,11 @@ export type FormatterStatus = {
   enabled: boolean
 }
 
+export type IndexerStatus =
+  | { type: "disabled" }
+  | { type: "indexing"; progress: number }
+  | { type: "complete" }
+
 export type GlobalHealthData = {
   body?: never
   path?: never
@@ -5135,6 +5140,24 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type IndexerStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/indexer"
+}
+
+export type IndexerStatusResponses = {
+  /**
+   * Indexer status
+   */
+  200: IndexerStatus
+}
+
+export type IndexerStatusResponse = IndexerStatusResponses[keyof IndexerStatusResponses]
 
 export type EventSubscribeData = {
   body?: never

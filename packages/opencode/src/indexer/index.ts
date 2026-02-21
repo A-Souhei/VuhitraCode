@@ -71,12 +71,13 @@ export namespace Indexer {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
   }
 
-  async function embed(text: string): Promise<number[]> {
+  async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
     const url = embeddingUrl()
+    const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
     const response = await fetch(`${url}/api/embeddings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(30_000),
+      signal: combined,
       body: JSON.stringify({ model: embeddingModel(), prompt: text }),
     })
     if (!response.ok) throw new Error(`Embedding request failed: ${response.status} ${response.statusText}`)
@@ -84,15 +85,18 @@ export namespace Indexer {
     return data.embedding
   }
 
-  async function ensureCollection() {
+  async function ensureCollection(signal?: AbortSignal) {
+    const sample = await embed("dim", signal)
+    const size = sample.length
     const name = collectionName()
     const url = qdrantUrl()
+    const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
     const response = await fetch(`${url}/collections/${name}`, {
       method: "PUT",
       headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
+      signal: combined,
       body: JSON.stringify({
-        vectors: { size: 768, distance: "Cosine" },
+        vectors: { size, distance: "Cosine" },
       }),
     })
     if (!response.ok) throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
@@ -144,14 +148,15 @@ export namespace Indexer {
     return data.result?.points?.[0]?.payload?.mtime ?? null
   }
 
-  function chunkFile(content: string, filePath: string): { id: string; text: string; startLine: number }[] {
+  export function chunkFile(content: string, filePath: string): { id: string; text: string; startLine: number }[] {
+    if (!content.trim()) return []
     const lines = content.split("\n")
     const CHUNK_SIZE = 50
     const OVERLAP = 10
     const chunks: { id: string; text: string; startLine: number }[] = []
 
     for (let i = 0; i < lines.length; i += CHUNK_SIZE - OVERLAP) {
-      const startLine = i
+      const startLine = i + 1
       const chunkLines = lines.slice(i, i + CHUNK_SIZE)
       const text = chunkLines.join("\n")
       const id = toUUID(`${filePath}:${startLine}`)
@@ -162,7 +167,12 @@ export namespace Indexer {
     return chunks
   }
 
-  async function indexFile(filePath: string, skipIfUnchanged = false) {
+  async function indexFile(
+    filePath: string,
+    skipIfUnchanged = false,
+    signal?: AbortSignal,
+    isIgnored?: (f: string) => boolean,
+  ) {
     try {
       const stat = await fs.promises.stat(filePath)
       if (!stat.isFile()) return
@@ -174,7 +184,8 @@ export namespace Indexer {
       }
 
       let content = await fs.promises.readFile(filePath, "utf-8")
-      if (await isGitignored(filePath)) {
+      const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
+      if (ignored) {
         content = await Faker.fakeContent(content, filePath)
       }
       const chunks = chunkFile(content, filePath)
@@ -184,7 +195,7 @@ export namespace Indexer {
 
       const points: { id: string; vector: number[]; payload: Record<string, unknown> }[] = []
       for (const chunk of chunks) {
-        const vector = await embed(`File: ${filePath}\n\n${chunk.text}`)
+        const vector = await embed(`File: ${filePath}\n\n${chunk.text}`, signal)
         points.push({
           id: chunk.id,
           vector,
@@ -215,18 +226,41 @@ export namespace Indexer {
     ])
   }
 
+  async function buildIgnoreChecker(worktree: string, files: string[]): Promise<(filepath: string) => boolean> {
+    const ignored = new Set<string>()
+    try {
+      const relative = files.map((f) => path.relative(worktree, f))
+      const proc = Bun.spawn(["git", "check-ignore", "--stdin"], {
+        cwd: worktree,
+        stdin: new TextEncoder().encode(relative.join("\n")),
+        stdout: "pipe",
+        stderr: "ignore",
+      })
+      const text = await new Response(proc.stdout as ReadableStream).text()
+      await proc.exited
+      text.split("\n").filter(Boolean).forEach((rel) => ignored.add(path.resolve(worktree, rel)))
+    } catch {}
+    return (filepath: string) => ignored.has(filepath)
+  }
+
   async function runInitialIndex() {
+    const s = state()
     await checkServices()
-    await ensureCollection()
+    await ensureCollection(s.abortController.signal)
     const files = (await Glob.scan("**/*", { cwd: Instance.directory, absolute: true, dot: true })).filter(
       (f) => !FileIgnore.match(path.relative(Instance.directory, f)),
     )
+    if (files.length === 0) {
+      s.status = { type: "complete" }
+      Bus.publish(Event.Updated, {})
+      return
+    }
+    const isIgnored = await buildIgnoreChecker(Instance.worktree, files)
     let done = 0
     let lastProgress = -1
-    const s = state()
     for (const file of files) {
       if (s.abortController.signal.aborted) return
-      await indexFile(file, true)
+      await indexFile(file, true, s.abortController.signal, isIgnored)
       done++
       const progress = Math.round((done / files.length) * 100)
       s.status = { type: "indexing", progress }
