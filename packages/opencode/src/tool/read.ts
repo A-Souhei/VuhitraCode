@@ -12,6 +12,8 @@ import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
 import { Filesystem } from "../util/filesystem"
 import ignore from "ignore"
+import { Env } from "../env"
+import { Faker } from "../util/faker"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -50,14 +52,18 @@ export const ReadTool = Tool.define("read", {
       metadata: {},
     })
 
+    let shouldFake = false
     if (ctx.agent !== "secret") {
       const gitignored = await isGitignored(filepath)
       if (gitignored) {
-        throw new Error(
-          `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
-            `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
-            `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
-        )
+        if (Env.get("OLLAMA_MODEL")) {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+              `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
+              `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
+          )
+        }
+        shouldFake = true
       }
     }
 
@@ -202,6 +208,13 @@ export const ReadTool = Tool.define("read", {
       throw new Error(`Offset ${offset} is out of range for this file (${lines} lines)`)
     }
 
+    if (shouldFake) {
+      const faked = await Faker.fakeContent(raw.join("\n"), filepath)
+      const fakedLines = faked.split("\n")
+      raw.length = 0
+      raw.push(...fakedLines)
+    }
+
     const content = raw.map((line, index) => {
       return `${index + offset}: ${line}`
     })
@@ -223,6 +236,10 @@ export const ReadTool = Tool.define("read", {
       output += `\n\n(End of file - total ${totalLines} lines)`
     }
     output += "\n</content>"
+
+    if (shouldFake) {
+      output += `\n\n<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`
+    }
 
     // just warms the lsp client
     LSP.touchFile(filepath, false)
