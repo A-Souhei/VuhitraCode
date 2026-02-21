@@ -38,6 +38,23 @@ export const ReadTool = Tool.define("read", {
     }
     const title = path.relative(Instance.worktree, filepath)
 
+    // Resolve symlinks and verify the real path stays within the worktree
+    const lstat = await fs.lstat(filepath).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return undefined
+      throw e
+    })
+    if (lstat?.isSymbolicLink()) {
+      let real: string | undefined
+      try {
+        real = await fs.realpath(filepath)
+      } catch {
+        throw new Error(`Access denied: "${title}" is a symlink whose target could not be resolved`)
+      }
+      if (!Instance.containsPath(real)) {
+        throw new Error(`Access denied: "${title}" is a symlink pointing outside the project directory`)
+      }
+    }
+
     const stat = Filesystem.stat(filepath)
 
     await assertExternalDirectory(ctx, filepath, {
