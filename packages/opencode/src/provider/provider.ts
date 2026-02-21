@@ -783,7 +783,13 @@ export namespace Provider {
     // Add local ollama provider if OLLAMA_MODEL is configured
     const ollamaModel = Env.get("OLLAMA_MODEL")
     if (ollamaModel) {
-      const ollamaBaseURL = (Env.get("OLLAMA_URL") ?? "http://localhost:11434") + "/v1"
+      const rawOllamaURL = Env.get("OLLAMA_URL") ?? "http://localhost:11434"
+      try {
+        new URL(rawOllamaURL)
+      } catch {
+        throw new Error(`Invalid OLLAMA_URL: "${rawOllamaURL}". Must be a valid URL (e.g., http://localhost:11434)`)
+      }
+      const ollamaBaseURL = rawOllamaURL.replace(/\/+$/, "") + "/v1"
       const ollamaModelEntry: Model = {
         id: ollamaModel,
         providerID: "ollama",
