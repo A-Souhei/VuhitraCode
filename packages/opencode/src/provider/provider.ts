@@ -780,6 +780,47 @@ export namespace Provider {
 
     const configProviders = Object.entries(config.provider ?? {})
 
+    // Add local ollama provider if OLLAMA_MODEL is configured
+    const ollamaModel = Env.get("OLLAMA_MODEL")
+    if (ollamaModel) {
+      const ollamaBaseURL = (Env.get("OLLAMA_URL") ?? "http://localhost:11434") + "/v1"
+      const ollamaModelEntry: Model = {
+        id: ollamaModel,
+        providerID: "ollama",
+        name: ollamaModel,
+        family: "",
+        api: {
+          id: ollamaModel,
+          url: ollamaBaseURL,
+          npm: "@ai-sdk/openai-compatible",
+        },
+        status: "active",
+        headers: {},
+        options: {},
+        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        limit: { context: 8192, output: 4096 },
+        capabilities: {
+          temperature: true,
+          reasoning: false,
+          attachment: false,
+          toolcall: true,
+          input: { text: true, audio: false, image: false, video: false, pdf: false },
+          output: { text: true, audio: false, image: false, video: false, pdf: false },
+          interleaved: false,
+        },
+        release_date: "2024-01-01",
+        variants: {},
+      }
+      database["ollama"] = {
+        id: "ollama",
+        source: "env",
+        name: "Ollama (local)",
+        env: ["OLLAMA_MODEL"],
+        options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
+        models: { [ollamaModel]: ollamaModelEntry },
+      }
+    }
+
     // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
     if (database["github-copilot"]) {
       const githubCopilot = database["github-copilot"]

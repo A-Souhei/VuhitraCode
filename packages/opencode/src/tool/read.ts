@@ -11,6 +11,7 @@ import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
 import { Filesystem } from "../util/filesystem"
+import ignore from "ignore"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -48,6 +49,17 @@ export const ReadTool = Tool.define("read", {
       always: ["*"],
       metadata: {},
     })
+
+    if (ctx.agent !== "secret") {
+      const gitignored = await isGitignored(filepath)
+      if (gitignored) {
+        throw new Error(
+          `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+            `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
+            `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
+        )
+      }
+    }
 
     if (!stat) {
       const dir = path.dirname(filepath)
@@ -231,6 +243,20 @@ export const ReadTool = Tool.define("read", {
     }
   },
 })
+
+async function isGitignored(filepath: string): Promise<boolean> {
+  const worktree = Instance.worktree
+  const relative = path.relative(worktree, filepath)
+  if (relative.startsWith("..")) return false
+  try {
+    const gitignorePath = path.join(worktree, ".gitignore")
+    const content = await fs.readFile(gitignorePath, "utf-8")
+    const ig = ignore().add(content)
+    return ig.ignores(relative)
+  } catch {
+    return false
+  }
+}
 
 async function isBinaryFile(filepath: string, fileSize: number): Promise<boolean> {
   const ext = path.extname(filepath).toLowerCase()
