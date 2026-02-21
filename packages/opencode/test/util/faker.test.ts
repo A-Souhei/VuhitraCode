@@ -237,9 +237,9 @@ describe("Faker.fakeContent — CSV with .sensible.yaml", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        // Write .sensible.yaml declaring only "order_ref" as sensitive
+        // Write .vuhitra/sensible.yaml declaring only "order_ref" as sensitive
         await Bun.write(
-          path.join(tmp.path, ".sensible.yaml"),
+          path.join(tmp.path, ".vuhitra", "sensible.yaml"),
           ["orders.csv:", "  - order_ref"].join("\n"),
         )
 

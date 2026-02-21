@@ -255,7 +255,8 @@ export namespace LLM {
     })
   }
 
-  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
+  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user" | "model">) {
+    if (!input.model.capabilities.toolcall) return {}
     const disabled = PermissionNext.disabled(Object.keys(input.tools), input.agent.permission)
     for (const tool of Object.keys(input.tools)) {
       if (input.user.tools?.[tool] === false || disabled.has(tool)) {
