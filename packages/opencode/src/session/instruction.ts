@@ -83,6 +83,11 @@ export namespace InstructionPrompt {
           break
         }
       }
+
+      const vuhitra = path.join(Instance.directory, ".vuhitra", "rules.md")
+      if (await Filesystem.exists(vuhitra)) {
+        paths.add(path.resolve(vuhitra))
+      }
     }
 
     for (const file of globalFiles()) {
