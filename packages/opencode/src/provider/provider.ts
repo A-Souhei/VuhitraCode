@@ -150,6 +150,23 @@ export namespace Provider {
         options: hasKey ? {} : { apiKey: "public" },
       }
     },
+    async ollama(_input) {
+      const ollamaModel = Env.get("OLLAMA_MODEL")
+      const rawOllamaURL = Env.get("OLLAMA_URL") ?? "http://localhost:11434"
+      const ollamaBaseURL = rawOllamaURL.replace(/\/+$/, "") + "/v1"
+
+      if (!ollamaModel) {
+        return {
+          autoload: false,
+          options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
+        }
+      }
+
+      return {
+        autoload: true,
+        options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
+      }
+    },
     openai: async () => {
       return {
         autoload: false,
@@ -780,16 +797,72 @@ export namespace Provider {
 
     const configProviders = Object.entries(config.provider ?? {})
 
-    // Add local ollama provider if OLLAMA_MODEL is configured
+    // Check if Ollama server is reachable (non-blocking)
+    const rawOllamaURL = Env.get("OLLAMA_URL") ?? "http://localhost:11434"
+    const ollamaBaseURL = rawOllamaURL.replace(/\/+$/, "") + "/v1"
+    const ollamaAPIURL = rawOllamaURL.replace(/\/+$/, "")
+
+    // Validate URL before attempting non-blocking health check
+    try {
+      const url = new URL(ollamaAPIURL)
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error(`Invalid protocol: ${url.protocol}`)
+      }
+      fetch(`${ollamaAPIURL}/api/tags`, { method: "GET", signal: AbortSignal.timeout(3000) })
+        .then((res) => {
+          if (res.ok) log.info("ollama server reachable")
+        })
+        .catch(() => {})
+    } catch {
+      // Invalid URL - don't attempt to connect
+    }
+
+    // Add placeholder Ollama provider (will be populated when server responds)
+    database["ollama"] = {
+      id: "ollama",
+      source: "env",
+      name: "Ollama (local)",
+      env: ["OLLAMA_MODEL", "OLLAMA_URL", "OLLAMA_CONTEXT_SIZE", "OLLAMA_TOOLCALL"],
+      options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
+      models: {
+        "[configure OLLAMA_MODEL]": {
+          id: "[configure OLLAMA_MODEL]",
+          providerID: "ollama",
+          name: "Configure OLLAMA_MODEL in .env",
+          family: "",
+          api: {
+            id: "[configure OLLAMA_MODEL]",
+            url: ollamaBaseURL,
+            npm: "@ai-sdk/openai-compatible",
+          },
+          status: "active",
+          headers: {},
+          options: {},
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          limit: { context: 8192, output: 4096 },
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: false,
+            toolcall: true,
+            input: { text: true, audio: false, image: false, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          release_date: "2024-01-01",
+          variants: {},
+        },
+      },
+    }
+
+    // Add model to ollama provider if OLLAMA_MODEL is configured
     const ollamaModel = Env.get("OLLAMA_MODEL")
-    if (ollamaModel) {
-      const rawOllamaURL = Env.get("OLLAMA_URL") ?? "http://localhost:11434"
+    if (ollamaModel && database["ollama"]) {
       try {
         new URL(rawOllamaURL)
       } catch {
         throw new Error(`Invalid OLLAMA_URL: "${rawOllamaURL}". Must be a valid URL (e.g., http://localhost:11434)`)
       }
-      const ollamaBaseURL = rawOllamaURL.replace(/\/+$/, "") + "/v1"
       const rawContextSize = Env.get("OLLAMA_CONTEXT_SIZE")
       const ollamaContextSize = rawContextSize ? parseInt(rawContextSize) : 8192
       if (isNaN(ollamaContextSize) || ollamaContextSize <= 0) {
@@ -823,14 +896,9 @@ export namespace Provider {
         release_date: "2024-01-01",
         variants: {},
       }
-      database["ollama"] = {
-        id: "ollama",
-        source: "env",
-        name: "Ollama (local)",
-        env: ["OLLAMA_MODEL"],
-        options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
-        models: { [ollamaModel]: ollamaModelEntry },
-      }
+      database["ollama"].models[ollamaModel] = ollamaModelEntry
+      delete database["ollama"].models["[configure OLLAMA_MODEL]"]
+      database["ollama"].options = { baseURL: ollamaBaseURL, apiKey: "ollama" }
     }
 
     // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
