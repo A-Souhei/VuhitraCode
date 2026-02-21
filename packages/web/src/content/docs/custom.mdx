@@ -1,0 +1,178 @@
+---
+title: Privacy
+description: Keep sensitive and gitignored data out of cloud LLM context.
+---
+
+OpenCode includes built-in privacy protection for files and data that should never leave your machine. It works in two complementary modes depending on whether a local [Ollama](https://ollama.com) instance is available.
+
+---
+
+## How it works
+
+OpenCode treats any file tracked by `.gitignore` as sensitive. When the agent attempts to read such a file, one of two things happens:
+
+| Ollama available | Behavior |
+|---|---|
+| Yes | Read is blocked. Agent is redirected to the `@secret` subagent, which runs locally on your Ollama model. Real content never reaches a cloud LLM. |
+| No | File is read, but all sensitive values are replaced with type-realistic fake data before being placed in context. The cloud LLM sees only structure and logic — never real values. |
+
+Binary and image files that are gitignored are blocked in both cases since they cannot be meaningfully faked.
+
+---
+
+## The `@secret` agent
+
+`@secret` is a built-in subagent that routes inference to a local Ollama model. It is only registered when the `OLLAMA_MODEL` environment variable is set.
+
+Its system prompt enforces that it **never outputs raw sensitive values** — it returns only logical and structural descriptions.
+
+---
+
+### Setup
+
+Set the following environment variables before starting OpenCode:
+
+```bash
+# Required — enables the @secret agent
+export OLLAMA_MODEL=llama3.2
+
+# Optional — defaults to http://localhost:11434
+export OLLAMA_URL=http://localhost:11434
+```
+
+Once set, `@secret` appears in the agent list and the `@` autocomplete menu.
+
+---
+
+### Usage
+
+You can invoke `@secret` manually:
+
+```txt frame="none"
+@secret what environment variables does this service expect?
+```
+
+Or the primary agent (`@build`) will route automatically when it tries to read a gitignored file and Ollama is configured. The blocked read produces an error that guides the model to delegate to `@secret`.
+
+---
+
+### Behavior
+
+- Runs entirely on your local Ollama model — no data sent to any external API
+- Returns logical observations only: _"this file configures a database connection with 3 env vars"_ rather than showing values
+- Replaces any sensitive values it must reference with `[REDACTED]`, `[API_KEY]`, `[URL]`, etc.
+- Operates in an isolated child session — its internal messages (including raw file reads) never appear in the parent session's context
+
+---
+
+## Regex faker
+
+When Ollama is not configured, OpenCode reads gitignored files but **replaces sensitive values with type-realistic fakes** before the content enters the LLM context. The file structure, variable names, and logic are fully preserved.
+
+A privacy notice is appended to the output so the model knows the values are not real:
+
+```
+(Privacy notice: this file is gitignored. Sensitive values have been replaced
+with fake data for privacy. The structure and logic are preserved.)
+```
+
+---
+
+### Supported formats
+
+| Format | Detection strategy |
+|---|---|
+| `.env`, `.env.*` | Variable names matching sensitive patterns |
+| `.json` | Object keys matching sensitive patterns (recursive) |
+| `.yml`, `.yaml` | Line-level key matching |
+| `.ini`, `.cfg`, `.conf`, `.properties` | Key matching |
+| `.toml` | Key matching |
+| `.csv`, `.tsv` | Column headers (see [PII config](#pii-config)) |
+| Source code (`.py`, `.r`, `.js`, `.ts`, `.go`, `.rb`, `.php`, `.java`, `.cs`, `.swift`, `.kt`, `.sh`, …) | All string literals replaced — entire file is treated as sensitive |
+
+---
+
+### Value faking
+
+Values are faked based on their detected type:
+
+| Detected type | Example fake |
+|---|---|
+| JWT | `eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJleGFtcGxlIn0.fake_sig_redacted` |
+| UUID | `00000000-0000-0000-0000-000000000000` |
+| Database URL | `postgres://user:fakepassword@localhost/db` |
+| Vendor key (`sk-`, `ghp_`, `xoxb-`, …) | `sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| Hex string | `0000000000000000` (same length) |
+| Base64 | `ZmFrZXZhbHVlcmVkYWN0ZWQ=` |
+| Email | `user@example.com` |
+| URL | `https://example.com` |
+| Other | `example_value` |
+
+---
+
+## PII config
+
+For CSV and TSV files, OpenCode uses column header names to detect PII columns. You can explicitly declare which columns are sensitive instead of relying on heuristics.
+
+---
+
+### File location
+
+OpenCode looks for the config in this order:
+
+1. `.sensible.yaml` — in the **project root** (your working directory)
+2. `.opencode/pii.yml` — fallback
+
+Use `.sensible.yaml` for project-specific PII declarations that live alongside your data, outside the `.opencode` folder.
+
+---
+
+### Format
+
+```yaml title=".sensible.yaml"
+customers.csv:
+  - email
+  - phone
+  - full_name
+  - billing_address
+
+orders.csv:
+  - card_last4
+  - shipping_address
+  - customer_id
+```
+
+Column names must match the CSV header exactly (case-sensitive). When a `.sensible.yaml` or `.opencode/pii.yml` file is present, **only the declared columns are faked** — the heuristic fallback is not used. When neither file exists, OpenCode falls back to detecting PII columns by name pattern (email, phone, address, name, dob, ssn, etc.).
+
+:::tip
+Add `.sensible.yaml` to your `.gitignore` if it contains file names that are themselves sensitive.
+:::
+
+---
+
+## Context protection
+
+Beyond tool calls, OpenCode also protects against gitignored files leaking into context through user message attachments:
+
+- **Text files** attached by the user go through the same read tool, triggering the `@secret` redirect or faker as appropriate
+- **Binary files** (images, PDFs) that are gitignored are blocked entirely — the attachment is dropped and replaced with an explanatory message
+
+---
+
+## Summary
+
+```
+gitignored file read
+        │
+        ├── OLLAMA_MODEL set?
+        │       │
+        │       ├── Yes → block read, redirect to @secret
+        │       │          └── @secret reads locally on Ollama
+        │       │              └── returns abstraction only
+        │       │
+        │       └── No → read file, apply regex faker
+        │                  └── faked content enters context
+        │                  └── privacy notice appended
+        │
+        └── Binary file → blocked entirely (no fake possible)
+```
