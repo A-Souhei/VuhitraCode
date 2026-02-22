@@ -12,6 +12,11 @@
         "question": "allow",
       },
     },
+    "ship": {
+      "permission": {
+        "question": "allow",
+      },
+    },
   },
   "tools": {
     "github-triage": false,
