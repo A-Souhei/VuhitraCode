@@ -1,6 +1,4 @@
-import * as fs from "fs/promises"
 import * as path from "path"
-import ignore from "ignore"
 import { Instance } from "../project/instance"
 
 export async function isGitignored(filepath: string): Promise<boolean> {
@@ -8,8 +6,13 @@ export async function isGitignored(filepath: string): Promise<boolean> {
   const relative = path.relative(worktree, filepath)
   if (relative.startsWith("..")) return false
   try {
-    const content = await fs.readFile(path.join(worktree, ".gitignore"), "utf-8")
-    return ignore().add(content).ignores(relative)
+    const proc = Bun.spawn(["git", "check-ignore", "-q", relative], {
+      cwd: worktree,
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+    await proc.exited
+    return proc.exitCode === 0
   } catch {
     return false
   }
