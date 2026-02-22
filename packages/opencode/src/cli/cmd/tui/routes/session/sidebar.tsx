@@ -234,7 +234,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                       const s = sync.data.indexer_status
                       if (!s || s.type === "disabled") return "Disabled"
                       if (s.type === "complete") return "Index ready"
-                      return `Indexing ${s.progress}%`
+                      return `Indexing (${s.progress} files)`
                     })()}
                   </text>
                 </box>

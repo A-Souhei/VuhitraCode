@@ -4,7 +4,6 @@ import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
 import { FileWatcher } from "@/file/watcher"
 import { FileIgnore } from "@/file/ignore"
-import { Glob } from "@/util/glob"
 import { Env } from "@/env"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { isGitignored } from "@/util/gitignore"
@@ -261,32 +260,50 @@ export namespace Indexer {
     const s = state()
     await checkServices()
     await ensureCollection(s.abortController.signal)
-    const files = (await Glob.scan("**/*", { cwd: Instance.directory, absolute: true, dot: true })).filter(
-      (f) => !FileIgnore.match(path.relative(Instance.directory, f)),
-    )
-    if (files.length === 0) {
-      s.status = { type: "complete" }
-      Bus.publish(Event.Updated, {})
-      return
-    }
-    const isIgnored = await buildIgnoreChecker(Instance.worktree, files)
+
+    const BATCH_SIZE = 500
+    let batch: string[] = []
     let done = 0
-    let lastProgress = -1
-    for (const file of files) {
+
+    const processBatch = async (): Promise<boolean> => {
+      if (batch.length === 0) return true
+      const current = batch
+      batch = []
+      const isIgnored = await buildIgnoreChecker(Instance.worktree, current)
+      for (const file of current) {
+        if (s.abortController.signal.aborted) return false
+        await indexFile(file, true, s.abortController.signal, isIgnored)
+        done++
+        s.status = { type: "indexing", progress: done }
+        Bus.publish(Event.Updated, {})
+      }
+      return true
+    }
+
+    const scanner = new Bun.Glob("**/*").scan({ cwd: Instance.directory, absolute: true, dot: true, onlyFiles: true })
+    for await (const file of scanner) {
       if (s.abortController.signal.aborted) {
         s.status = { type: "disabled" }
         Bus.publish(Event.Updated, {})
         return
       }
-      await indexFile(file, true, s.abortController.signal, isIgnored)
-      done++
-      const progress = Math.round((done / files.length) * 100)
-      s.status = { type: "indexing", progress }
-      if (progress !== lastProgress) {
-        Bus.publish(Event.Updated, {})
-        lastProgress = progress
+      if (FileIgnore.match(path.relative(Instance.directory, file))) continue
+      batch.push(file)
+      if (batch.length >= BATCH_SIZE) {
+        if (!(await processBatch())) {
+          s.status = { type: "disabled" }
+          Bus.publish(Event.Updated, {})
+          return
+        }
       }
     }
+
+    if (!(await processBatch())) {
+      s.status = { type: "disabled" }
+      Bus.publish(Event.Updated, {})
+      return
+    }
+
     s.status = { type: "complete" }
     Bus.publish(Event.Updated, {})
   }
