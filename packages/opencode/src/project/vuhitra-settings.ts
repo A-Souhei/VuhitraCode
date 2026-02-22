@@ -6,6 +6,12 @@ import z from "zod"
 export namespace VuHitraSettings {
   const SettingsSchema = z.object({
     indexing: z.object({ enabled: z.boolean().optional() }).optional(),
+    model_lock: z
+      .object({
+        enabled: z.boolean().optional(),
+        model: z.string().optional(),
+      })
+      .optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -23,5 +29,13 @@ export namespace VuHitraSettings {
 
   export function indexingEnabled(): boolean {
     return state().indexing?.enabled === true
+  }
+
+  export function modelLock(): { enabled: boolean; model?: string } {
+    const s = state()
+    return {
+      enabled: s.model_lock?.enabled === true,
+      model: s.model_lock?.model,
+    }
   }
 }

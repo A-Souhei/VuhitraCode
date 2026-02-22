@@ -444,6 +444,30 @@ function App() {
       },
     },
     {
+      title: local.modelLock.enabled
+        ? `Lock model to current (locked: ${local.modelLock.model})`
+        : "Lock model to current",
+      value: "model.lock_to_current",
+      category: "Agent",
+      description: "Save the current model as a locked model for this project in .vuhitra/settings.json",
+      slash: {
+        name: "set-model-to-current",
+      },
+      enabled: !!local.model.current(),
+      onSelect: async (dialog) => {
+        const current = local.model.current()
+        if (!current) return
+        await local.modelLock.lock(current)
+        const parsed = local.model.parsed()
+        toast.show({
+          message: `Model locked to ${parsed.model} (${parsed.provider})`,
+          variant: "info",
+          duration: 4000,
+        })
+        dialog.clear()
+      },
+    },
+    {
       title: "Switch agent",
       value: "agent.list",
       keybind: "agent_list",

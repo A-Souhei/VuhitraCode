@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { batch, createEffect, createMemo } from "solid-js"
+import { batch, createEffect, createMemo, onMount } from "solid-js"
 import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
 import { uniqueBy } from "remeda"
@@ -13,6 +13,8 @@ import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
 import { Filesystem } from "@/util/filesystem"
+
+const MODEL_LOCK_TOAST_DURATION = 5000
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
@@ -89,6 +91,49 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             return theme[color as keyof typeof theme] as RGBA
           }
           return colors()[index % colors().length]
+        },
+      }
+    })
+
+    const modelLock = iife(() => {
+      const [lockStore, setLockStore] = createStore<{
+        enabled: boolean
+        model: string | undefined
+      }>({ enabled: false, model: undefined })
+
+      function vuHitraPath() {
+        return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
+      }
+
+      onMount(() => {
+        Filesystem.readJson(vuHitraPath())
+          .then((x: any) => {
+            if (x?.model_lock?.enabled === true && typeof x.model_lock.model === "string") {
+              setLockStore({ enabled: true, model: x.model_lock.model })
+            }
+          })
+          .catch(() => {})
+      })
+
+      return {
+        get enabled() {
+          return lockStore.enabled
+        },
+        get model() {
+          return lockStore.model
+        },
+        async lock(model: { providerID: string; modelID: string }) {
+          const modelStr = `${model.providerID}/${model.modelID}`
+          const filePath = vuHitraPath()
+          let current: Record<string, any> = {}
+          try {
+            current = await Filesystem.readJson(filePath)
+          } catch {}
+          await Filesystem.writeJson(filePath, {
+            ...current,
+            model_lock: { enabled: true, model: modelStr },
+          })
+          setLockStore({ enabled: true, model: modelStr })
         },
       }
     })
@@ -230,6 +275,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }),
         cycle(direction: 1 | -1) {
+          if (modelLock.enabled) {
+            toast.show({
+              message: `Model is locked to ${modelLock.model}. Edit .vuhitra/settings.json to unlock.`,
+              variant: "warning",
+              duration: MODEL_LOCK_TOAST_DURATION,
+            })
+            return
+          }
           const current = currentModel()
           if (!current) return
           const recent = modelStore.recent
@@ -243,6 +296,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setModelStore("model", agent.current().name, { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
+          if (modelLock.enabled) {
+            toast.show({
+              message: `Model is locked to ${modelLock.model}. Edit .vuhitra/settings.json to unlock.`,
+              variant: "warning",
+              duration: MODEL_LOCK_TOAST_DURATION,
+            })
+            return
+          }
           const favorites = modelStore.favorite.filter((item) => isModelValid(item))
           if (!favorites.length) {
             toast.show({
@@ -277,6 +338,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
           batch(() => {
+            if (modelLock.enabled && modelLock.model?.includes("/")) {
+              const { providerID, modelID } = Provider.parseModel(modelLock.model)
+              if (model.providerID !== providerID || model.modelID !== modelID) {
+                toast.show({
+                  message: `Model is locked to ${modelLock.model}. Edit .vuhitra/settings.json to unlock.`,
+                  variant: "warning",
+                  duration: MODEL_LOCK_TOAST_DURATION,
+                })
+                return
+              }
+            }
             if (!isModelValid(model)) {
               toast.show({
                 message: `Model ${model.providerID}/${model.modelID} is not valid`,
@@ -417,6 +489,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const result = {
       model,
+      modelLock,
       agent,
       mcp,
       review,
