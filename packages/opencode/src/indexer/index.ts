@@ -9,6 +9,7 @@ import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { isGitignored } from "@/util/gitignore"
 import { Faker } from "@/util/faker"
 import { Log } from "@/util/log"
+import ignore from "ignore"
 import path from "path"
 import fs from "fs"
 
@@ -302,10 +303,32 @@ export namespace Indexer {
     return (filepath: string) => ignored.has(filepath)
   }
 
+  function loadIndexIgnore(): (rel: string) => boolean {
+    const filePath = path.join(Instance.directory, ".vuhitra", "index-ignore")
+    try {
+      const content = fs.readFileSync(filePath, "utf-8")
+      const ig = ignore().add(content)
+      return (rel: string) => {
+        if (!rel || rel.startsWith("..")) return false
+        try {
+          return ig.ignores(rel)
+        } catch {
+          return false
+        }
+      }
+    } catch (e: any) {
+      if (e?.code !== "ENOENT") log.warn("failed to load index-ignore file", { error: String(e) })
+      return () => false
+    }
+  }
+
   async function runInitialIndex() {
     const s = state()
     await checkServices()
     await ensureCollection(s.abortController.signal)
+    // index-ignore rules are loaded once at startup; edits require a restart.
+    // Files matching new patterns are not automatically removed from Qdrant.
+    const isIndexIgnored = loadIndexIgnore()
 
     // Bulk-fetch all already-indexed mtimes once to avoid one Qdrant query per file.
     // NOTE: the map may be stale for files modified during the scan; the file watcher
@@ -349,7 +372,9 @@ export namespace Indexer {
         Bus.publish(Event.Updated, {})
         return
       }
-      if (FileIgnore.match(path.relative(Instance.directory, file))) continue
+      const rel = path.relative(Instance.directory, file)
+      if (FileIgnore.match(rel)) continue
+      if (isIndexIgnored(rel)) continue
       batch.push(file)
       if (batch.length >= BATCH_SIZE) {
         if (!(await processBatch())) {
@@ -371,9 +396,11 @@ export namespace Indexer {
   }
 
   function watchForChanges() {
+    const isIndexIgnored = loadIndexIgnore()
     Bus.subscribe(FileWatcher.Event.Updated, async ({ properties: { file, event } }) => {
       const rel = path.relative(Instance.directory, file)
       if (FileIgnore.match(rel)) return
+      if (isIndexIgnored(rel)) return
       if (event === "unlink") {
         await deleteByFilePath(file).catch((error) => {
           log.error("failed to delete index entry for file", { file, error: String(error) })
