@@ -68,6 +68,21 @@ export type EventGlobalDisposed = {
   }
 }
 
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
+  }
+}
+
+export type EventIndexerUpdated = {
+  type: "indexer.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -684,14 +699,6 @@ export type EventSessionCompacted = {
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
 export type Todo = {
   /**
    * Brief description of the task
@@ -941,11 +948,6 @@ export type EventWorktreeFailed = {
   }
 }
 
-export type EventIndexerUpdated = {
-  type: "indexer.updated"
-  properties: Record<string, never>
-}
-
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -953,6 +955,8 @@ export type Event =
   | EventServerInstanceDisposed
   | EventServerConnected
   | EventGlobalDisposed
+  | EventFileWatcherUpdated
+  | EventIndexerUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
@@ -969,7 +973,6 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventSessionCompacted
-  | EventFileWatcherUpdated
   | EventTodoUpdated
   | EventTuiPromptAppend
   | EventTuiCommandExecute
@@ -990,7 +993,6 @@ export type Event =
   | EventPtyDeleted
   | EventWorktreeReady
   | EventWorktreeFailed
-  | EventIndexerUpdated
 
 export type GlobalEvent = {
   directory: string
@@ -2290,9 +2292,16 @@ export type FormatterStatus = {
 }
 
 export type IndexerStatus =
-  | { type: "disabled" }
-  | { type: "indexing"; progress: number }
-  | { type: "complete" }
+  | {
+      type: "disabled"
+    }
+  | {
+      type: "indexing"
+      progress: number
+    }
+  | {
+      type: "complete"
+    }
 
 export type GlobalHealthData = {
   body?: never

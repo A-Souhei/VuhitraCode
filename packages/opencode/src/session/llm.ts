@@ -83,9 +83,9 @@ export namespace LLM {
     if (!input.small && Indexer.status().type === "complete") {
       const lastUserContent = input.messages.findLast((m) => m.role === "user")?.content
       const userText = Array.isArray(lastUserContent)
-        ? (lastUserContent as any[])
-            .filter((p: any) => p.type === "text")
-            .map((p: any) => p.text)
+        ? lastUserContent
+            .filter((p): p is { type: "text"; text: string } => p != null && typeof p === "object" && p.type === "text")
+            .map((p) => p.text)
             .join(" ")
         : typeof lastUserContent === "string"
           ? lastUserContent

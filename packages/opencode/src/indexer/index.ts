@@ -42,7 +42,7 @@ export namespace Indexer {
   )
 
   function collectionName() {
-    return "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]/g, "_")
+    return "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_")
   }
 
   function qdrantUrl() {
@@ -86,20 +86,32 @@ export namespace Indexer {
   }
 
   async function ensureCollection(signal?: AbortSignal) {
-    const sample = await embed("dim", signal)
-    const size = sample.length
     const name = collectionName()
     const url = qdrantUrl()
     const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+    const existing = await fetch(`${url}/collections/${name}`, {
+      method: "GET",
+      headers: qdrantHeaders(),
+      signal: combined,
+    })
+    if (existing.ok) return
+    const sample = await embed("dim", signal)
+    const size = sample.length
+    const combined2 = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
     const response = await fetch(`${url}/collections/${name}`, {
       method: "PUT",
       headers: qdrantHeaders(),
-      signal: combined,
+      signal: combined2,
       body: JSON.stringify({
         vectors: { size, distance: "Cosine" },
       }),
     })
-    if (!response.ok) throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { status?: { error?: string } }
+      if (!String(body?.status?.error ?? "").includes("already exists")) {
+        throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
+      }
+    }
   }
 
   async function upsertPoints(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
@@ -239,7 +251,9 @@ export namespace Indexer {
       const text = await new Response(proc.stdout as ReadableStream).text()
       await proc.exited
       text.split("\n").filter(Boolean).forEach((rel) => ignored.add(path.resolve(worktree, rel)))
-    } catch {}
+    } catch (error) {
+      log.warn("git check-ignore failed; git-ignored files may be indexed", { error: String(error) })
+    }
     return (filepath: string) => ignored.has(filepath)
   }
 
@@ -259,7 +273,11 @@ export namespace Indexer {
     let done = 0
     let lastProgress = -1
     for (const file of files) {
-      if (s.abortController.signal.aborted) return
+      if (s.abortController.signal.aborted) {
+        s.status = { type: "disabled" }
+        Bus.publish(Event.Updated, {})
+        return
+      }
       await indexFile(file, true, s.abortController.signal, isIgnored)
       done++
       const progress = Math.round((done / files.length) * 100)
@@ -277,8 +295,15 @@ export namespace Indexer {
     Bus.subscribe(FileWatcher.Event.Updated, async ({ properties: { file, event } }) => {
       const rel = path.relative(Instance.directory, file)
       if (FileIgnore.match(rel)) return
-      if (event === "unlink") await deleteByFilePath(file).catch(() => {})
-      else await indexFile(file).catch(() => {})
+      if (event === "unlink") {
+        await deleteByFilePath(file).catch((error) => {
+          log.error("failed to delete index entry for file", { file, error: String(error) })
+        })
+      } else {
+        await indexFile(file).catch((error) => {
+          log.error("failed to index file from watcher event", { file, event, error: String(error) })
+        })
+      }
     })
   }
 
@@ -290,6 +315,7 @@ export namespace Indexer {
 
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (!query || query.length > MAX_QUERY_LENGTH) throw new Error("Invalid query length")
+    if (state().status.type !== "complete") return []
     const vector = await embed(query)
     const name = collectionName()
     const url = qdrantUrl()

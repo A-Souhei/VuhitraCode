@@ -35,13 +35,13 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
-  IndexerStatusResponses,
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  IndexerStatusResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
@@ -3213,8 +3213,6 @@ export class Formatter extends HeyApiClient {
 
 export class Indexer extends HeyApiClient {
   /**
-   * Get indexer status
-   *
    * Get indexer status
    */
   public status<ThrowOnError extends boolean = false>(
