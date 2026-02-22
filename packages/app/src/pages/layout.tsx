@@ -148,6 +148,7 @@ export default function Layout(props: ParentProps) {
   const isBusy = (directory: string) => !!state.busyWorkspaces[workspaceKey(directory)]
   const navLeave = { current: undefined as number | undefined }
   const [sortNow, setSortNow] = createSignal(Date.now())
+  const [ctxMenu, setCtxMenu] = createSignal<{ x: number; y: number; text: string } | null>(null)
   let sortNowInterval: ReturnType<typeof setInterval> | undefined
   const sortNowTimeout = setTimeout(
     () => {
@@ -1137,6 +1138,32 @@ export default function Layout(props: ParentProps) {
     onCleanup(() => window.removeEventListener(deepLinkEvent, handler as EventListener))
   })
 
+  onMount(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      const sel = window.getSelection()
+      const text = sel && !sel.isCollapsed ? sel.toString().trim() : ""
+      if (!text) return
+      e.preventDefault()
+      const menuW = 140
+      const menuH = 44
+      const x = Math.min(e.clientX, window.innerWidth - menuW)
+      const y = Math.min(e.clientY, window.innerHeight - menuH)
+      setCtxMenu({ x, y, text })
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && ctxMenu()) {
+        e.stopPropagation()
+        setCtxMenu(null)
+      }
+    }
+    document.addEventListener("contextmenu", handleContextMenu)
+    document.addEventListener("keydown", handleKeyDown, true)
+    onCleanup(() => {
+      document.removeEventListener("contextmenu", handleContextMenu)
+      document.removeEventListener("keydown", handleKeyDown, true)
+    })
+  })
+
   async function renameProject(project: LocalProject, next: string) {
     const current = displayName(project)
     if (next === current) return
@@ -2059,6 +2086,36 @@ export default function Layout(props: ParentProps) {
         </main>
       </div>
       <Toast.Region />
+      <Show when={ctxMenu()}>
+        {(pos) => (
+          <>
+            <div
+              class="fixed inset-0 z-[9998]"
+              onClick={() => setCtxMenu(null)}
+              onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null) }}
+            />
+            <div
+              class="fixed z-[9999] bg-background-base border border-border-base rounded-md shadow-lg py-1 min-w-[120px] select-none"
+              style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+            >
+              <button
+                class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left text-text-base hover:bg-background-stronger cursor-default"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(pos().text)
+                  } catch {
+                    // clipboard write failed silently; text was already in primary selection
+                  }
+                  setCtxMenu(null)
+                }}
+              >
+                Copy
+              </button>
+            </div>
+          </>
+        )}
+      </Show>
     </div>
   )
 }

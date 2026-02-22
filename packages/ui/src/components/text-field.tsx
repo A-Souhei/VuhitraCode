@@ -74,10 +74,6 @@ export function TextField(props: TextFieldProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function handleClick() {
-    if (local.copyable) handleCopy()
-  }
-
   return (
     <Kobalte
       data-component="input"
@@ -87,7 +83,6 @@ export function TextField(props: TextFieldProps) {
       value={local.value}
       onChange={local.onChange}
       onKeyDown={local.onKeyDown}
-      onClick={handleClick}
       required={local.required}
       disabled={local.disabled}
       readOnly={local.readOnly}

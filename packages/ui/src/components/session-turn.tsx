@@ -358,11 +358,12 @@ export function SessionTurn(
                 data-slot="session-turn-message-container"
                 class={props.classes?.container}
               >
-                <div data-slot="session-turn-message-content" aria-live="off">
+                {/* select-text overrides select-none on the app root layout */}
+                <div data-slot="session-turn-message-content" class="select-text" aria-live="off">
                   <Message message={msg()} parts={parts()} interrupted={interrupted()} />
                 </div>
                 <Show when={assistantMessages().length > 0}>
-                  <div data-slot="session-turn-assistant-content" aria-hidden={working()}>
+                  <div data-slot="session-turn-assistant-content" class="select-text" aria-hidden={working()}>
                     <AssistantParts
                       messages={assistantMessages()}
                       showAssistantCopyPartID={assistantCopyPartID()}
@@ -480,7 +481,7 @@ export function SessionTurn(
                   </div>
                 </Show>
                 <Show when={error()}>
-                  <Card variant="error" class="error-card">
+                  <Card variant="error" class="error-card select-text">
                     {errorText()}
                   </Card>
                 </Show>
