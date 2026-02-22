@@ -159,6 +159,46 @@ export namespace Indexer {
     return data.result?.points?.[0]?.payload?.mtime ?? null
   }
 
+  async function getAllIndexedMtimes(): Promise<Map<string, number>> {
+    const mtimes = new Map<string, number>()
+    const name = collectionName()
+    const url = qdrantUrl()
+    let offset: string | number | null = null
+
+    do {
+      const body: Record<string, unknown> = {
+        limit: 1000,
+        with_payload: ["file_path", "mtime"],
+        with_vector: false,
+      }
+      if (offset !== null) body.offset = offset
+
+      const response = await fetch(`${url}/collections/${name}/points/scroll`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) throw new Error(`Failed to fetch indexed mtimes: ${response.status} ${response.statusText}`)
+      const data = (await response.json()) as {
+        result: {
+          points: { payload: { file_path?: string; mtime?: number } }[]
+          next_page_offset: string | number | null
+        }
+      }
+
+      for (const point of data.result.points) {
+        const { file_path, mtime } = point.payload
+        if (file_path && mtime !== undefined && !mtimes.has(file_path)) {
+          mtimes.set(file_path, mtime)
+        }
+      }
+      offset = data.result.next_page_offset
+    } while (offset !== null)
+
+    return mtimes
+  }
+
   export function chunkFile(content: string, filePath: string): { id: string; text: string; startLine: number }[] {
     if (!content.trim()) return []
     const lines = content.split("\n")
@@ -183,6 +223,7 @@ export namespace Indexer {
     skipIfUnchanged = false,
     signal?: AbortSignal,
     isIgnored?: (f: string) => boolean,
+    indexedMtimes?: Map<string, number>,
   ) {
     try {
       const stat = await fs.promises.stat(filePath)
@@ -190,7 +231,8 @@ export namespace Indexer {
       if (stat.size > 1024 * 1024) return
 
       if (skipIfUnchanged) {
-        const indexedMtime = await getIndexedMtime(filePath)
+        const indexedMtime =
+          indexedMtimes !== undefined ? (indexedMtimes.get(filePath) ?? null) : await getIndexedMtime(filePath)
         if (indexedMtime === stat.mtimeMs) return
       }
 
@@ -261,6 +303,12 @@ export namespace Indexer {
     await checkServices()
     await ensureCollection(s.abortController.signal)
 
+    // Bulk-fetch all already-indexed mtimes once to avoid one Qdrant query per file
+    const indexedMtimes = await getAllIndexedMtimes().catch((e) => {
+      log.warn("failed to fetch indexed mtimes, falling back to per-file queries", { error: String(e) })
+      return new Map<string, number>()
+    })
+
     const BATCH_SIZE = 500
     let batch: string[] = []
     let done = 0
@@ -272,10 +320,13 @@ export namespace Indexer {
       const isIgnored = await buildIgnoreChecker(Instance.worktree, current)
       for (const file of current) {
         if (s.abortController.signal.aborted) return false
-        await indexFile(file, true, s.abortController.signal, isIgnored)
+        await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
         done++
-        s.status = { type: "indexing", progress: done }
-        Bus.publish(Event.Updated, {})
+        // Throttle progress events: publish every 50 files to avoid SSE flooding
+        if (done % 50 === 0) {
+          s.status = { type: "indexing", progress: done }
+          Bus.publish(Event.Updated, {})
+        }
       }
       return true
     }
