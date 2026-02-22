@@ -2,6 +2,9 @@ import { Installation } from "@/installation"
 import { Provider } from "@/provider/provider"
 import { Indexer } from "@/indexer"
 import { Log } from "@/util/log"
+import { Bus } from "@/bus"
+import { TuiEvent } from "@/cli/cmd/tui/event"
+import path from "path"
 import {
   streamText,
   wrapLanguageModel,
@@ -103,6 +106,33 @@ export namespace LLM {
               chunks.join("\n\n") +
               "\n</codebase_context>",
           )
+
+          const uniqueFiles = [
+            ...new Set(
+              chunks
+                .map((chunk) => {
+                  const match = chunk.match(/^\/\/ (.+):\d+/)
+                  if (!match) return null
+                  const rel = path.relative(Instance.directory, match[1])
+                  return rel.startsWith("..") ? match[1] : rel
+                })
+                .filter(Boolean) as string[],
+            ),
+          ]
+          const fileList =
+            uniqueFiles.length === 0
+              ? `${chunks.length} snippet${chunks.length !== 1 ? "s" : ""}`
+              : uniqueFiles.length <= 3
+                ? uniqueFiles.join(", ")
+                : `${uniqueFiles.slice(0, 2).join(", ")} +${uniqueFiles.length - 2} more`
+
+          // fire-and-forget: toast is best-effort and does not affect the stream result
+          void Bus.publish(TuiEvent.ToastShow, {
+            title: `◈ Indexer — ${chunks.length} snippet${chunks.length !== 1 ? "s" : ""}`,
+            message: fileList,
+            variant: "info",
+            duration: 5000,
+          })
         }
       }
     }
