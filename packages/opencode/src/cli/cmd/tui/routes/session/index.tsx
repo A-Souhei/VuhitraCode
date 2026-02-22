@@ -59,6 +59,7 @@ import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { DialogWorkComplete } from "../../component/dialog-work-complete"
 import { Sidebar } from "./sidebar"
 import { Flag } from "@/flag/flag"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
@@ -139,6 +140,11 @@ export function Session() {
 
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
+  })
+
+  const allTodosCompleted = createMemo(() => {
+    const t = sync.data.todo[route.sessionID] ?? []
+    return t.length > 0 && t.every((x) => x.status === "completed")
   })
 
   const dimensions = useTerminalDimensions()
@@ -973,6 +979,44 @@ export function Session() {
 
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
+
+  // Show post-work dialog when the work agent finishes all todos.
+  // Keyed by sessionID so navigation between sessions doesn't corrupt the flag.
+  // { defer: true } skips the initial evaluation — the guard `prevPending === undefined`
+  // would also catch this, but defer makes the intent explicit and avoids any
+  // false trigger on sessions that are already idle when first loaded.
+  const workCompletionShown = new Set<string>()
+  createEffect(
+    on(
+      [pending, allTodosCompleted],
+      ([currentPending, currentCompleted], prev) => {
+        const [prevPending] = prev ?? [undefined, false]
+        if (currentPending !== undefined) {
+          // Session is busy again — allow the dialog to re-show after the next completion
+          workCompletionShown.delete(route.sessionID)
+          return
+        }
+        // Only trigger on a running→idle transition (prevPending was a message ID)
+        if (prevPending === undefined) return
+        if (!currentCompleted) return
+        // Use the agent recorded on the last assistant message, not the UI dropdown,
+        // so the check reflects what actually ran rather than the current selection.
+        if (lastAssistant()?.agent !== "work") return
+        if (workCompletionShown.has(route.sessionID)) return
+        workCompletionShown.add(route.sessionID)
+        dialog.replace(() => (
+          <DialogWorkComplete
+            sessionID={route.sessionID}
+            onCustom={(text) => {
+              dialog.clear()
+              promptRef.current?.set({ input: text, parts: [] })
+            }}
+          />
+        ))
+      },
+      { defer: true },
+    ),
+  )
 
   return (
     <context.Provider

@@ -11,6 +11,7 @@ import { useKeybind } from "../../context/keybind"
 import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
+import { Spinner } from "../../component/spinner"
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const sync = useSync()
@@ -19,6 +20,8 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const diff = createMemo(() => sync.data.session_diff[props.sessionID] ?? [])
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
+  const inProgressTodo = createMemo(() => todo().find((t) => t.status === "in_progress"))
+  const completedCount = createMemo(() => todo().filter((t) => t.status === "completed").length)
 
   const [expanded, setExpanded] = createStore({
     mcp: true,
@@ -240,7 +243,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </box>
               </box>
             </Show>
-            <Show when={todo().length > 0 && todo().some((t) => t.status !== "completed")}>
+            <Show when={todo().length > 0}>
               <box>
                 <box
                   flexDirection="row"
@@ -253,7 +256,21 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   <text fg={theme.text}>
                     <b>Todo</b>
                   </text>
+                  <text fg={theme.textMuted}>{completedCount()}/{todo().length}</text>
                 </box>
+                <Show
+                  when={inProgressTodo()}
+                  fallback={
+                    <Show when={completedCount() < todo().length}>
+                      <box flexDirection="row" gap={1}>
+                        <text fg={theme.textMuted}>•</text>
+                        <text fg={theme.textMuted}>Waiting</text>
+                      </box>
+                    </Show>
+                  }
+                >
+                  {(item) => <Spinner>{item().content}</Spinner>}
+                </Show>
                 <Show when={todo().length <= 2 || expanded.todo}>
                   <For each={todo()}>{(todo) => <TodoItem status={todo.status} content={todo.content} />}</For>
                 </Show>
@@ -274,7 +291,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   </text>
                 </box>
                 <Show when={diff().length <= 2 || expanded.diff}>
-                  <For each={diff() || []}>
+                  <For each={diff()}>
                     {(item) => {
                       return (
                         <box flexDirection="row" gap={1} justifyContent="space-between">

@@ -14,6 +14,10 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
+import PROMPT_WORK from "./prompt/work.txt"
+import PROMPT_KEEPER from "./prompt/keeper.txt"
+import PROMPT_TEST from "./prompt/test.txt"
+import PROMPT_REVIEW from "./prompt/review.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -111,6 +115,70 @@ export namespace Agent {
           }),
           user,
         ),
+        mode: "primary",
+        native: true,
+      },
+      work: {
+        name: "work",
+        description:
+          "Implementation agent that plans before building: creates a full TODO list, tracks each item in real time, and verifies completion via @keeper.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            plan_enter: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_WORK,
+        mode: "primary",
+        native: true,
+      },
+      keeper: {
+        name: "keeper",
+        description: "Verifies that all todo items are genuinely completed. Called automatically by the work agent.",
+        options: {},
+        // user overrides are applied before the explicit denials so the keeper's
+        // no-tools guarantee cannot be accidentally lifted by a permissive user config.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({ "*": "deny", task: "deny" }),
+        ),
+        prompt: PROMPT_KEEPER,
+        mode: "subagent",
+        native: true,
+        hidden: true,
+      },
+      test: {
+        name: "test",
+        description: "Creates, runs, and fixes tests for completed work. Can be selected manually or launched automatically after the work agent finishes.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_TEST,
+        mode: "primary",
+        native: true,
+      },
+      review: {
+        name: "review",
+        description: "Reviews completed implementation and surfaces findings by severity. Accepts optional focus areas (security, performance, logic, style, tests, docs).",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_REVIEW,
         mode: "primary",
         native: true,
       },
