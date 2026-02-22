@@ -41,6 +41,7 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  IndexerStatusResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
   McpAddErrors,
@@ -3210,6 +3211,25 @@ export class Formatter extends HeyApiClient {
   }
 }
 
+export class Indexer extends HeyApiClient {
+  /**
+   * Get indexer status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<IndexerStatusResponses, unknown, ThrowOnError>({
+      url: "/indexer",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Event extends HeyApiClient {
   /**
    * Subscribe to events
@@ -3357,6 +3377,11 @@ export class OpencodeClient extends HeyApiClient {
   private _formatter?: Formatter
   get formatter(): Formatter {
     return (this._formatter ??= new Formatter({ client: this.client }))
+  }
+
+  private _indexer?: Indexer
+  get indexer(): Indexer {
+    return (this._indexer ??= new Indexer({ client: this.client }))
   }
 
   private _event?: Event

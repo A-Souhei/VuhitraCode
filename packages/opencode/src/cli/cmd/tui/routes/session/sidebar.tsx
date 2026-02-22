@@ -210,6 +210,36 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </For>
               </Show>
             </box>
+            <Show when={sync.data.indexer_status}>
+              <box>
+                <text fg={theme.text}>
+                  <b>Indexer</b>
+                </text>
+                <box flexDirection="row" gap={1}>
+                  <text
+                    flexShrink={0}
+                    style={{
+                      fg: (() => {
+                        const s = sync.data.indexer_status
+                        if (!s || s.type === "disabled") return theme.error
+                        if (s.type === "complete") return theme.success
+                        return theme.warning
+                      })(),
+                    }}
+                  >
+                    •
+                  </text>
+                  <text fg={theme.textMuted}>
+                    {(() => {
+                      const s = sync.data.indexer_status
+                      if (!s || s.type === "disabled") return "Disabled"
+                      if (s.type === "complete") return "Index ready"
+                      return `Indexing (${s.progress} files)`
+                    })()}
+                  </text>
+                </box>
+              </box>
+            </Show>
             <Show when={todo().length > 0 && todo().some((t) => t.status !== "completed")}>
               <box>
                 <box

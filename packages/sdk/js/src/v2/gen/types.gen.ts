@@ -68,6 +68,21 @@ export type EventGlobalDisposed = {
   }
 }
 
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "add" | "change" | "unlink"
+  }
+}
+
+export type EventIndexerUpdated = {
+  type: "indexer.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -684,14 +699,6 @@ export type EventSessionCompacted = {
   }
 }
 
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "add" | "change" | "unlink"
-  }
-}
-
 export type Todo = {
   /**
    * Brief description of the task
@@ -948,6 +955,8 @@ export type Event =
   | EventServerInstanceDisposed
   | EventServerConnected
   | EventGlobalDisposed
+  | EventFileWatcherUpdated
+  | EventIndexerUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventFileEdited
@@ -964,7 +973,6 @@ export type Event =
   | EventQuestionReplied
   | EventQuestionRejected
   | EventSessionCompacted
-  | EventFileWatcherUpdated
   | EventTodoUpdated
   | EventTuiPromptAppend
   | EventTuiCommandExecute
@@ -2282,6 +2290,18 @@ export type FormatterStatus = {
   extensions: Array<string>
   enabled: boolean
 }
+
+export type IndexerStatus =
+  | {
+      type: "disabled"
+    }
+  | {
+      type: "indexing"
+      progress: number
+    }
+  | {
+      type: "complete"
+    }
 
 export type GlobalHealthData = {
   body?: never
@@ -5129,6 +5149,24 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type IndexerStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/indexer"
+}
+
+export type IndexerStatusResponses = {
+  /**
+   * Indexer status
+   */
+  200: IndexerStatus
+}
+
+export type IndexerStatusResponse = IndexerStatusResponses[keyof IndexerStatusResponses]
 
 export type EventSubscribeData = {
   body?: never

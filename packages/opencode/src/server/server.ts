@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Log } from "../util/log"
+import { Indexer } from "../indexer"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -481,6 +482,20 @@ export namespace Server {
           async (c) => {
             return c.json(await Format.status())
           },
+        )
+        .get(
+          "/indexer",
+          describeRoute({
+            summary: "Get indexer status",
+            operationId: "indexer.status",
+            responses: {
+              200: {
+                description: "Indexer status",
+                content: { "application/json": { schema: resolver(Indexer.Status) } },
+              },
+            },
+          }),
+          async (c) => c.json(Indexer.status()),
         )
         .get(
           "/event",
