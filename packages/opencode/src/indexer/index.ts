@@ -159,7 +159,7 @@ export namespace Indexer {
     return data.result?.points?.[0]?.payload?.mtime ?? null
   }
 
-  async function getAllIndexedMtimes(): Promise<Map<string, number>> {
+  async function getAllIndexedMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
     const mtimes = new Map<string, number>()
     const name = collectionName()
     const url = qdrantUrl()
@@ -169,14 +169,17 @@ export namespace Indexer {
       const body: Record<string, unknown> = {
         limit: 1000,
         with_payload: ["file_path", "mtime"],
-        with_vector: false,
+        with_vectors: false,
       }
       if (offset !== null) body.offset = offset
 
+      const combined = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(60_000)])
+        : AbortSignal.timeout(60_000)
       const response = await fetch(`${url}/collections/${name}/points/scroll`, {
         method: "POST",
         headers: qdrantHeaders(),
-        signal: AbortSignal.timeout(30_000),
+        signal: combined,
         body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error(`Failed to fetch indexed mtimes: ${response.status} ${response.statusText}`)
@@ -189,6 +192,7 @@ export namespace Indexer {
 
       for (const point of data.result.points) {
         const { file_path, mtime } = point.payload
+        // All chunks for the same file share the same mtime; keep the first encountered.
         if (file_path && mtime !== undefined && !mtimes.has(file_path)) {
           mtimes.set(file_path, mtime)
         }
@@ -303,10 +307,12 @@ export namespace Indexer {
     await checkServices()
     await ensureCollection(s.abortController.signal)
 
-    // Bulk-fetch all already-indexed mtimes once to avoid one Qdrant query per file
-    const indexedMtimes = await getAllIndexedMtimes().catch((e) => {
+    // Bulk-fetch all already-indexed mtimes once to avoid one Qdrant query per file.
+    // NOTE: the map may be stale for files modified during the scan; the file watcher
+    // will re-index any such files after startup completes.
+    const indexedMtimes = await getAllIndexedMtimes(s.abortController.signal).catch((e) => {
       log.warn("failed to fetch indexed mtimes, falling back to per-file queries", { error: String(e) })
-      return new Map<string, number>()
+      return undefined
     })
 
     const BATCH_SIZE = 500
@@ -327,6 +333,11 @@ export namespace Indexer {
           s.status = { type: "indexing", progress: done }
           Bus.publish(Event.Updated, {})
         }
+      }
+      // Flush any remaining progress not yet reported (when done is not a multiple of 50)
+      if (done % 50 !== 0) {
+        s.status = { type: "indexing", progress: done }
+        Bus.publish(Event.Updated, {})
       }
       return true
     }
