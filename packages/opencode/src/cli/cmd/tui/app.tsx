@@ -410,13 +410,12 @@ function App() {
       },
       onSelect: () => {
         const current = promptRef.current
-        // Don't require focus - if there's any text, preserve it
         const currentPrompt = current?.current?.input ? current.current : undefined
-        route.navigate({
-          type: "home",
-          initialPrompt: currentPrompt,
-        })
         dialog.clear()
+        sdk.client.session.create({}).then((result) => {
+          if (result.data?.id)
+            route.navigate({ type: "session", sessionID: result.data.id, initialPrompt: currentPrompt })
+        })
       },
     },
     {
