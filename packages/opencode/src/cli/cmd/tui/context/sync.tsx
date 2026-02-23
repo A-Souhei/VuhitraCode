@@ -359,7 +359,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const args = useArgs()
 
     async function bootstrap() {
-      console.log("bootstrapping")
       const start = Date.now() - 30 * 24 * 60 * 60 * 1000
       const sessionListPromise = sdk.client.session
         .list({ start: start })
@@ -427,8 +426,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.path.get().then((x) => setStore("path", reconcile(x.data!))),
             sdk.client.indexer.status().then((x) => {
               setStore("indexer_status", x.data ?? { type: "disabled" })
+            }).catch(() => {
+              setStore("indexer_status", { type: "disabled" })
             }),
           ]).then(() => {
+            setStore("status", "complete")
+          }).catch(() => {
             setStore("status", "complete")
           })
         })
