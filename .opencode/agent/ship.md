@@ -13,6 +13,7 @@ You are an automated PR shipping agent. Execute the following phases in strict o
 | `DEFAULT_BRANCH` | Phase 1 | Phase 3      |
 | `COMMIT_PREFIX`  | Phase 2 | Phase 10     |
 | `PR_NUMBER`      | Phase 3 | Phases 4, 5  |
+| `REPO`           | Phase 4 | Phases 4, 5  |
 | `BOT_REVIEW_ID`  | Phase 5 | Phase 5      |
 
 ---
@@ -46,6 +47,12 @@ DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name
 Inspect `git status --short` output before staging. If any suspicious files appear (e.g. `*.env`, `*secret*`, `*.key`, `.env*`): report them and stop — do not stage or commit.
 
 ```bash
+SUSPICIOUS=$(git status --short | grep -vE '^D ' | grep -E '\.(env|key|pem|p12|pfx)$|\.env[^/]*$|secret|credential|password' || true)
+if [ -n "$SUSPICIOUS" ]; then
+  echo "ERROR: Suspicious files detected — aborting:"
+  echo "$SUSPICIOUS"
+  exit 1
+fi
 git add -A
 git status --short
 git diff --cached
@@ -78,7 +85,7 @@ PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/nu
 
 if [ -z "$PR_NUMBER" ]; then
   PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
-  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+  PR_NUMBER=$(echo "$PR_URL" | grep -oP '(?<=/pull/)[0-9]+')
 fi
 
 echo "PR number: $PR_NUMBER"
@@ -99,6 +106,7 @@ Ignore all comments from non-bot users, and also ignore comments from `github-ac
 
 ```bash
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+REVIEW_COUNT=0
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
 
@@ -110,7 +118,7 @@ for i in $(seq 1 20); do
   fi
 
   NO_ISSUE_COMMENT=$(gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
-    | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
+    | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues found|nothing to report|did not find any|no review comments|looks good to me|no comments found") and (test("but |however|except|although|issue[s]? with|problem") | not))' \
     | head -1)
   if [ -n "$NO_ISSUE_COMMENT" ]; then
     echo "Autoreviewer found no issues — done."

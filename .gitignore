@@ -32,3 +32,4 @@ tsconfig.tsbuildinfo
 # Local agent and review artifacts
 .claude/
 .opencode/reviews/
+.vuhitra/
