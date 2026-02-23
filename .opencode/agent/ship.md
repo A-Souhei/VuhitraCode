@@ -101,14 +101,14 @@ Ignore all comments from non-bot users, and also ignore comments from `github-ac
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
 
-  REVIEW_COUNT=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews \
+  REVIEW_COUNT=$(gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/${PR_NUMBER}/reviews \
     | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length')
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
   fi
 
-  NO_ISSUE_COMMENT=$(gh api repos/A-Souhei/opencode/issues/${PR_NUMBER}/comments \
+  NO_ISSUE_COMMENT=$(gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/issues/${PR_NUMBER}/comments \
     | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
     | head -1)
   if [ -n "$NO_ISSUE_COMMENT" ]; then
@@ -129,7 +129,8 @@ done
 ## Phase 5 — Fetch comments
 
 ```bash
-REVIEWS=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews)
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+REVIEWS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews)
 BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .id')
 
 if [ -z "$BOT_REVIEW_ID" ] || [ "$BOT_REVIEW_ID" = "null" ]; then
@@ -138,7 +139,7 @@ if [ -z "$BOT_REVIEW_ID" ] || [ "$BOT_REVIEW_ID" = "null" ]; then
 fi
 
 BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .body')
-COMMENTS=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
+COMMENTS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
 COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
 ```
 
