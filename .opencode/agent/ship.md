@@ -77,8 +77,8 @@ git push -u origin "$BRANCH"
 PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/null)
 
 if [ -z "$PR_NUMBER" ]; then
-  PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
-  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+  gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>"
+  PR_NUMBER=$(gh pr view --head "$BRANCH" --json number -q '.number')
 fi
 
 echo "PR number: $PR_NUMBER"
@@ -98,17 +98,18 @@ On each iteration, check **two** signals from the autoreviewer bot — in this o
 Ignore all comments from non-bot users, and also ignore comments from `github-actions[bot]` — those are CI/workflow notices, not autoreviewer signals.
 
 ```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
 
-  REVIEW_COUNT=$(gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/${PR_NUMBER}/reviews \
+  REVIEW_COUNT=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
     | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length')
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
   fi
 
-  NO_ISSUE_COMMENT=$(gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/issues/${PR_NUMBER}/comments \
+  NO_ISSUE_COMMENT=$(gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
     | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
     | head -1)
   if [ -n "$NO_ISSUE_COMMENT" ]; then
