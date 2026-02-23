@@ -142,11 +142,7 @@ export namespace Agent {
         options: {},
         // user overrides are applied before the explicit denials so the keeper's
         // no-tools guarantee cannot be accidentally lifted by a permissive user config.
-        permission: PermissionNext.merge(
-          defaults,
-          user,
-          PermissionNext.fromConfig({ "*": "deny", task: "deny" }),
-        ),
+        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig({ "*": "deny", task: "deny" })),
         prompt: PROMPT_KEEPER,
         mode: "subagent",
         native: true,
@@ -154,7 +150,8 @@ export namespace Agent {
       },
       test: {
         name: "test",
-        description: "Creates, runs, and fixes tests for completed work. Can be selected manually or launched automatically after the work agent finishes.",
+        description:
+          "Creates, runs, and fixes tests for completed work. Can be selected manually or launched automatically after the work agent finishes.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -169,7 +166,8 @@ export namespace Agent {
       },
       review: {
         name: "review",
-        description: "Reviews completed implementation and surfaces findings by severity. Accepts optional focus areas (security, performance, logic, style, tests, docs).",
+        description:
+          "Reviews completed implementation and surfaces findings by severity. Accepts optional focus areas (security, performance, logic, style, tests, docs).",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -386,10 +384,7 @@ export namespace Agent {
 
     const params = {
       experimental_telemetry: {
-        isEnabled: cfg.experimental?.openTelemetry,
-        metadata: {
-          userId: cfg.username ?? "unknown",
-        },
+        isEnabled: false,
       },
       temperature: 0.3,
       messages: [
