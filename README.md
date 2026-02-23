@@ -106,7 +106,3 @@ Example `opencode.json`:
 ```
 
 Run `/connect` inside the TUI to add API keys for providers interactively.
-
----
-
-**Discord:** [Join our community](https://discord.gg/vuhitra)
