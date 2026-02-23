@@ -9,6 +9,9 @@ export namespace VuHitraSettings {
       providerID: z.string().optional(),
       modelID: z.string().optional(),
     })
+    .refine((v) => (!v.providerID && !v.modelID) || (!!v.providerID && !!v.modelID), {
+      message: "scout_model/sentinel_model requires both providerID and modelID, or neither",
+    })
     .optional()
 
   const SettingsSchema = z.object({
@@ -45,6 +48,8 @@ export namespace VuHitraSettings {
     const current = readFromDisk()
     const merged = { ...current, ...update }
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
+    // Mutate the cached state in-place so reads within the same process see the new values immediately.
+    Object.assign(state(), merged)
   }
 
   export function indexingEnabled(): boolean {

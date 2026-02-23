@@ -37,7 +37,7 @@ export namespace SystemPrompt {
         `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
         `  Today's date: ${new Date().toDateString()}`,
-        ...(sessionID ? [`  Session ID: ${sessionID}`] : []),
+        ...(sessionID && /^[A-Za-z0-9_-]+$/.test(sessionID) ? [`  Session ID: ${sessionID}`] : []),
         `</env>`,
         `<directories>`,
         `  ${
