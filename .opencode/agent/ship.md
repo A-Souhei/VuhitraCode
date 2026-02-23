@@ -7,12 +7,13 @@ You are an automated PR shipping agent. Execute the following phases in strict o
 
 **Cross-phase variables** (carry these forward through every phase):
 
-| Variable        | Set in  | Used in      |
-| --------------- | ------- | ------------ |
-| `BRANCH`        | Phase 1 | Phases 3, 10 |
-| `COMMIT_PREFIX` | Phase 2 | Phase 10     |
-| `PR_NUMBER`     | Phase 3 | Phases 4, 5  |
-| `BOT_REVIEW_ID` | Phase 5 | Phase 5      |
+| Variable         | Set in  | Used in      |
+| ---------------- | ------- | ------------ |
+| `BRANCH`         | Phase 1 | Phases 3, 10 |
+| `DEFAULT_BRANCH` | Phase 1 | Phase 3      |
+| `COMMIT_PREFIX`  | Phase 2 | Phase 10     |
+| `PR_NUMBER`      | Phase 3 | Phases 4, 5  |
+| `BOT_REVIEW_ID`  | Phase 5 | Phase 5      |
 
 ---
 
@@ -28,9 +29,10 @@ Then:
 
 ```bash
 BRANCH=$(git branch --show-current)
+DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
 ```
 
-- If `BRANCH` is `main` or `master`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then:
+- If `BRANCH` is `main`, `master`, or equals `$DEFAULT_BRANCH`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then:
   ```bash
   git checkout -b <new-branch-name>
   BRANCH=$(git branch --show-current)
@@ -66,7 +68,7 @@ git commit -m "${COMMIT_PREFIX}: <message>"
 
 ## Phase 3 — Push and create PR
 
-Use `$BRANCH` from Phase 1 and `$PR_NUMBER` from `gh pr view` for portability.
+Use `$BRANCH` and `$DEFAULT_BRANCH` from Phase 1. `$DEFAULT_BRANCH` is already resolved — do not call `gh repo view` again.
 
 ```bash
 git push -u origin "$BRANCH"
@@ -75,8 +77,8 @@ git push -u origin "$BRANCH"
 PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/null)
 
 if [ -z "$PR_NUMBER" ]; then
-  PR_URL=$(gh pr create --base main --title "<title>" --body "<body>")
-  PR_NUMBER=$(gh pr view --json number -q '.number')
+  PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
+  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 fi
 
 echo "PR number: $PR_NUMBER"
@@ -93,21 +95,21 @@ On each iteration, check **two** signals from the autoreviewer bot — in this o
 1. **Formal review** (`/pulls/{PR_NUMBER}/reviews`): a bot entry with `state == "COMMENTED"` means the bot left inline comments → proceed to Phase 5.
 2. **Issue comment** (`/issues/{PR_NUMBER}/comments`): a comment from a bot whose body contains phrases like "no issues", "nothing to report", "did not find", "no review", "looks good", or "no comments" → the bot ran but found nothing → print `"Autoreviewer found no issues — done."` and stop.
 
-Ignore all comments from non-bot users and all bot comments that do not match either signal.
+Ignore all comments from non-bot users, and also ignore comments from `github-actions[bot]` — those are CI/workflow notices, not autoreviewer signals.
 
 ```bash
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
 
   REVIEW_COUNT=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews \
-    | jq '[.[] | select(.user.type == "Bot" and .state == "COMMENTED")] | length')
+    | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length')
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
   fi
 
   NO_ISSUE_COMMENT=$(gh api repos/A-Souhei/opencode/issues/${PR_NUMBER}/comments \
-    | jq -r '[.[] | select(.user.type == "Bot") | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
+    | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
     | head -1)
   if [ -n "$NO_ISSUE_COMMENT" ]; then
     echo "Autoreviewer found no issues — done."
@@ -200,7 +202,7 @@ Use `$COMMIT_PREFIX` from Phase 2 and `$BRANCH` from Phase 1.
 ```bash
 git add -A
 git diff --cached
-git commit -m "$(cat <<'EOF'
+git commit -m "$(cat <<EOF
 ${COMMIT_PREFIX}: address automated review comments
 
 - <item 1: what was fixed and which comment it addressed>
