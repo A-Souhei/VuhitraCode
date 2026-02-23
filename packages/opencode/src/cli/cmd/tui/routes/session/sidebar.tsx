@@ -238,7 +238,8 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                       const s = sync.data.indexer_status
                       if (!s || s.type === "disabled") return "Disabled"
                       if (s.type === "complete") return "Index ready"
-                      return `Indexing (${s.progress} files)`
+                      const pct = s.total > 0 ? ` ${Math.round((s.progress / s.total) * 100)}%` : ""
+                      return `Indexing (${s.progress} / ${s.total} files${pct})`
                     })()}
                   </text>
                 </box>

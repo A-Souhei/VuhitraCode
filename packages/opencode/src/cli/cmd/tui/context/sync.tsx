@@ -426,7 +426,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data))),
             sdk.client.path.get().then((x) => setStore("path", reconcile(x.data!))),
             sdk.client.indexer.status().then((x) => {
-              if (x.data) setStore("indexer_status", x.data)
+              setStore("indexer_status", x.data ?? { type: "disabled" })
             }),
           ]).then(() => {
             setStore("status", "complete")

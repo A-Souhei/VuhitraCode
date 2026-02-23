@@ -19,7 +19,7 @@ export namespace Indexer {
   export const Status = z
     .discriminatedUnion("type", [
       z.object({ type: z.literal("disabled") }),
-      z.object({ type: z.literal("indexing"), progress: z.number() }),
+      z.object({ type: z.literal("indexing"), progress: z.number(), total: z.number() }),
       z.object({ type: z.literal("complete") }),
     ])
     .meta({ ref: "IndexerStatus" })
@@ -338,57 +338,59 @@ export namespace Indexer {
       return undefined
     })
 
+    // Collect all files first so we can report an accurate percentage.
+    const allFiles: string[] = []
+    const scanner = new Bun.Glob("**/*").scan({ cwd: Instance.directory, absolute: true, dot: true, onlyFiles: true })
+    for await (const file of scanner) {
+      const rel = path.relative(Instance.directory, file)
+      if (FileIgnore.match(rel)) continue
+      if (isIndexIgnored(rel)) continue
+      allFiles.push(file)
+    }
+
+    const total = allFiles.length
+    // Publish total now so UI shows accurate denominator before first batch event.
+    s.status = { type: "indexing", progress: 0, total }
+    Bus.publish(Event.Updated, {})
+
+    // Build ignore checker once across all files (avoids one subprocess per batch).
+    const isIgnored = await buildIgnoreChecker(Instance.worktree, allFiles)
+
     const BATCH_SIZE = 500
-    let batch: string[] = []
     let done = 0
 
-    const processBatch = async (): Promise<boolean> => {
+    const processBatch = async (batch: string[]): Promise<boolean> => {
       if (batch.length === 0) return true
-      const current = batch
-      batch = []
-      const isIgnored = await buildIgnoreChecker(Instance.worktree, current)
-      for (const file of current) {
-        if (s.abortController.signal.aborted) return false
+      let aborted = false
+      for (const file of batch) {
+        if (s.abortController.signal.aborted) { aborted = true; break }
         await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
         done++
         // Throttle progress events: publish every 50 files to avoid SSE flooding
         if (done % 50 === 0) {
-          s.status = { type: "indexing", progress: done }
+          s.status = { type: "indexing", progress: done, total }
           Bus.publish(Event.Updated, {})
         }
       }
-      // Flush any remaining progress not yet reported (when done is not a multiple of 50)
-      if (done % 50 !== 0) {
-        s.status = { type: "indexing", progress: done }
+      // Flush remaining progress only if not aborted
+      if (!aborted && done % 50 !== 0) {
+        s.status = { type: "indexing", progress: done, total }
         Bus.publish(Event.Updated, {})
       }
-      return true
+      return !aborted
     }
 
-    const scanner = new Bun.Glob("**/*").scan({ cwd: Instance.directory, absolute: true, dot: true, onlyFiles: true })
-    for await (const file of scanner) {
+    for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
       if (s.abortController.signal.aborted) {
         s.status = { type: "disabled" }
         Bus.publish(Event.Updated, {})
         return
       }
-      const rel = path.relative(Instance.directory, file)
-      if (FileIgnore.match(rel)) continue
-      if (isIndexIgnored(rel)) continue
-      batch.push(file)
-      if (batch.length >= BATCH_SIZE) {
-        if (!(await processBatch())) {
-          s.status = { type: "disabled" }
-          Bus.publish(Event.Updated, {})
-          return
-        }
+      if (!(await processBatch(allFiles.slice(i, i + BATCH_SIZE)))) {
+        s.status = { type: "disabled" }
+        Bus.publish(Event.Updated, {})
+        return
       }
-    }
-
-    if (!(await processBatch())) {
-      s.status = { type: "disabled" }
-      Bus.publish(Event.Updated, {})
-      return
     }
 
     s.status = { type: "complete" }
@@ -444,7 +446,7 @@ export namespace Indexer {
   export function init() {
     if (!VuHitraSettings.indexingEnabled()) return
     const s = state()
-    s.status = { type: "indexing", progress: 0 }
+    s.status = { type: "indexing", progress: 0, total: 0 }
     Promise.resolve().then(async () => {
       try {
         await runInitialIndex()

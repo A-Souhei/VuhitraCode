@@ -2298,6 +2298,7 @@ export type IndexerStatus =
   | {
       type: "indexing"
       progress: number
+      total: number
     }
   | {
       type: "complete"

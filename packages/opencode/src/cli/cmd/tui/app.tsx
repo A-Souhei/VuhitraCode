@@ -304,17 +304,30 @@ function App() {
     })
   })
 
+  const [userSkipped, setUserSkipped] = createSignal(false)
+
+  useKeyboard((evt) => {
+    if (route.data.type !== "loading") return
+    if (evt.name === "return") setUserSkipped(true)
+  })
+
   let autoNavigated = false
   createEffect(() => {
     // Start on a blank "loading" route to avoid flashing the home screen.
-    // Once sync is ready, navigate to a new session or fall back to home for special args.
+    // Wait for indexing to finish, or for the user to press Enter to skip.
     if (autoNavigated || sync.status === "loading") return
+
+    const indexerStatus = sync.data.indexer_status
+    if (indexerStatus === undefined) return
+    // Stay on loading screen until indexing completes or user presses Enter
+    if (indexerStatus.type !== "complete" && !userSkipped()) return
+
     autoNavigated = true
     if (args.sessionID || args.continue || args.fork || args.prompt) {
       route.navigate({ type: "home" })
       return
     }
-    Promise.all([sdk.client.session.create({}), Bun.sleep(2000)]).then(([result]) => {
+    sdk.client.session.create({}).then((result) => {
       if (result.data?.id) route.navigate({ type: "session", sessionID: result.data.id })
     })
   })
@@ -799,14 +812,38 @@ function App() {
         <Match when={route.data.type === "loading"}>
           <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={2}>
             <box flexDirection="column" alignItems="center" gap={0}>
-              <text fg={RGBA.fromHex("#a855f7")} attributes={TextAttributes.BOLD}>
-                {"V u h i t r a"}
-              </text>
-              <text fg={RGBA.fromHex("#ffffff")} attributes={TextAttributes.BOLD}>
-                {". C o d e"}
-              </text>
+              {[
+                " __   __   __  __     __  __     __     ______   ______     ______     ______     ______     _____     ______   ",
+                "/\\ \\ / /  /\\ \\/\\ \\   /\\ \\_\\ \\   /\\ \\   /\\__  _\\ /\\  == \\   /\\  __ \\   /\\  ___\\   /\\  __ \\   /\\  __-.  /\\  ___\\  ",
+                "\\ \\ \\'/   \\ \\ \\_\\ \\  \\ \\  __ \\  \\ \\ \\  \\/_/\\ \\/ \\ \\  __<   \\ \\  __ \\  \\ \\ \\____  \\ \\ \\/\\ \\  \\ \\ \\/\\ \\ \\ \\  __\\  ",
+                " \\ \\__|    \\ \\_____\\  \\ \\_\\ \\_\\  \\ \\_\\    \\ \\_\\  \\ \\_\\ \\_\\  \\ \\_\\ \\_\\  \\ \\_____\\  \\ \\_____\\  \\ \\____-  \\ \\_____\\",
+                "  \\/_/      \\/_____/   \\/_/\\/_/   \\/_/     \\/_/   \\/_/ /_/   \\/_/\\/_/   \\/_____/   \\/_____/   \\/____/   \\/_____/",
+              ].map((line) => (
+                <text fg={RGBA.fromHex("#a855f7")} attributes={TextAttributes.BOLD} selectable={false}>
+                  {line}
+                </text>
+              ))}
             </box>
-            <Spinner size="large" color={RGBA.fromHex("#ff3333")} />
+            <Show
+              when={sync.data.indexer_status?.type === "indexing"}
+              fallback={<text fg={RGBA.fromHex("#ff3333")} selectable={false}>{"·".repeat(16)}</text>}
+            >
+              <Spinner size="large" color={RGBA.fromHex("#ff3333")} />
+            </Show>
+            <box flexDirection="column" alignItems="center" gap={1}>
+              <Show when={sync.data.indexer_status?.type === "indexing"}>
+                <text fg={theme.textMuted}>
+                  {(() => {
+                    const s = sync.data.indexer_status
+                    if (!s || s.type !== "indexing") return ""
+                    if (s.total === 0) return "Scanning files ..."
+                    const pct = Math.round((s.progress / s.total) * 100)
+                    return `Indexing ${s.progress} / ${s.total} files (${pct}%)`
+                  })()}
+                </text>
+              </Show>
+              <text fg={theme.textMuted}>Press Enter to continue</text>
+            </box>
           </box>
         </Match>
         <Match when={route.data.type === "home"}>
