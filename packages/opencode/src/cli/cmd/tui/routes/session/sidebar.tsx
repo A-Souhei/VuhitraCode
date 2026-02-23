@@ -258,7 +258,9 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   <text fg={theme.text}>
                     <b>Todo</b>
                   </text>
-                  <text fg={theme.textMuted}>{completedCount()}/{todo().length}</text>
+                  <text fg={theme.textMuted}>
+                    {completedCount()}/{todo().length}
+                  </text>
                 </box>
                 <Show
                   when={inProgressTodo()}
@@ -274,7 +276,16 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   {(item) => <Spinner>{item().content}</Spinner>}
                 </Show>
                 <Show when={todo().length <= 2 || expanded.todo}>
-                  <For each={todo()}>{(todo) => <TodoItem status={todo.status} content={todo.content} assignedTo={todo.assignedTo} scoutId={todo.scoutId} />}</For>
+                  <For each={todo()}>
+                    {(todo) => (
+                      <TodoItem
+                        status={todo.status}
+                        content={todo.content}
+                        assignedTo={todo.assignedTo}
+                        scoutId={todo.scoutId}
+                      />
+                    )}
+                  </For>
                 </Show>
               </box>
             </Show>
@@ -359,13 +370,6 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
           <text>
             <span style={{ fg: RGBA.fromHex("#a855f7"), attributes: TextAttributes.BOLD }}>{"Vuhitra"}</span>
             <span style={{ fg: RGBA.fromHex("#ffffff"), attributes: TextAttributes.BOLD }}>{".Code"}</span>
-          </text>
-          <text fg={theme.textMuted}>
-            Powered by{" "}
-            <b>Open</b>
-            <span style={{ fg: theme.text }}>
-              <b>Code</b>
-            </span>
           </text>
         </box>
       </box>
