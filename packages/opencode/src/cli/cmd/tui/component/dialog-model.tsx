@@ -9,7 +9,7 @@ import { useKeybind } from "../context/keybind"
 import * as fuzzysort from "fuzzysort"
 
 export function providerLabel(provider: { name: string; source: string }) {
-  if (provider.source === "custom") return `${provider.name} (Pro)`
+  if (provider.source === "custom") return `${provider.name} (Custom)`
   if (provider.source === "api" || provider.source === "env") return `${provider.name} (API Key)`
   return provider.name
 }
