@@ -4,7 +4,7 @@ import { basename } from "path"
 import { NamedError } from "@opencode-ai/util/error"
 import { logo as glyphs } from "./logo"
 
-export const CLI_NAME = (process.env["OPENCODE_CLI_NAME"] ?? basename(process.argv[0] ?? "opencode")).replace(/[^a-zA-Z0-9._-]/g, "")
+export const CLI_NAME = (process.env["OPENCODE_CLI_NAME"] ?? basename(process.argv[1] ?? "opencode")).replace(/[^a-zA-Z0-9._-]/g, "") || "opencode"
 
 export namespace UI {
   export const CancelledError = NamedError.create("UICancelledError", z.void())

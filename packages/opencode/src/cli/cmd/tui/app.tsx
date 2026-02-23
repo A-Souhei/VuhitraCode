@@ -254,10 +254,6 @@ function App() {
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
 
-  createEffect(() => {
-    console.log(JSON.stringify(route.data))
-  })
-
   // Update terminal window title based on current route and session
   createEffect(() => {
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
@@ -412,10 +408,12 @@ function App() {
         const current = promptRef.current
         const currentPrompt = current?.current?.input ? current.current : undefined
         dialog.clear()
-        sdk.client.session.create({}).then((result) => {
-          if (result.data?.id)
-            route.navigate({ type: "session", sessionID: result.data.id, initialPrompt: currentPrompt })
-        })
+        sdk.client.session.create({})
+          .then((result) => {
+            if (result.data?.id)
+              route.navigate({ type: "session", sessionID: result.data.id, initialPrompt: currentPrompt })
+          })
+          .catch(() => toast.show({ message: "Failed to create session", variant: "error" }))
       },
     },
     {
