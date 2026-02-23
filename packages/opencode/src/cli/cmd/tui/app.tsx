@@ -413,6 +413,8 @@ function App() {
           .then((result) => {
             if (result.data?.id)
               route.navigate({ type: "session", sessionID: result.data.id, initialPrompt: currentPrompt })
+            else
+              toast.show({ message: "Failed to create session", variant: "error" })
           })
           .catch(() => toast.show({ message: "Failed to create session", variant: "error" }))
       },

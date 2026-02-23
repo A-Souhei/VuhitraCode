@@ -117,7 +117,7 @@ const TIPS = [
   `Run {highlight}${CLI_NAME} agent create{/highlight} for guided agent creation`,
   "Use {highlight}/opencode{/highlight} in GitHub issues/PRs to trigger AI actions",
   `Run {highlight}${CLI_NAME} github install{/highlight} to set up the GitHub workflow`,
-  "Comment {highlight}/opencode fix this{/highlight} on issues to auto-create PRs",
+  "Comment {highlight}/vc fix this{/highlight} on issues to auto-create PRs",
   "Comment {highlight}/vc{/highlight} on PR code lines for targeted code reviews",
   'Use {highlight}"theme": "system"{/highlight} to match your terminal\'s colors',
   "Create JSON theme files in {highlight}.opencode/themes/{/highlight} directory",
