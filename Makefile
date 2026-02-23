@@ -19,11 +19,13 @@ install-dev:
 install:
 	@echo '#!/bin/bash' > ~/.local/bin/vuhitracode
 	@echo 'PKGDIR=$(CURDIR)/packages/opencode' >> ~/.local/bin/vuhitracode
+	@echo 'if [ ! -d "$$PKGDIR" ]; then echo "Error: project not found at $$PKGDIR — re-run make install" >&2; exit 1; fi' >> ~/.local/bin/vuhitracode
+	@echo 'BUN=$$(command -v bun) || { echo "Error: bun not found in PATH" >&2; exit 1; }' >> ~/.local/bin/vuhitracode
 	@echo 'export OPENCODE_CLI_NAME=vuhitracode' >> ~/.local/bin/vuhitracode
 	@echo 'if [ $$# -eq 0 ]; then' >> ~/.local/bin/vuhitracode
-	@echo '  exec ~/.bun/bin/bun run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$PWD"' >> ~/.local/bin/vuhitracode
+	@echo '  exec "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$PWD"' >> ~/.local/bin/vuhitracode
 	@echo 'else' >> ~/.local/bin/vuhitracode
-	@echo '  exec ~/.bun/bin/bun run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$@"' >> ~/.local/bin/vuhitracode
+	@echo '  exec "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$@"' >> ~/.local/bin/vuhitracode
 	@echo 'fi' >> ~/.local/bin/vuhitracode
 	@chmod +x ~/.local/bin/vuhitracode
 	@echo "Installed: vuhitracode → $(CURDIR)/packages/opencode/src/index.ts"
