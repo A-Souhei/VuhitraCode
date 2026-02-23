@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "default_agent": "work",
   "provider": {
     "opencode": {
       "options": {},
@@ -7,12 +8,26 @@
   },
   "mcp": {},
   "agent": {
+    "build": {
+      "color": "secondary",
+    },
+    "plan": {
+      "color": "info",
+    },
+    "work": {
+      "color": "success",
+    },
+    "test": {
+      "color": "warning",
+    },
     "review": {
+      "color": "error",
       "permission": {
         "question": "allow",
       },
     },
     "ship": {
+      "color": "accent",
       "permission": {
         "question": "allow",
       },
