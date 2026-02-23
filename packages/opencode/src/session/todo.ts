@@ -10,8 +10,8 @@ export namespace Todo {
       content: z.string().describe("Brief description of the task"),
       status: z.string().describe("Current status of the task: pending, in_progress, completed, cancelled"),
       priority: z.string().describe("Priority level of the task: high, medium, low"),
-      assignedTo: z.string().optional().describe("Session ID of the Sentinel currently executing this item"),
-      scoutId: z.string().optional().describe("Session ID of the Scout spawned by the assigned Sentinel"),
+      assignedTo: z.string().regex(/^[A-Za-z0-9_-]+$/).optional().describe("Session ID of the Sentinel currently executing this item"),
+      scoutId: z.string().regex(/^[A-Za-z0-9_-]+$/).optional().describe("Session ID of the Scout spawned by the assigned Sentinel"),
     })
     .meta({ ref: "Todo" })
   export type Info = z.infer<typeof Info>
