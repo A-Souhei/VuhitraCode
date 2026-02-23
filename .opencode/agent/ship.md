@@ -77,8 +77,8 @@ git push -u origin "$BRANCH"
 PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/null)
 
 if [ -z "$PR_NUMBER" ]; then
-  gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>"
-  PR_NUMBER=$(gh pr view --head "$BRANCH" --json number -q '.number')
+  PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
+  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 fi
 
 echo "PR number: $PR_NUMBER"
@@ -102,8 +102,8 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
 
-  REVIEW_COUNT=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews \
-    | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length')
+  REVIEW_COUNT=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews 2>/dev/null \
+    | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length' 2>/dev/null || echo 0)
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
@@ -114,15 +114,16 @@ for i in $(seq 1 20); do
     | head -1)
   if [ -n "$NO_ISSUE_COMMENT" ]; then
     echo "Autoreviewer found no issues — done."
-    exit 0
+    exit 0  # terminates the agent entirely — bot ran and found nothing
   fi
 
-  if [ "$i" -eq 20 ]; then
-    echo "Timed out waiting for automated review — done."
-    exit 0
-  fi
   sleep 30
 done
+
+if [ "$REVIEW_COUNT" -eq 0 ]; then
+  echo "Timed out waiting for automated review — done."
+  exit 0
+fi
 ```
 
 ---
@@ -132,14 +133,14 @@ done
 ```bash
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 REVIEWS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews)
-BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .id')
+BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .id')
 
 if [ -z "$BOT_REVIEW_ID" ] || [ "$BOT_REVIEW_ID" = "null" ]; then
   echo "No bot review found — done."
   exit 0
 fi
 
-BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .body')
+BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .body')
 COMMENTS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
 COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
 ```

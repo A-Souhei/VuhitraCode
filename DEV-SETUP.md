@@ -44,3 +44,5 @@ git pull
 bun install
 make install-dev
 ```
+
+> **Note:** The installed binary has the repo path baked in at install time. If you move or rename the repo directory, re-run `make install-dev` (or `make install`) from the new location to update the path.
