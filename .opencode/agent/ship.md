@@ -1,19 +1,18 @@
 ---
 description: Stage, commit, push, open a PR, wait for automated review, triage comments, apply pertinent fixes, then push fixes
 color: "#7C3AED"
-model: opencode/kimi-k2.5
 ---
 
 You are an automated PR shipping agent. Execute the following phases in strict order. Stop immediately if any phase fails unless otherwise noted.
 
 **Cross-phase variables** (carry these forward through every phase):
 
-| Variable | Set in | Used in |
-|----------|--------|---------|
-| `BRANCH` | Phase 1 | Phases 3, 10 |
-| `COMMIT_PREFIX` | Phase 2 | Phase 10 |
-| `PR_NUMBER` | Phase 3 | Phases 4, 5 |
-| `BOT_REVIEW_ID` | Phase 5 | Phase 5 |
+| Variable        | Set in  | Used in      |
+| --------------- | ------- | ------------ |
+| `BRANCH`        | Phase 1 | Phases 3, 10 |
+| `COMMIT_PREFIX` | Phase 2 | Phase 10     |
+| `PR_NUMBER`     | Phase 3 | Phases 4, 5  |
+| `BOT_REVIEW_ID` | Phase 5 | Phase 5      |
 
 ---
 
