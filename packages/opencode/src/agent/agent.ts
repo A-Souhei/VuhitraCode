@@ -162,8 +162,11 @@ export namespace Agent {
         description:
           "Worker agent for parallel TODO execution. Up to 3 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
         options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow sentinels to spawn arbitrary subagents beyond scouts.
         permission: PermissionNext.merge(
           defaults,
+          user,
           PermissionNext.fromConfig({
             question: "allow",
             task: {
@@ -171,7 +174,6 @@ export namespace Agent {
               "*": "deny",
             },
           }),
-          user,
         ),
         prompt: PROMPT_SENTINEL,
         mode: "subagent",
@@ -183,8 +185,11 @@ export namespace Agent {
         description:
           "Lightweight exploration agent. Each Sentinel can spawn 1 Scout for context gathering. Can browse internet (requires user approval with explicit URL). Read-only — no write or edit permissions.",
         options: {},
+        // user overrides are applied before the read-only restriction so a permissive
+        // user config cannot grant scouts write or edit access.
         permission: PermissionNext.merge(
           defaults,
+          user,
           PermissionNext.fromConfig({
             "*": "deny",
             grep: "allow",
@@ -199,7 +204,6 @@ export namespace Agent {
               ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
             },
           }),
-          user,
         ),
         prompt: PROMPT_SCOUT,
         mode: "subagent",
