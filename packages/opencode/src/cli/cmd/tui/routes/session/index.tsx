@@ -1040,6 +1040,39 @@ export function Session() {
             <Show when={showHeader() && (!sidebarVisible() || !wide())}>
               <Header />
             </Show>
+            <Show when={messages().length === 0}>
+              <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={1}>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
+                  </box>
+                <box flexDirection="column" gap={2}>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Chat    </text>
+                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Enter</span> to send · <span style={{ fg: theme.text }}>Shift+Enter</span> for a new line</text>
+                  </box>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Agents  </text>
+                    <text fg={theme.textMuted}><span style={{ fg: theme.text }}>Tab</span> to cycle · <span style={{ fg: theme.text }}>Shift+Tab</span> for favorites · <span style={{ fg: theme.text }}>@agent</span> in prompt</text>
+                  </box>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Commands </text>
+                    <text fg={theme.textMuted}>Type <span style={{ fg: theme.text }}>/</span> for slash commands · <span style={{ fg: theme.text }}>/help</span> for all</text>
+                  </box>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Palette  </text>
+                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Ctrl+P</span> to open the command palette</text>
+                  </box>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Sidebar  </text>
+                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Ctrl+X B</span> to toggle · <span style={{ fg: theme.text }}>Ctrl+X L</span> for sessions</text>
+                  </box>
+                </box>
+                  <box flexDirection="row" gap={2}>
+                    <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
+                  </box>                
+              </box>
+            </Show>
+            <Show when={messages().length > 0}>
             <scrollbox
               ref={(r) => (scroll = r)}
               viewportOptions={{
@@ -1154,6 +1187,7 @@ export function Session() {
                 )}
               </For>
             </scrollbox>
+            </Show>
             <box flexShrink={0}>
               <Show when={permissions().length > 0}>
                 <PermissionPrompt request={permissions()[0]} />

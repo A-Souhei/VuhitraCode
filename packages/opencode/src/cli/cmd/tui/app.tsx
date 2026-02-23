@@ -1,7 +1,7 @@
 import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
 import { Selection } from "@tui/util/selection"
-import { MouseButton, TextAttributes } from "@opentui/core"
+import { MouseButton, TextAttributes, RGBA } from "@opentui/core"
 import { RouteProvider, useRoute } from "@tui/context/route"
 import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
 import { win32DisableProcessedInput, win32FlushInputBuffer, win32InstallCtrlCGuard } from "./win32"
@@ -23,6 +23,7 @@ import { DialogReviewFocus } from "@tui/component/dialog-review-focus"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
 import { KeybindProvider } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
+import { Spinner } from "@tui/component/spinner"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
 import { PromptHistoryProvider } from "./component/prompt/history"
@@ -300,6 +301,21 @@ function App() {
           sessionID: args.sessionID,
         })
       }
+    })
+  })
+
+  let autoNavigated = false
+  createEffect(() => {
+    // Start on a blank "loading" route to avoid flashing the home screen.
+    // Once sync is ready, navigate to a new session or fall back to home for special args.
+    if (autoNavigated || sync.status === "loading") return
+    autoNavigated = true
+    if (args.sessionID || args.continue || args.fork || args.prompt) {
+      route.navigate({ type: "home" })
+      return
+    }
+    Promise.all([sdk.client.session.create({}), Bun.sleep(2000)]).then(([result]) => {
+      if (result.data?.id) route.navigate({ type: "session", sessionID: result.data.id })
     })
   })
 
@@ -780,6 +796,19 @@ function App() {
       onMouseUp={Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? undefined : () => Selection.copy(renderer, toast)}
     >
       <Switch>
+        <Match when={route.data.type === "loading"}>
+          <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={2}>
+            <box flexDirection="column" alignItems="center" gap={0}>
+              <text fg={RGBA.fromHex("#a855f7")} attributes={TextAttributes.BOLD}>
+                {"V u h i t r a"}
+              </text>
+              <text fg={RGBA.fromHex("#ffffff")} attributes={TextAttributes.BOLD}>
+                {". C o d e"}
+              </text>
+            </box>
+            <Spinner size="large" color={RGBA.fromHex("#ff3333")} />
+          </box>
+        </Match>
         <Match when={route.data.type === "home"}>
           <Home />
         </Match>
