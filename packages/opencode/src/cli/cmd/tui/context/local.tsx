@@ -174,6 +174,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return store.model
         },
         async set(model: { providerID: string; modelID: string }) {
+          if (!modelFieldPattern.test(model.providerID) || !modelFieldPattern.test(model.modelID)) return
           const modelStr = `${model.providerID}/${model.modelID}`
           const filePath = vuHitraPath()
           let current: Record<string, any> = {}
