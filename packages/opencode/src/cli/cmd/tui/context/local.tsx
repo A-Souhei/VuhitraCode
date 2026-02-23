@@ -138,6 +138,61 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })
 
+    function makeSubagentModelStore(settingKey: "sentinel_model" | "scout_model") {
+      const [store, setStore] = createStore<{
+        enabled: boolean
+        model: string | undefined
+      }>({ enabled: false, model: undefined })
+
+      function vuHitraPath() {
+        return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
+      }
+
+      const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
+
+      onMount(() => {
+        Filesystem.readJson(vuHitraPath())
+          .then((x: any) => {
+            const entry = x?.[settingKey]
+            if (
+              typeof entry?.modelID === "string" &&
+              typeof entry?.providerID === "string" &&
+              modelFieldPattern.test(entry.modelID) &&
+              modelFieldPattern.test(entry.providerID)
+            ) {
+              setStore({ enabled: true, model: `${entry.providerID}/${entry.modelID}` })
+            }
+          })
+          .catch(() => {})
+      })
+
+      return {
+        get enabled() {
+          return store.enabled
+        },
+        get model() {
+          return store.model
+        },
+        async set(model: { providerID: string; modelID: string }) {
+          if (!modelFieldPattern.test(model.providerID) || !modelFieldPattern.test(model.modelID)) return
+          const modelStr = `${model.providerID}/${model.modelID}`
+          const filePath = vuHitraPath()
+          let current: Record<string, any> = {}
+          try {
+            current = await Filesystem.readJson(filePath)
+          } catch {}
+          await Filesystem.writeJson(filePath, {
+            ...current,
+            [settingKey]: { providerID: model.providerID, modelID: model.modelID },
+          })
+          setStore({ enabled: true, model: modelStr })
+        },
+      }
+    }
+
+    const sentinelModel = makeSubagentModelStore("sentinel_model")
+    const scoutModel = makeSubagentModelStore("scout_model")
+
     const model = iife(() => {
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
@@ -490,6 +545,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const result = {
       model,
       modelLock,
+      sentinelModel,
+      scoutModel,
       agent,
       mcp,
       review,

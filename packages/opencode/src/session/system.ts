@@ -26,7 +26,7 @@ export namespace SystemPrompt {
     return [PROMPT_ANTHROPIC_WITHOUT_TODO]
   }
 
-  export async function environment(model: Provider.Model) {
+  export async function environment(model: Provider.Model, sessionID?: string) {
     const project = Instance.project
     return [
       [
@@ -37,6 +37,7 @@ export namespace SystemPrompt {
         `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
         `  Today's date: ${new Date().toDateString()}`,
+        ...(sessionID && /^[A-Za-z0-9_-]+$/.test(sessionID) ? [`  Session ID: ${sessionID}`] : []),
         `</env>`,
         `<directories>`,
         `  ${

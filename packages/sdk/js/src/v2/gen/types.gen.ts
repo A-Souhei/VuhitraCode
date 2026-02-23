@@ -766,6 +766,14 @@ export type Todo = {
    * Priority level of the task: high, medium, low
    */
   priority: string
+  /**
+   * Session ID of the Sentinel currently executing this item
+   */
+  assignedTo?: string
+  /**
+   * Session ID of the Scout spawned by the assigned Sentinel
+   */
+  scoutId?: string
 }
 
 export type EventTodoUpdated = {

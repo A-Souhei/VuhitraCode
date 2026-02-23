@@ -10,6 +10,8 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
+import { Provider } from "@/provider/provider"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -103,7 +105,23 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
 
-      const model = agent.model ?? {
+      const vuHitraModel =
+        params.subagent_type === "sentinel"
+          ? VuHitraSettings.sentinelModel()
+          : params.subagent_type === "scout"
+            ? VuHitraSettings.scoutModel()
+            : undefined
+
+      // Validate the project-local model override against the user's configured providers
+      // before applying it, so a malicious .vuhitra/settings.json cannot redirect to an
+      // attacker-controlled provider.
+      const resolvedVuHitraModel = await (async () => {
+        if (!vuHitraModel?.modelID || !vuHitraModel?.providerID) return undefined
+        const validated = await Provider.getModel(vuHitraModel.providerID, vuHitraModel.modelID).catch(() => undefined)
+        return validated ? { modelID: vuHitraModel.modelID, providerID: vuHitraModel.providerID } : undefined
+      })()
+
+      const model = resolvedVuHitraModel ?? agent.model ?? {
         modelID: msg.info.modelID,
         providerID: msg.info.providerID,
       }
