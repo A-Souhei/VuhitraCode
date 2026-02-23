@@ -88,15 +88,32 @@ If `PR_NUMBER` is still empty after both steps: print `"ERROR: failed to determi
 
 ## Phase 4 — Poll for automated review
 
+On each iteration, check **two** signals from the autoreviewer bot — in this order:
+
+1. **Formal review** (`/pulls/{PR_NUMBER}/reviews`): a bot entry with `state == "COMMENTED"` means the bot left inline comments → proceed to Phase 5.
+2. **Issue comment** (`/issues/{PR_NUMBER}/comments`): a comment from a bot whose body contains phrases like "no issues", "nothing to report", "did not find", "no review", "looks good", or "no comments" → the bot ran but found nothing → print `"Autoreviewer found no issues — done."` and stop.
+
+Ignore all comments from non-bot users and all bot comments that do not match either signal.
+
 ```bash
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
+
   REVIEW_COUNT=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews \
     | jq '[.[] | select(.user.type == "Bot" and .state == "COMMENTED")] | length')
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
   fi
+
+  NO_ISSUE_COMMENT=$(gh api repos/A-Souhei/opencode/issues/${PR_NUMBER}/comments \
+    | jq -r '[.[] | select(.user.type == "Bot") | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
+    | head -1)
+  if [ -n "$NO_ISSUE_COMMENT" ]; then
+    echo "Autoreviewer found no issues — done."
+    exit 0
+  fi
+
   if [ "$i" -eq 20 ]; then
     echo "Timed out waiting for automated review — done."
     exit 0
