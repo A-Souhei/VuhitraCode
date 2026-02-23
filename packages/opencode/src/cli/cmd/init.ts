@@ -28,10 +28,13 @@ out/
 .env.*
 `
 
-async function resolveProjectRoot(cwd: string): Promise<string> {
-  const match = await Filesystem.up({ targets: [".git"], start: cwd }).next()
+async function resolveProjectRoot(): Promise<string> {
+  // process.cwd() may point to the opencode source dir when run via `opencode-dev`
+  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory.
+  const invocationDir = process.env.PWD ?? process.cwd()
+  const match = await Filesystem.up({ targets: [".git"], start: invocationDir }).next()
   if (match.value) return path.dirname(match.value)
-  return cwd
+  return invocationDir
 }
 
 export const InitCommand = cmd({
@@ -48,7 +51,7 @@ export const InitCommand = cmd({
     prompts.intro("Initialize project config")
 
     try {
-      const root = await resolveProjectRoot(process.cwd())
+      const root = await resolveProjectRoot()
       const vuHitraDir = path.join(root, ".vuhitra")
       const settingsPath = path.join(vuHitraDir, "settings.json")
       const indexIgnorePath = path.join(vuHitraDir, "index-ignore")
