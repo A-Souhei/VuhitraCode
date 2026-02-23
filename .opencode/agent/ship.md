@@ -7,12 +7,13 @@ You are an automated PR shipping agent. Execute the following phases in strict o
 
 **Cross-phase variables** (carry these forward through every phase):
 
-| Variable        | Set in  | Used in      |
-| --------------- | ------- | ------------ |
-| `BRANCH`        | Phase 1 | Phases 3, 10 |
-| `COMMIT_PREFIX` | Phase 2 | Phase 10     |
-| `PR_NUMBER`     | Phase 3 | Phases 4, 5  |
-| `BOT_REVIEW_ID` | Phase 5 | Phase 5      |
+| Variable         | Set in  | Used in      |
+| ---------------- | ------- | ------------ |
+| `BRANCH`         | Phase 1 | Phases 3, 10 |
+| `DEFAULT_BRANCH` | Phase 1 | Phase 3      |
+| `COMMIT_PREFIX`  | Phase 2 | Phase 10     |
+| `PR_NUMBER`      | Phase 3 | Phases 4, 5  |
+| `BOT_REVIEW_ID`  | Phase 5 | Phase 5      |
 
 ---
 
@@ -28,9 +29,10 @@ Then:
 
 ```bash
 BRANCH=$(git branch --show-current)
+DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
 ```
 
-- If `BRANCH` is `main` or `master`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then:
+- If `BRANCH` is `main`, `master`, or equals `$DEFAULT_BRANCH`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then:
   ```bash
   git checkout -b <new-branch-name>
   BRANCH=$(git branch --show-current)
@@ -66,7 +68,7 @@ git commit -m "${COMMIT_PREFIX}: <message>"
 
 ## Phase 3 — Push and create PR
 
-Use `$BRANCH` from Phase 1 and `$PR_NUMBER` from `gh pr view` for portability.
+Use `$BRANCH` and `$DEFAULT_BRANCH` from Phase 1. `$DEFAULT_BRANCH` is already resolved — do not call `gh repo view` again.
 
 ```bash
 git push -u origin "$BRANCH"
@@ -75,8 +77,8 @@ git push -u origin "$BRANCH"
 PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/null)
 
 if [ -z "$PR_NUMBER" ]; then
-  PR_URL=$(gh pr create --base main --title "<title>" --body "<body>")
-  PR_NUMBER=$(gh pr view --json number -q '.number')
+  PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
+  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
 fi
 
 echo "PR number: $PR_NUMBER"
@@ -88,21 +90,40 @@ If `PR_NUMBER` is still empty after both steps: print `"ERROR: failed to determi
 
 ## Phase 4 — Poll for automated review
 
+On each iteration, check **two** signals from the autoreviewer bot — in this order:
+
+1. **Formal review** (`/pulls/{PR_NUMBER}/reviews`): a bot entry with `state == "COMMENTED"` means the bot left inline comments → proceed to Phase 5.
+2. **Issue comment** (`/issues/{PR_NUMBER}/comments`): a comment from a bot whose body contains phrases like "no issues", "nothing to report", "did not find", "no review", "looks good", or "no comments" → the bot ran but found nothing → print `"Autoreviewer found no issues — done."` and stop.
+
+Ignore all comments from non-bot users, and also ignore comments from `github-actions[bot]` — those are CI/workflow notices, not autoreviewer signals.
+
 ```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 for i in $(seq 1 20); do
   echo "Waiting for automated review... ($i/20)"
-  REVIEW_COUNT=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews \
-    | jq '[.[] | select(.user.type == "Bot" and .state == "COMMENTED")] | length')
+
+  REVIEW_COUNT=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews 2>/dev/null \
+    | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length' 2>/dev/null || echo 0)
   if [ "$REVIEW_COUNT" -gt 0 ]; then
     echo "Bot review found."
     break
   fi
-  if [ "$i" -eq 20 ]; then
-    echo "Timed out waiting for automated review — done."
-    exit 0
+
+  NO_ISSUE_COMMENT=$(gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
+    | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues|nothing to report|did not find|no review|looks good|no comments"))' \
+    | head -1)
+  if [ -n "$NO_ISSUE_COMMENT" ]; then
+    echo "Autoreviewer found no issues — done."
+    exit 0  # terminates the agent entirely — bot ran and found nothing
   fi
+
   sleep 30
 done
+
+if [ "$REVIEW_COUNT" -eq 0 ]; then
+  echo "Timed out waiting for automated review — done."
+  exit 0
+fi
 ```
 
 ---
@@ -110,16 +131,17 @@ done
 ## Phase 5 — Fetch comments
 
 ```bash
-REVIEWS=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews)
-BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .id')
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+REVIEWS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews)
+BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .id')
 
 if [ -z "$BOT_REVIEW_ID" ] || [ "$BOT_REVIEW_ID" = "null" ]; then
   echo "No bot review found — done."
   exit 0
 fi
 
-BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot")] | first | .body')
-COMMENTS=$(gh api repos/A-Souhei/opencode/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
+BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .body')
+COMMENTS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
 COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
 ```
 
@@ -183,7 +205,7 @@ Use `$COMMIT_PREFIX` from Phase 2 and `$BRANCH` from Phase 1.
 ```bash
 git add -A
 git diff --cached
-git commit -m "$(cat <<'EOF'
+git commit -m "$(cat <<EOF
 ${COMMIT_PREFIX}: address automated review comments
 
 - <item 1: what was fixed and which comment it addressed>
