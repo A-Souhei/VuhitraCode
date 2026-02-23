@@ -1,139 +1,108 @@
 <p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
-  </a>
+  <h1>Vuhitra.Code</h1>
+  <p>A fork of <a href="https://github.com/anomalyco/opencode">OpenCode</a> — AI-powered coding agent with full terminal UI.</p>
 </p>
-<p align="center">The open source AI coding agent.</p>
-<p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a>
-</p>
-
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
 
 ---
 
-### Installation
+> **Note:** This is a community fork of [OpenCode](https://opencode.ai). Not affiliated with the original OpenCode team.
+
+## Features
+
+- **AI-Powered Coding** — Full AI agent that reads, writes, and edits code
+- **Terminal-First UI** — Beautiful TUI built for developers
+- **LSP Support** — Out-of-the-box language server support for intelligent code analysis
+- **MCP Servers** — Model Context Protocol support with OAuth auto-handling
+- **Multi-Provider** — Works with OpenAI, Anthropic, Google, local models, and 75+ providers
+- **File Editing** — Intelligent diff-based file modifications with auto-formatting (prettier, gofmt, ruff, and more)
+- **Command Execution** — Run shell commands with granular permission controls
+- **Context Awareness** — Understands your codebase via LSP and file analysis
+- **Agent Modes** — Build (full access) and Plan (read-only suggestions) modes
+- **Custom Agents** — Define specialized AI personas via `.opencode/agent/` markdown files
+- **Custom Commands** — Reusable prompt templates in `.opencode/command/` with dynamic arguments
+- **Custom Tools** — Extend the LLM toolset with `.ts` files in `.opencode/tools/`
+- **Plugin System** — Event hooks via `.opencode/plugin/` for automation (notifications, file guards, etc.)
+- **Session Management** — Resume, fork, and compact sessions; export as Markdown
+- **Theming** — 30+ built-in themes, custom JSON themes, dark/light variant support
+- **Non-Interactive Mode** — `vuhitracode run` for scripting and CI pipelines
+- **Headless API** — `vuhitracode serve` for server-mode access
+
+## Requirements
+
+- [Bun](https://bun.sh) v1.1+
+
+## Setup
 
 ```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
+# Clone the repo
+git clone https://github.com/A-Souhei/VuhitraCode.git
+cd VuhitraCode
 
-# Package managers
-npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-brew install opencode              # macOS and Linux (official brew formula, updated less)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # Any OS
-nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
+# Install Bun if not already installed
+curl -fsSL https://bun.sh/install | bash
+
+# Install dependencies
+bun install
 ```
 
-> [!TIP]
-> Remove versions older than 0.1.x before installing.
+## Install
 
-### Desktop App (BETA)
-
-OpenCode is also available as a desktop application. Download directly from the [releases page](https://github.com/anomalyco/opencode/releases) or [opencode.ai/download](https://opencode.ai/download).
-
-| Platform              | Download                              |
-| --------------------- | ------------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-darwin-aarch64.dmg` |
-| macOS (Intel)         | `opencode-desktop-darwin-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe`    |
-| Linux                 | `.deb`, `.rpm`, or AppImage           |
+Run the following to install the `vuhitracode` command to `~/.local/bin/`:
 
 ```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+make install
 ```
 
-#### Installation Directory
-
-The install script respects the following priority order for the installation path:
-
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
-3. `$HOME/bin` - Standard user binary directory (if it exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
+Make sure `~/.local/bin` is in your `PATH`:
 
 ```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-### Agents
+## Run
 
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
+```bash
+# Launch the TUI in the current directory
+vuhitracode
 
-- **build** - Default, full-access agent for development work
-- **plan** - Read-only agent for analysis and code exploration
-  - Denies file edits by default
-  - Asks permission before running bash commands
-  - Ideal for exploring unfamiliar codebases or planning changes
+# Resume the last session
+vuhitracode --continue
 
-Also included is a **general** subagent for complex searches and multistep tasks.
-This is used internally and can be invoked using `@general` in messages.
+# Resume a specific session
+vuhitracode -s <session-id>
 
-Learn more about [agents](https://opencode.ai/docs/agents).
+# Non-interactive mode (for scripting)
+vuhitracode run "refactor this function"
 
-### Documentation
+# Headless API server
+vuhitracode serve
+```
 
-For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
+## Configuration
 
-### Contributing
+Config is read from (in order of precedence):
 
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
+1. `opencode.json` or `opencode.jsonc` in the project root
+2. `~/.config/opencode/opencode.json`
 
-### Building on OpenCode
+Example `opencode.json`:
 
-If you are working on a project that's related to OpenCode and is using "opencode" as part of its name, for example "opencode-dashboard" or "opencode-mobile", please add a note to your README to clarify that it is not built by the OpenCode team and is not affiliated with us in any way.
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "theme": "opencode",
+  "keybinds": {},
+  "permissions": {
+    "bash": {
+      "git *": "allow",
+      "rm -rf *": "deny",
+      "git push": "ask"
+    }
+  },
+  "mcp": {}
+}
+```
 
-### FAQ
-
-#### How is this different from Claude Code?
-
-It's very similar to Claude Code in terms of capability. Here are the key differences:
-
-- 100% open source
-- Not coupled to any provider. Although we recommend the models we provide through [OpenCode Zen](https://opencode.ai/zen), OpenCode can be used with Claude, OpenAI, Google, or even local models. As models evolve, the gaps between them will close and pricing will drop, so being provider-agnostic is important.
-- Out-of-the-box LSP support
-- A focus on TUI. OpenCode is built by neovim users and the creators of [terminal.shop](https://terminal.shop); we are going to push the limits of what's possible in the terminal.
-- A client/server architecture. This, for example, can allow OpenCode to run on your computer while you drive it remotely from a mobile app, meaning that the TUI frontend is just one of the possible clients.
-
----
-
-**Join our community** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+Run `/connect` inside the TUI to add API keys for providers interactively.

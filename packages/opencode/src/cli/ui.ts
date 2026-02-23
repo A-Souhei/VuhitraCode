@@ -1,7 +1,12 @@
 import z from "zod"
 import { EOL } from "os"
+import { basename } from "path"
 import { NamedError } from "@opencode-ai/util/error"
 import { logo as glyphs } from "./logo"
+
+const _argv1 = process.argv[1]
+const _argvBase = _argv1?.endsWith(".ts") || _argv1?.endsWith(".js") ? undefined : basename(_argv1 ?? "")
+export const CLI_NAME = (process.env["OPENCODE_CLI_NAME"] ?? _argvBase ?? "").replace(/[^a-zA-Z0-9._-]/g, "") || "opencode"
 
 export namespace UI {
   export const CancelledError = NamedError.create("UICancelledError", z.void())
