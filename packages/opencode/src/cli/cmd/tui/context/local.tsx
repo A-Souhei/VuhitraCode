@@ -148,11 +148,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
       }
 
+      const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
+
       onMount(() => {
         Filesystem.readJson(vuHitraPath())
           .then((x: any) => {
             const entry = x?.[settingKey]
-            if (entry?.modelID && entry?.providerID) {
+            if (
+              typeof entry?.modelID === "string" &&
+              typeof entry?.providerID === "string" &&
+              modelFieldPattern.test(entry.modelID) &&
+              modelFieldPattern.test(entry.providerID)
+            ) {
               setStore({ enabled: true, model: `${entry.providerID}/${entry.modelID}` })
             }
           })
