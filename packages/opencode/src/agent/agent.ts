@@ -15,6 +15,9 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
+import PROMPT_SUPER from "./prompt/super.txt"
+import PROMPT_SENTINEL from "./prompt/sentinel.txt"
+import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
 import PROMPT_REVIEW from "./prompt/review.txt"
@@ -135,6 +138,73 @@ export namespace Agent {
         prompt: PROMPT_WORK,
         mode: "primary",
         native: true,
+      },
+      super: {
+        name: "super",
+        description:
+          "Parallel implementation agent. Orchestrates up to 3 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            plan_enter: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_SUPER,
+        mode: "primary",
+        native: true,
+      },
+      sentinel: {
+        name: "sentinel",
+        description:
+          "Worker agent for parallel TODO execution. Up to 3 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: {
+              scout: "allow",
+              "*": "deny",
+            },
+          }),
+          user,
+        ),
+        prompt: PROMPT_SENTINEL,
+        mode: "subagent",
+        native: true,
+        hidden: true,
+      },
+      scout: {
+        name: "scout",
+        description:
+          "Lightweight exploration agent. Each Sentinel can spawn 1 Scout for context gathering. Can browse internet (requires user approval with explicit URL). Read-only — no write or edit permissions.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            grep: "allow",
+            glob: "allow",
+            list: "allow",
+            read: "allow",
+            webfetch: "ask",
+            websearch: "ask",
+            codesearch: "ask",
+            external_directory: {
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+            },
+          }),
+          user,
+        ),
+        prompt: PROMPT_SCOUT,
+        mode: "subagent",
+        native: true,
+        hidden: true,
       },
       keeper: {
         name: "keeper",

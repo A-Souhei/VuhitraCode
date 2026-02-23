@@ -274,7 +274,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   {(item) => <Spinner>{item().content}</Spinner>}
                 </Show>
                 <Show when={todo().length <= 2 || expanded.todo}>
-                  <For each={todo()}>{(todo) => <TodoItem status={todo.status} content={todo.content} />}</For>
+                  <For each={todo()}>{(todo) => <TodoItem status={todo.status} content={todo.content} assignedTo={todo.assignedTo} scoutId={todo.scoutId} />}</For>
                 </Show>
               </box>
             </Show>

@@ -7871,6 +7871,14 @@
           "priority": {
             "description": "Priority level of the task: high, medium, low",
             "type": "string"
+          },
+          "assignedTo": {
+            "description": "Session ID of the Sentinel currently executing this item",
+            "type": "string"
+          },
+          "scoutId": {
+            "description": "Session ID of the Scout spawned by the assigned Sentinel",
+            "type": "string"
           }
         },
         "required": ["content", "status", "priority"]

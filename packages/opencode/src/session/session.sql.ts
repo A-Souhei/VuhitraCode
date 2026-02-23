@@ -71,6 +71,8 @@ export const TodoTable = sqliteTable(
     status: text().notNull(),
     priority: text().notNull(),
     position: integer().notNull(),
+    assigned_to: text(),
+    scout_id: text(),
     ...Timestamps,
   },
   (table) => [
