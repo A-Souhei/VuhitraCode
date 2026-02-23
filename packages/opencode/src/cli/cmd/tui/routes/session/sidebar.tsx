@@ -12,6 +12,7 @@ import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
 import { Spinner } from "../../component/spinner"
+import { RGBA, TextAttributes } from "@opentui/core"
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const sync = useSync()
@@ -102,7 +103,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               </Show>
             </box>
             <box>
-              <text fg={theme.text}>
+              <text fg={RGBA.fromHex("#3d82e2")}>
                 <b>Context</b>
               </text>
               <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
@@ -179,7 +180,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 <Show when={sync.data.lsp.length > 2}>
                   <text fg={theme.text}>{expanded.lsp ? "▼" : "▶"}</text>
                 </Show>
-                <text fg={theme.text}>
+                <text fg={RGBA.fromHex("#3d82e2")}>
                   <b>LSP</b>
                 </text>
               </box>
@@ -215,7 +216,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             </box>
             <Show when={sync.data.indexer_status}>
               <box>
-                <text fg={theme.text}>
+                <text fg={RGBA.fromHex("#3d82e2")}>
                   <b>Indexer</b>
                 </text>
                 <box flexDirection="row" gap={1}>
@@ -353,6 +354,10 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
           <text>
             <span style={{ fg: theme.textMuted }}>{directory().split("/").slice(0, -1).join("/")}/</span>
             <span style={{ fg: theme.text }}>{directory().split("/").at(-1)}</span>
+          </text>
+          <text>
+            <span style={{ fg: RGBA.fromHex("#a855f7"), attributes: TextAttributes.BOLD }}>{"Vuhitra"}</span>
+            <span style={{ fg: RGBA.fromHex("#ffffff"), attributes: TextAttributes.BOLD }}>{".Code"}</span>
           </text>
           <text fg={theme.textMuted}>
             Powered by{" "}
