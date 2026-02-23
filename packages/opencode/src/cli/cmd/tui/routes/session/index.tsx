@@ -1036,153 +1036,183 @@ export function Session() {
             </Show>
             <Show when={messages().length === 0}>
               <box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column" gap={1}>
-                  <box flexDirection="row" gap={2}>
-                    <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
-                  </box>
+                <box flexDirection="row" gap={2}>
+                  <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
+                </box>
                 <box flexDirection="column" gap={2}>
                   <box flexDirection="row" gap={2}>
-                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Chat    </text>
-                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Enter</span> to send · <span style={{ fg: theme.text }}>Shift+Enter</span> for a new line</text>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>
+                      {" "}
+                      Chat{" "}
+                    </text>
+                    <text fg={theme.textMuted}>
+                      Press <span style={{ fg: theme.text }}>Enter</span> to send ·{" "}
+                      <span style={{ fg: theme.text }}>Shift+Enter</span> for a new line
+                    </text>
                   </box>
                   <box flexDirection="row" gap={2}>
-                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Agents  </text>
-                    <text fg={theme.textMuted}><span style={{ fg: theme.text }}>Tab</span> to cycle · <span style={{ fg: theme.text }}>Shift+Tab</span> for favorites · <span style={{ fg: theme.text }}>@agent</span> in prompt</text>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>
+                      {" "}
+                      Agents{" "}
+                    </text>
+                    <text fg={theme.textMuted}>
+                      <span style={{ fg: theme.text }}>Tab</span> to cycle ·{" "}
+                      <span style={{ fg: theme.text }}>Shift+Tab</span> for favorites ·{" "}
+                      <span style={{ fg: theme.text }}>@agent</span> in prompt
+                    </text>
                   </box>
                   <box flexDirection="row" gap={2}>
-                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Commands </text>
-                    <text fg={theme.textMuted}>Type <span style={{ fg: theme.text }}>/</span> for slash commands · <span style={{ fg: theme.text }}>/help</span> for all</text>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>
+                      {" "}
+                      Commands{" "}
+                    </text>
+                    <text fg={theme.textMuted}>
+                      Type <span style={{ fg: theme.text }}>/</span> for slash commands ·{" "}
+                      <span style={{ fg: theme.text }}>/help</span> for all
+                    </text>
                   </box>
                   <box flexDirection="row" gap={2}>
-                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Palette  </text>
-                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Ctrl+P</span> to open the command palette</text>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>
+                      {" "}
+                      Palette{" "}
+                    </text>
+                    <text fg={theme.textMuted}>
+                      Press <span style={{ fg: theme.text }}>Ctrl+P</span> to open the command palette
+                    </text>
                   </box>
                   <box flexDirection="row" gap={2}>
-                    <text fg={theme.error} attributes={TextAttributes.BOLD}>  Sidebar  </text>
-                    <text fg={theme.textMuted}>Press <span style={{ fg: theme.text }}>Ctrl+X B</span> to toggle · <span style={{ fg: theme.text }}>Ctrl+X L</span> for sessions</text>
+                    <text fg={theme.error} attributes={TextAttributes.BOLD}>
+                      {" "}
+                      Sidebar{" "}
+                    </text>
+                    <text fg={theme.textMuted}>
+                      Press <span style={{ fg: theme.text }}>Ctrl+X B</span> to toggle ·{" "}
+                      <span style={{ fg: theme.text }}>Ctrl+X L</span> for sessions
+                    </text>
                   </box>
                 </box>
-                  <box flexDirection="row" gap={2}>
-                    <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
-                  </box>                
+                <box flexDirection="row" gap={2}>
+                  <text fg={RGBA.fromHex("#a855f7")}>{"─".repeat(19)}</text>
+                </box>
               </box>
             </Show>
             <Show when={messages().length > 0}>
-            <scrollbox
-              ref={(r) => (scroll = r)}
-              viewportOptions={{
-                paddingRight: showScrollbar() ? 1 : 0,
-              }}
-              verticalScrollbarOptions={{
-                paddingLeft: 1,
-                visible: showScrollbar(),
-                trackOptions: {
-                  backgroundColor: theme.backgroundElement,
-                  foregroundColor: theme.border,
-                },
-              }}
-              stickyScroll={true}
-              stickyStart="bottom"
-              flexGrow={1}
-              scrollAcceleration={scrollAcceleration()}
-            >
-              <For each={messages()}>
-                {(message, index) => (
-                  <Switch>
-                    <Match when={message.id === revert()?.messageID}>
-                      {(function () {
-                        const command = useCommandDialog()
-                        const [hover, setHover] = createSignal(false)
-                        const dialog = useDialog()
+              <scrollbox
+                ref={(r) => (scroll = r)}
+                viewportOptions={{
+                  paddingRight: showScrollbar() ? 1 : 0,
+                }}
+                verticalScrollbarOptions={{
+                  paddingLeft: 1,
+                  visible: showScrollbar(),
+                  trackOptions: {
+                    backgroundColor: theme.backgroundElement,
+                    foregroundColor: theme.border,
+                  },
+                }}
+                stickyScroll={true}
+                stickyStart="bottom"
+                flexGrow={1}
+                scrollAcceleration={scrollAcceleration()}
+              >
+                <For each={messages()}>
+                  {(message, index) => (
+                    <Switch>
+                      <Match when={message.id === revert()?.messageID}>
+                        {(function () {
+                          const command = useCommandDialog()
+                          const [hover, setHover] = createSignal(false)
+                          const dialog = useDialog()
 
-                        const handleUnrevert = async () => {
-                          const confirmed = await DialogConfirm.show(
-                            dialog,
-                            "Confirm Redo",
-                            "Are you sure you want to restore the reverted messages?",
-                          )
-                          if (confirmed) {
-                            command.trigger("session.redo")
+                          const handleUnrevert = async () => {
+                            const confirmed = await DialogConfirm.show(
+                              dialog,
+                              "Confirm Redo",
+                              "Are you sure you want to restore the reverted messages?",
+                            )
+                            if (confirmed) {
+                              command.trigger("session.redo")
+                            }
                           }
-                        }
 
-                        return (
-                          <box
-                            onMouseOver={() => setHover(true)}
-                            onMouseOut={() => setHover(false)}
-                            onMouseUp={handleUnrevert}
-                            marginTop={1}
-                            flexShrink={0}
-                            border={["left"]}
-                            customBorderChars={SplitBorder.customBorderChars}
-                            borderColor={theme.backgroundPanel}
-                          >
+                          return (
                             <box
-                              paddingTop={1}
-                              paddingBottom={1}
-                              paddingLeft={2}
-                              backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                              onMouseOver={() => setHover(true)}
+                              onMouseOut={() => setHover(false)}
+                              onMouseUp={handleUnrevert}
+                              marginTop={1}
+                              flexShrink={0}
+                              border={["left"]}
+                              customBorderChars={SplitBorder.customBorderChars}
+                              borderColor={theme.backgroundPanel}
                             >
-                              <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                              <text fg={theme.textMuted}>
-                                <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
-                                restore
-                              </text>
-                              <Show when={revert()!.diffFiles?.length}>
-                                <box marginTop={1}>
-                                  <For each={revert()!.diffFiles}>
-                                    {(file) => (
-                                      <text fg={theme.text}>
-                                        {file.filename}
-                                        <Show when={file.additions > 0}>
-                                          <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                        </Show>
-                                        <Show when={file.deletions > 0}>
-                                          <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                        </Show>
-                                      </text>
-                                    )}
-                                  </For>
-                                </box>
-                              </Show>
+                              <box
+                                paddingTop={1}
+                                paddingBottom={1}
+                                paddingLeft={2}
+                                backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                              >
+                                <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                                <text fg={theme.textMuted}>
+                                  <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
+                                  restore
+                                </text>
+                                <Show when={revert()!.diffFiles?.length}>
+                                  <box marginTop={1}>
+                                    <For each={revert()!.diffFiles}>
+                                      {(file) => (
+                                        <text fg={theme.text}>
+                                          {file.filename}
+                                          <Show when={file.additions > 0}>
+                                            <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                          </Show>
+                                          <Show when={file.deletions > 0}>
+                                            <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                          </Show>
+                                        </text>
+                                      )}
+                                    </For>
+                                  </box>
+                                </Show>
+                              </box>
                             </box>
-                          </box>
-                        )
-                      })()}
-                    </Match>
-                    <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
-                      <></>
-                    </Match>
-                    <Match when={message.role === "user"}>
-                      <UserMessage
-                        index={index()}
-                        onMouseUp={() => {
-                          if (renderer.getSelection()?.getSelectedText()) return
-                          dialog.replace(() => (
-                            <DialogMessage
-                              messageID={message.id}
-                              sessionID={route.sessionID}
-                              setPrompt={(promptInfo) => prompt.set(promptInfo)}
-                            />
-                          ))
-                        }}
-                        message={message as UserMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                        pending={pending()}
-                      />
-                    </Match>
-                    <Match when={message.role === "assistant"}>
-                      <AssistantMessage
-                        last={lastAssistant()?.id === message.id}
-                        message={message as AssistantMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                      />
-                    </Match>
-                  </Switch>
-                )}
-              </For>
-            </scrollbox>
+                          )
+                        })()}
+                      </Match>
+                      <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
+                        <></>
+                      </Match>
+                      <Match when={message.role === "user"}>
+                        <UserMessage
+                          index={index()}
+                          onMouseUp={() => {
+                            if (renderer.getSelection()?.getSelectedText()) return
+                            dialog.replace(() => (
+                              <DialogMessage
+                                messageID={message.id}
+                                sessionID={route.sessionID}
+                                setPrompt={(promptInfo) => prompt.set(promptInfo)}
+                              />
+                            ))
+                          }}
+                          message={message as UserMessage}
+                          parts={sync.data.part[message.id] ?? []}
+                          pending={pending()}
+                        />
+                      </Match>
+                      <Match when={message.role === "assistant"}>
+                        <AssistantMessage
+                          last={lastAssistant()?.id === message.id}
+                          message={message as AssistantMessage}
+                          parts={sync.data.part[message.id] ?? []}
+                        />
+                      </Match>
+                    </Switch>
+                  )}
+                </For>
+              </scrollbox>
             </Show>
-            <box flexShrink={0}>
+            <box flexShrink={0} zIndex={1000}>
               <Show when={permissions().length > 0}>
                 <PermissionPrompt request={permissions()[0]} />
               </Show>
@@ -2179,7 +2209,14 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
         <BlockTool title="# Todos" part={props.part}>
           <box>
             <For each={props.input.todos ?? []}>
-              {(todo) => <TodoItem status={todo.status} content={todo.content} assignedTo={todo.assignedTo} scoutId={todo.scoutId} />}
+              {(todo) => (
+                <TodoItem
+                  status={todo.status}
+                  content={todo.content}
+                  assignedTo={todo.assignedTo}
+                  scoutId={todo.scoutId}
+                />
+              )}
             </For>
           </box>
         </BlockTool>
