@@ -409,12 +409,12 @@ function App() {
         const current = promptRef.current
         const currentPrompt = current?.current?.input ? current.current : undefined
         dialog.clear()
-        sdk.client.session.create({})
+        sdk.client.session
+          .create({})
           .then((result) => {
             if (result.data?.id)
               route.navigate({ type: "session", sessionID: result.data.id, initialPrompt: currentPrompt })
-            else
-              toast.show({ message: "Failed to create session", variant: "error" })
+            else toast.show({ message: "Session created but returned no ID", variant: "error" })
           })
           .catch(() => toast.show({ message: "Failed to create session", variant: "error" }))
       },
@@ -872,7 +872,11 @@ function App() {
             </box>
             <Show
               when={sync.data.indexer_status?.type === "indexing"}
-              fallback={<text fg={RGBA.fromHex("#ff3333")} selectable={false}>{"·".repeat(16)}</text>}
+              fallback={
+                <text fg={RGBA.fromHex("#ff3333")} selectable={false}>
+                  {"·".repeat(16)}
+                </text>
+              }
             >
               <Spinner size="large" color={RGBA.fromHex("#ff3333")} />
             </Show>

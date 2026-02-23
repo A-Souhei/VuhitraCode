@@ -115,7 +115,7 @@ const TIPS = [
   `Run {highlight}${CLI_NAME} upgrade{/highlight} to update to the latest version`,
   `Run {highlight}${CLI_NAME} auth list{/highlight} to see all configured providers`,
   `Run {highlight}${CLI_NAME} agent create{/highlight} for guided agent creation`,
-  "Use {highlight}/opencode{/highlight} in GitHub issues/PRs to trigger AI actions",
+  `Use {highlight}/${CLI_NAME}{/highlight} in GitHub issues/PRs to trigger AI actions`,
   `Run {highlight}${CLI_NAME} github install{/highlight} to set up the GitHub workflow`,
   "Comment {highlight}/vc fix this{/highlight} on issues to auto-create PRs",
   "Comment {highlight}/vc{/highlight} on PR code lines for targeted code reviews",
