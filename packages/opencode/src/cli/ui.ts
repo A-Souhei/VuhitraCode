@@ -8,7 +8,7 @@ const _argv1 = process.argv[1]
 const _scriptExts = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
 const _argvBase = _scriptExts.some((ext) => _argv1?.endsWith(ext)) ? undefined : basename(_argv1 ?? "")
 export const CLI_NAME = (
-  (process.env["OPENCODE_CLI_NAME"] ?? _argvBase ?? "").replace(/[^a-zA-Z0-9._-]/g, "") || "opencode"
+  (process.env["OPENCODE_CLI_NAME"] ?? _argvBase ?? "").replace(/[^a-zA-Z0-9_-]/g, "") || "opencode"
 ).slice(0, 64)
 
 export namespace UI {

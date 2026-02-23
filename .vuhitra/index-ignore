@@ -18,3 +18,15 @@ out/
 *.min.css
 .env
 .env.*
+
+# Sensitive credentials and keys
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/credentials.json
+**/.aws/
+**/.ssh/
+**/secrets/
+**/*.secret
+**/*.token
