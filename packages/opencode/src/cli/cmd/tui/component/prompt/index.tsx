@@ -223,6 +223,7 @@ export function Prompt(props: PromptProps) {
           // TODO: this should be its own command
           if (store.mode === "shell") {
             setStore("mode", "normal")
+            input.clear()
             return
           }
           if (!props.sessionID) return
@@ -589,7 +590,6 @@ export function Prompt(props: PromptProps) {
         },
         command: inputText,
       })
-      setStore("mode", "normal")
     } else if (
       inputText.startsWith("/") &&
       iife(() => {
@@ -879,7 +879,12 @@ export function Prompt(props: PromptProps) {
                     return
                   }
                 }
-                if (e.name === "!" && input.visualCursor.offset === 0) {
+                if (
+                  e.name === "!" &&
+                  input.visualCursor.offset === 0 &&
+                  !autocomplete.visible &&
+                  store.mode !== "shell"
+                ) {
                   setStore("placeholder", Math.floor(Math.random() * SHELL_PLACEHOLDERS.length))
                   setStore("mode", "shell")
                   e.preventDefault()
@@ -888,9 +893,20 @@ export function Prompt(props: PromptProps) {
                 if (store.mode === "shell") {
                   if ((e.name === "backspace" && input.visualCursor.offset === 0) || e.name === "escape") {
                     setStore("mode", "normal")
+                    if (e.name === "escape") input.clear()
                     e.preventDefault()
                     return
                   }
+                }
+                if (keybind.match("shell_toggle", e)) {
+                  if (store.mode === "shell") {
+                    setStore("mode", "normal")
+                  } else {
+                    setStore("placeholder", Math.floor(Math.random() * SHELL_PLACEHOLDERS.length))
+                    setStore("mode", "shell")
+                  }
+                  e.preventDefault()
+                  return
                 }
                 if (store.mode === "normal") autocomplete.onKeyDown(e)
                 if (!autocomplete.visible) {
@@ -1147,8 +1163,27 @@ export function Prompt(props: PromptProps) {
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
+                  <text
+                    fg={theme.text}
+                    onMouseUp={() => {
+                      setStore("placeholder", Math.floor(Math.random() * SHELL_PLACEHOLDERS.length))
+                      setStore("mode", "shell")
+                      input.focus()
+                    }}
+                  >
+                    {keybind.print("shell_toggle")} <span style={{ fg: theme.textMuted }}>terminal</span>
+                  </text>
                 </Match>
                 <Match when={store.mode === "shell"}>
+                  <text
+                    fg={theme.text}
+                    onMouseUp={() => {
+                      setStore("mode", "normal")
+                      input.focus()
+                    }}
+                  >
+                    {keybind.print("shell_toggle")} <span style={{ fg: theme.textMuted }}>terminal</span>
+                  </text>
                   <text fg={theme.text}>
                     esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
                   </text>
