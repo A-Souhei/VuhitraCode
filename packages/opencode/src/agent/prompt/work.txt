@@ -44,6 +44,7 @@ After ALL items show `status: "completed"`:
 1. Call the `Task` tool with `subagent_type: "keeper"` and include the full todo list in the prompt. Format each item as:
    `- [item content] (status: STATUS)`
    e.g.: `- Add unit tests for auth module (status: completed)`
+   The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
 2. Wait for the keeper's response:
    - If the response starts with `ALL CLEAR`, you are done. Stop.
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`), fix the issues, and repeat Phase 3 and Phase 4.
