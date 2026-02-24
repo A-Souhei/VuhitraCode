@@ -105,12 +105,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
 
-      const vuHitraModel =
-        params.subagent_type === "sentinel"
-          ? VuHitraSettings.sentinelModel()
-          : params.subagent_type === "scout"
-            ? VuHitraSettings.scoutModel()
-            : undefined
+      const vuHitraModel = VuHitraSettings.subagentModel(params.subagent_type)
 
       // Validate the project-local model override against the user's configured providers
       // before applying it, so a malicious .vuhitra/settings.json cannot redirect to an
@@ -121,10 +116,11 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         return validated ? { modelID: vuHitraModel.modelID, providerID: vuHitraModel.providerID } : undefined
       })()
 
-      const model = resolvedVuHitraModel ?? agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
+      const model = resolvedVuHitraModel ??
+        agent.model ?? {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
 
       ctx.metadata({
         title: params.description,

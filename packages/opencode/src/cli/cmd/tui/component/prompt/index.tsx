@@ -34,6 +34,8 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
+import { DialogSelect } from "@tui/ui/dialog-select"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 export type PromptProps = {
   sessionID?: string
@@ -550,6 +552,79 @@ export function Prompt(props: PromptProps) {
       },
     },
   ])
+
+  command.register(() => {
+    const current = local.model.current()
+    const agent = local.agent.current()
+    const subagents = sync.data.agent.filter(
+      (a) => a.mode !== "primary" && a.name !== "secret" && (!a.hidden || a.name === "sentinel" || a.name === "scout"),
+    )
+    return [
+      {
+        title: "Set current model as default for agent",
+        description: current ? `Save ${current.providerID}/${current.modelID} as default for ${agent.name}` : undefined,
+        value: "model.set_agent_default",
+        category: "Model",
+        enabled: !!current,
+        slash: {
+          name: "set-current-model-to-agent",
+        },
+        onSelect: async (ctx) => {
+          ctx.clear()
+          if (!current) return
+          await local.agentModels.set(agent.name, {
+            providerID: current.providerID,
+            modelID: current.modelID,
+          })
+          toast.show({
+            variant: "success",
+            message: `${current.providerID}/${current.modelID} set as default for ${agent.name}`,
+            duration: 3000,
+          })
+        },
+      },
+      {
+        title: "Set current model as default for subagent",
+        description: current ? `Save ${current.providerID}/${current.modelID} for a subagent` : undefined,
+        value: "model.set_subagent_default",
+        category: "Model",
+        enabled: !!current && subagents.length > 0,
+        slash: {
+          name: "set-current-model-to-subagent",
+        },
+        onSelect: (ctx) => {
+          if (!current) return
+          const model = { providerID: current.providerID, modelID: current.modelID }
+          ctx.replace(() => (
+            <DialogSelect
+              title="Select subagent"
+              options={subagents.map((a) => ({
+                title: a.name,
+                description: a.description,
+                value: a.name,
+                onSelect: async () => {
+                  ctx.clear()
+                  await VuHitraSettings.setSubagentModel(
+                    a.name,
+                    {
+                      providerID: model.providerID,
+                      modelID: model.modelID,
+                    },
+                    sync.data.path.directory || process.cwd(),
+                  )
+                  toast.show({
+                    variant: "success",
+                    message: `${model.providerID}/${model.modelID} set as default for @${a.name}`,
+                    duration: 3000,
+                  })
+                },
+              }))}
+            />
+          ))
+        },
+      },
+    ]
+  })
 
   async function submit() {
     if (props.disabled) return

@@ -1,4 +1,5 @@
 import { Instance } from "./instance"
+import { Log } from "@/util/log"
 import path from "path"
 import fs from "fs"
 import z from "zod"
@@ -24,6 +25,24 @@ export namespace VuHitraSettings {
       .optional(),
     scout_model: ModelRefSchema,
     sentinel_model: ModelRefSchema,
+    agent_models: z
+      .record(
+        z
+          .string()
+          .max(128)
+          .regex(/^[A-Za-z0-9_\-./:]+$/),
+        ModelRefSchema,
+      )
+      .optional(),
+    subagent_models: z
+      .record(
+        z
+          .string()
+          .max(128)
+          .regex(/^[A-Za-z0-9_\-./:]+$/),
+        ModelRefSchema,
+      )
+      .optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -31,25 +50,33 @@ export namespace VuHitraSettings {
     return readFromDisk()
   })
 
-  function readFromDisk(): Settings {
-    const filePath = path.join(Instance.directory, ".vuhitra", "settings.json")
+  function readFromDisk(dir?: string): Settings {
+    const filePath = path.join(dir ?? Instance.directory, ".vuhitra", "settings.json")
     try {
       if (!fs.existsSync(filePath)) return {}
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"))
       const result = SettingsSchema.safeParse(parsed)
-      return result.success ? result.data : {}
+      if (!result.success) {
+        Log.Default.warn("vuhitra-settings: failed to parse settings, returning empty", {
+          filePath,
+          errors: result.error.issues,
+        })
+        return {}
+      }
+      return result.data
     } catch {
       return {}
     }
   }
 
-  async function writeToDisk(update: Partial<Settings>) {
-    const filePath = path.join(Instance.directory, ".vuhitra", "settings.json")
-    const current = readFromDisk()
+  async function writeToDisk(update: Partial<Settings>, dir?: string) {
+    const filePath = path.join(dir ?? Instance.directory, ".vuhitra", "settings.json")
+    const current = readFromDisk(dir)
     const merged = { ...current, ...update }
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
     // Mutate the cached state in-place so reads within the same process see the new values immediately.
-    Object.assign(state(), merged)
+    // Only update the in-memory cache when operating on the canonical Instance directory.
+    if (!dir || dir === Instance.directory) Object.assign(state(), merged)
   }
 
   export function indexingEnabled(): boolean {
@@ -78,5 +105,27 @@ export namespace VuHitraSettings {
 
   export async function setSentinelModel(model: { providerID: string; modelID: string }) {
     await writeToDisk({ sentinel_model: model })
+  }
+
+  export function agentModel(name: string): { providerID?: string; modelID?: string } | undefined {
+    return state().agent_models?.[name]
+  }
+
+  export async function setAgentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
+    const current = readFromDisk(dir).agent_models ?? {}
+    await writeToDisk({ agent_models: { ...current, [name]: model } }, dir)
+  }
+
+  export function subagentModel(name: string): { providerID?: string; modelID?: string } | undefined {
+    const override = state().subagent_models?.[name]
+    if (override) return override
+    if (name === "scout") return state().scout_model
+    if (name === "sentinel") return state().sentinel_model
+    return undefined
+  }
+
+  export async function setSubagentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
+    const current = readFromDisk(dir).subagent_models ?? {}
+    await writeToDisk({ subagent_models: { ...current, [name]: model } }, dir)
   }
 }

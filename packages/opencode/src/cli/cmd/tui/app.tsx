@@ -496,52 +496,6 @@ function App() {
       },
     },
     {
-      title: local.sentinelModel.enabled
-        ? `Set sentinel model to current (${local.sentinelModel.model})`
-        : "Set sentinel model to current",
-      value: "sentinel.set_model_to_current",
-      category: "Agent",
-      description: "Save the current model as the sentinel model for this project",
-      slash: {
-        name: "set-sentinel-model-to-current",
-      },
-      enabled: !!local.model.current(),
-      onSelect: async (dialog) => {
-        const current = local.model.current()
-        if (!current) return
-        await local.sentinelModel.set(current)
-        toast.show({
-          message: `Sentinel model set to ${current.modelID} (${current.providerID})`,
-          variant: "info",
-          duration: 4000,
-        })
-        dialog.clear()
-      },
-    },
-    {
-      title: local.scoutModel.enabled
-        ? `Set scout model to current (${local.scoutModel.model})`
-        : "Set scout model to current",
-      value: "scout.set_model_to_current",
-      category: "Agent",
-      description: "Save the current model as the scout model for this project",
-      slash: {
-        name: "set-scout-model-to-current",
-      },
-      enabled: !!local.model.current(),
-      onSelect: async (dialog) => {
-        const current = local.model.current()
-        if (!current) return
-        await local.scoutModel.set(current)
-        toast.show({
-          message: `Scout model set to ${current.modelID} (${current.providerID})`,
-          variant: "info",
-          duration: 4000,
-        })
-        dialog.clear()
-      },
-    },
-    {
       title: "Switch agent",
       value: "agent.list",
       keybind: "agent_list",
