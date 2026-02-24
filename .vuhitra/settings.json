@@ -1,5 +1,17 @@
 {
   "indexing": {
     "enabled": true
+  },
+  "agent_models": {
+    "ship": {
+      "providerID": "github-copilot",
+      "modelID": "gpt-4.1"
+    }
+  },
+  "subagent_models": {
+    "sentinel": {
+      "providerID": "github-copilot",
+      "modelID": "claude-sonnet-4.6"
+    }
   }
 }

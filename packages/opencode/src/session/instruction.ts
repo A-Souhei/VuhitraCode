@@ -192,6 +192,15 @@ export namespace InstructionPrompt {
       current = path.dirname(current)
     }
 
+    const vuhitra = path.join(Instance.directory, ".vuhitra", "rules.md")
+    if (!already.has(vuhitra) && !isClaimed(messageID, vuhitra) && (await Filesystem.exists(vuhitra))) {
+      claim(messageID, vuhitra)
+      const content = await Filesystem.readText(vuhitra).catch(() => undefined)
+      if (content) {
+        results.push({ filepath: vuhitra, content: "Instructions from: " + vuhitra + "\n" + content })
+      }
+    }
+
     return results
   }
 }
