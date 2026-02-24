@@ -20,15 +20,14 @@ install-dev:
 	@echo "Installed: opencode-dev → $(CURDIR)/packages/opencode/src/index.ts"
 
 install:
+	@mkdir -p ~/.local/bin
 	@echo '#!/bin/bash' > ~/.local/bin/vuhitracode
 	@echo 'PKGDIR="$(CURDIR)/packages/opencode"' >> ~/.local/bin/vuhitracode
 	@echo 'if [ ! -d "$$PKGDIR" ]; then echo "Error: project not found at $$PKGDIR — re-run make install" >&2; exit 1; fi' >> ~/.local/bin/vuhitracode
 	@echo 'BUN=$$(command -v bun); [ -n "$$BUN" ] || { echo "Error: bun not found in PATH" >&2; exit 1; }' >> ~/.local/bin/vuhitracode
-	@echo 'export OPENCODE_CLI_NAME=vuhitracode' >> ~/.local/bin/vuhitracode
-	@echo '# Always pass current directory as first arg so the session opens in the right place' >> ~/.local/bin/vuhitracode
-	@echo 'exec "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$PWD" "$$@"' >> ~/.local/bin/vuhitracode
+	@echo 'exec env OPENCODE_CLI_NAME=vuhitracode "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$@"' >> ~/.local/bin/vuhitracode
 	@chmod +x ~/.local/bin/vuhitracode
-	@echo "Installed: vuhitracode → $(CURDIR)/packages/opencode/src/index.ts"
+	@echo "Installed: vuhitracode → ~/.local/bin/vuhitracode"
 
 test-privacy:
 	bun test --cwd packages/opencode test/util/faker.test.ts test/tool/read.test.ts

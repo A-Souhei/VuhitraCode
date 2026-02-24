@@ -220,7 +220,7 @@ function normalizePath(input?: string) {
 
 export const RunCommand = cmd({
   command: "run [message..]",
-  describe: "run opencode with a message",
+  describe: "run vuhitracode with a message",
   builder: (yargs: Argv) => {
     return yargs
       .positional("message", {
@@ -278,7 +278,7 @@ export const RunCommand = cmd({
       })
       .option("attach", {
         type: "string",
-        describe: "attach to a running opencode server (e.g., http://localhost:4096)",
+        describe: "attach to a running vuhitracode server (e.g., http://localhost:4096)",
       })
       .option("dir", {
         type: "string",
@@ -378,14 +378,18 @@ export const RunCommand = cmd({
 
       if (baseID && args.fork) {
         const forked = await sdk.session.fork({ sessionID: baseID })
-        return forked.data?.id
+        const id = forked.data?.id
+        if (!id) throw new Error("Session fork returned no ID")
+        return id
       }
 
       if (baseID) return baseID
 
       const name = title()
       const result = await sdk.session.create({ title: name, permission: rules })
-      return result.data?.id
+      const id = result.data?.id
+      if (!id) throw new Error("Session creation returned no ID")
+      return id
     }
 
     async function share(sdk: OpencodeClient, sessionID: string) {
