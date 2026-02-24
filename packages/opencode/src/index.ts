@@ -48,7 +48,7 @@ process.on("uncaughtException", (e) => {
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("vuhitracode")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -121,6 +121,7 @@ const cli = yargs(hideBin(process.argv))
   })
   .usage("\n" + UI.logo())
   .completion("completion", "generate shell completion script")
+  .command(InitCommand)
   .command(AcpCommand)
   .command(McpCommand)
   .command(TuiThreadCommand)
@@ -142,7 +143,6 @@ const cli = yargs(hideBin(process.argv))
   .command(PrCommand)
   .command(SessionCommand)
   .command(DbCommand)
-  .command(InitCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
