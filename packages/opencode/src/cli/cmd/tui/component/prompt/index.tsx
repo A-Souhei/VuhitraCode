@@ -604,10 +604,14 @@ export function Prompt(props: PromptProps) {
                 value: a.name,
                 onSelect: async () => {
                   ctx.clear()
-                  await VuHitraSettings.setSubagentModel(a.name, {
-                    providerID: model.providerID,
-                    modelID: model.modelID,
-                  })
+                  await VuHitraSettings.setSubagentModel(
+                    a.name,
+                    {
+                      providerID: model.providerID,
+                      modelID: model.modelID,
+                    },
+                    sync.data.path.directory || process.cwd(),
+                  )
                   toast.show({
                     variant: "success",
                     message: `${model.providerID}/${model.modelID} set as default for @${a.name}`,
