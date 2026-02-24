@@ -1,4 +1,5 @@
 import type { BoxRenderable, TextareaRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core"
+import { RGBA } from "@opentui/core"
 import { pathToFileURL } from "bun"
 import fuzzysort from "fuzzysort"
 import { firstBy } from "remeda"
@@ -111,13 +112,10 @@ export function Autocomplete(props: {
     const dims = dimensions()
     positionTick()
     const anchor = props.anchor()
-    const parent = anchor.parent
-    const parentX = parent?.x ?? 0
-    const parentY = parent?.y ?? 0
 
     return {
-      x: anchor.x - parentX,
-      y: anchor.y - parentY,
+      x: anchor.x,
+      y: anchor.y,
       width: anchor.width,
     }
   })
@@ -610,58 +608,74 @@ export function Autocomplete(props: {
     <box
       visible={store.visible !== false}
       position="absolute"
-      top={position().y - height()}
-      left={position().x}
-      width={position().width}
+      top={0}
+      left={0}
+      width={dimensions().width}
+      height={dimensions().height}
       zIndex={100}
-      {...SplitBorder}
-      borderColor={theme.border}
     >
-      <scrollbox
-        ref={(r: ScrollBoxRenderable) => (scroll = r)}
-        backgroundColor={theme.backgroundMenu}
+      <box
+        position="absolute"
+        top={position().y - height()}
+        left={position().x}
+        width={position().width}
         height={height()}
-        scrollbarOptions={{ visible: false }}
+        backgroundColor={theme.backgroundMenu}
       >
-        <Index
-          each={options()}
-          fallback={
-            <box paddingLeft={1} paddingRight={1}>
-              <text fg={theme.textMuted}>No matching items</text>
-            </box>
-          }
+        <box
+          width="100%"
+          height="100%"
+          {...SplitBorder}
+          borderColor={theme.border}
+          backgroundColor={theme.backgroundMenu}
         >
-          {(option, index) => (
-            <box
-              paddingLeft={1}
-              paddingRight={1}
-              backgroundColor={index === store.selected ? theme.primary : undefined}
-              flexDirection="row"
-              onMouseMove={() => {
-                setStore("input", "mouse")
-              }}
-              onMouseOver={() => {
-                if (store.input !== "mouse") return
-                moveTo(index)
-              }}
-              onMouseDown={() => {
-                setStore("input", "mouse")
-                moveTo(index)
-              }}
-              onMouseUp={() => select()}
+          <scrollbox
+            ref={(r: ScrollBoxRenderable) => (scroll = r)}
+            backgroundColor={theme.backgroundMenu}
+            height={height()}
+            scrollbarOptions={{ visible: false }}
+          >
+            <Index
+              each={options()}
+              fallback={
+                <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundMenu}>
+                  <text fg={theme.textMuted}>No matching items</text>
+                </box>
+              }
             >
-              <text fg={index === store.selected ? selectedForeground(theme) : theme.text} flexShrink={0}>
-                {option().display}
-              </text>
-              <Show when={option().description}>
-                <text fg={index === store.selected ? selectedForeground(theme) : theme.textMuted} wrapMode="none">
-                  {option().description}
-                </text>
-              </Show>
-            </box>
-          )}
-        </Index>
-      </scrollbox>
+              {(option, index) => (
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={index === store.selected ? theme.primary : theme.backgroundMenu}
+                  flexDirection="row"
+                  onMouseMove={() => {
+                    setStore("input", "mouse")
+                  }}
+                  onMouseOver={() => {
+                    if (store.input !== "mouse") return
+                    moveTo(index)
+                  }}
+                  onMouseDown={() => {
+                    setStore("input", "mouse")
+                    moveTo(index)
+                  }}
+                  onMouseUp={() => select()}
+                >
+                  <text fg={index === store.selected ? selectedForeground(theme) : theme.text} flexShrink={0}>
+                    {option().display}
+                  </text>
+                  <Show when={option().description}>
+                    <text fg={index === store.selected ? selectedForeground(theme) : theme.textMuted} wrapMode="none">
+                      {option().description}
+                    </text>
+                  </Show>
+                </box>
+              )}
+            </Index>
+          </scrollbox>
+        </box>
+      </box>
     </box>
   )
 }

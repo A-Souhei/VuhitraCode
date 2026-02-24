@@ -52,6 +52,7 @@ export type PromptRef = {
   reset(): void
   blur(): void
   focus(): void
+  renderAutocomplete(): JSX.Element
   submit(): void
 }
 
@@ -385,6 +386,30 @@ export function Prompt(props: PromptProps) {
     },
     submit() {
       submit()
+    },
+    renderAutocomplete() {
+      return (
+        <Autocomplete
+          sessionID={props.sessionID}
+          ref={(r) => (autocomplete = r)}
+          anchor={() => anchor}
+          input={() => input}
+          setPrompt={(cb) => {
+            setStore("prompt", produce(cb))
+          }}
+          setExtmark={(partIndex, extmarkId) => {
+            setStore("extmarkToPartIndex", (map: Map<number, number>) => {
+              const newMap = new Map(map)
+              newMap.set(extmarkId, partIndex)
+              return newMap
+            })
+          }}
+          value={store.prompt.input}
+          fileStyleId={fileStyleId}
+          agentStyleId={agentStyleId}
+          promptPartTypeId={() => promptPartTypeId}
+        />
+      )
     },
   }
 
@@ -788,26 +813,6 @@ export function Prompt(props: PromptProps) {
 
   return (
     <>
-      <Autocomplete
-        sessionID={props.sessionID}
-        ref={(r) => (autocomplete = r)}
-        anchor={() => anchor}
-        input={() => input}
-        setPrompt={(cb) => {
-          setStore("prompt", produce(cb))
-        }}
-        setExtmark={(partIndex, extmarkId) => {
-          setStore("extmarkToPartIndex", (map: Map<number, number>) => {
-            const newMap = new Map(map)
-            newMap.set(extmarkId, partIndex)
-            return newMap
-          })
-        }}
-        value={store.prompt.input}
-        fileStyleId={fileStyleId}
-        agentStyleId={agentStyleId}
-        promptPartTypeId={() => promptPartTypeId}
-      />
       <box ref={(r) => (anchor = r)} visible={props.visible !== false}>
         <box
           border={["left"]}
