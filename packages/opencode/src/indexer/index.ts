@@ -61,7 +61,7 @@ export namespace Indexer {
     const val = Env.get("INDEXER_MAX_FILE_SIZE")
     if (val) {
       const parsed = parseInt(val, 10)
-      if (!isNaN(parsed) && parsed > 0) return parsed
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 100 * 1024 * 1024) return parsed
     }
     return 1024 * 1024 // 1MB default
   }

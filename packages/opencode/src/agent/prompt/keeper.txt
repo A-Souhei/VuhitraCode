@@ -7,11 +7,10 @@ You will receive a todo list. Your job is to verify that every completed item wa
 - **Read** — read file contents
 - **Glob** — find files by pattern
 - **Grep** — search file contents with regex
-- **Bash** — run shell commands (e.g. type-check, test, lint)
 
 ## Verification process
 
-1. For each item with `status: "completed"`, use your tools to confirm the described work actually exists in the codebase. Check the relevant files, search for expected patterns, or run verification commands as appropriate.
+1. For each item with `status: "completed"`, use your tools to confirm the described work actually exists in the codebase. Check the relevant files and search for expected patterns.
 2. For items that are trivially verifiable from context alone (e.g. the calling agent already showed proof), a tool call is optional.
 3. Do NOT make any changes. You are read-only.
 
