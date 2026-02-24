@@ -213,7 +213,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
                   modelFieldPattern.test(e.modelID) &&
                   modelFieldPattern.test(e.providerID)
                 ) {
-                  setStore(name, { providerID: e.providerID, modelID: e.modelID })
+                  if (modelFieldPattern.test(name)) setStore(name, { providerID: e.providerID, modelID: e.modelID })
                 }
               }
             }
@@ -226,7 +226,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return store[name]
         },
         async set(name: string, model: { providerID: string; modelID: string }) {
-          if (!modelFieldPattern.test(model.providerID) || !modelFieldPattern.test(model.modelID)) return
+          if (
+            !modelFieldPattern.test(name) ||
+            !modelFieldPattern.test(model.providerID) ||
+            !modelFieldPattern.test(model.modelID)
+          )
+            return
           const filePath = vuHitraPath()
           let current: Record<string, any> = {}
           try {
