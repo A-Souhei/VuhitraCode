@@ -212,11 +212,24 @@ export namespace Agent {
       },
       keeper: {
         name: "keeper",
-        description: "Verifies that all todo items are genuinely completed. Called automatically by the work agent.",
+        description:
+          "Verifies that all todo items are genuinely completed. Has read-only tools and bash to verify changes. Called automatically by the work agent.",
         options: {},
-        // user overrides are applied before the explicit denials so the keeper's
-        // no-tools guarantee cannot be accidentally lifted by a permissive user config.
-        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig({ "*": "deny", task: "deny" })),
+        // user overrides are applied before the read-only restriction so a permissive
+        // user config cannot grant keepers write or edit access.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            read: "allow",
+            glob: "allow",
+            grep: "allow",
+            list: "allow",
+            bash: "allow",
+            task: "deny",
+          }),
+        ),
         prompt: PROMPT_KEEPER,
         mode: "subagent",
         native: true,

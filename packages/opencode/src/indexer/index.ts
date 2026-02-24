@@ -57,6 +57,15 @@ export namespace Indexer {
     return Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest"
   }
 
+  function maxFileSizeBytes(): number {
+    const val = Env.get("INDEXER_MAX_FILE_SIZE")
+    if (val) {
+      const parsed = parseInt(val, 10)
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    return 1024 * 1024 // 1MB default
+  }
+
   function qdrantHeaders(): Record<string, string> {
     const key = Env.get("QDRANT_API_KEY")
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -69,6 +78,34 @@ export namespace Indexer {
     hasher.update(str)
     const hex = hasher.digest("hex")
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+  }
+
+  // Concurrency limiter for parallel processing
+  async function mapParallel<T, R>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>,
+    signal?: AbortSignal,
+  ): Promise<(R | null)[]> {
+    const results: (R | null)[] = new Array(items.length)
+    let index = 0
+    const count = Math.min(concurrency, items.length)
+
+    const workers = Array.from({ length: count }, async () => {
+      while (true) {
+        const i = index++
+        if (i >= items.length) break
+        if (signal?.aborted) break
+        try {
+          results[i] = await fn(items[i])
+        } catch {
+          results[i] = null
+        }
+      }
+    })
+
+    await Promise.all(workers)
+    return results
   }
 
   async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
@@ -174,9 +211,7 @@ export namespace Indexer {
       }
       if (offset !== null) body.offset = offset
 
-      const combined = signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(60_000)])
-        : AbortSignal.timeout(60_000)
+      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
       const response = await fetch(`${url}/collections/${name}/points/scroll`, {
         method: "POST",
         headers: qdrantHeaders(),
@@ -233,7 +268,7 @@ export namespace Indexer {
     try {
       const stat = await fs.promises.stat(filePath)
       if (!stat.isFile()) return
-      if (stat.size > 1024 * 1024) return
+      if (stat.size > maxFileSizeBytes()) return
 
       if (skipIfUnchanged) {
         const indexedMtime =
@@ -249,23 +284,35 @@ export namespace Indexer {
       const chunks = chunkFile(content, filePath)
       if (chunks.length === 0) return
 
+      // Embed all chunks in parallel (using concurrency limit of 10)
+      const results = await mapParallel(
+        chunks,
+        10,
+        async (chunk) => {
+          try {
+            const vector = await embed(`File: ${filePath}\n\n${chunk.text}`, signal)
+            return {
+              id: chunk.id,
+              vector,
+              payload: {
+                file_path: filePath,
+                text: chunk.text,
+                start_line: chunk.startLine,
+                mtime: stat.mtimeMs,
+              },
+            }
+          } catch (e) {
+            log.warn("failed to embed chunk", { file: filePath, chunk: chunk.startLine, error: String(e) })
+            return null
+          }
+        },
+        signal,
+      )
+
+      const points = results.filter(Boolean) as { id: string; vector: number[]; payload: Record<string, unknown> }[]
+      if (points.length === 0) return
+
       await deleteByFilePath(filePath)
-
-      const points: { id: string; vector: number[]; payload: Record<string, unknown> }[] = []
-      for (const chunk of chunks) {
-        const vector = await embed(`File: ${filePath}\n\n${chunk.text}`, signal)
-        points.push({
-          id: chunk.id,
-          vector,
-          payload: {
-            file_path: filePath,
-            text: chunk.text,
-            start_line: chunk.startLine,
-            mtime: stat.mtimeMs,
-          },
-        })
-      }
-
       await upsertPoints(points)
     } catch (e) {
       log.warn("failed to index file", { file: filePath, error: String(e) })
@@ -296,7 +343,10 @@ export namespace Indexer {
       })
       const text = await new Response(proc.stdout as ReadableStream).text()
       await proc.exited
-      text.split("\n").filter(Boolean).forEach((rel) => ignored.add(path.resolve(worktree, rel)))
+      text
+        .split("\n")
+        .filter(Boolean)
+        .forEach((rel) => ignored.add(path.resolve(worktree, rel)))
     } catch (error) {
       log.warn("git check-ignore failed; git-ignored files may be indexed", { error: String(error) })
     }
@@ -324,7 +374,6 @@ export namespace Indexer {
 
   async function runInitialIndex() {
     const s = state()
-    await checkServices()
     await ensureCollection(s.abortController.signal)
     // index-ignore rules are loaded once at startup; edits require a restart.
     // Files matching new patterns are not automatically removed from Qdrant.
@@ -361,23 +410,21 @@ export namespace Indexer {
 
     const processBatch = async (batch: string[]): Promise<boolean> => {
       if (batch.length === 0) return true
-      let aborted = false
-      for (const file of batch) {
-        if (s.abortController.signal.aborted) { aborted = true; break }
-        await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
-        done++
-        // Throttle progress events: publish every 50 files to avoid SSE flooding
-        if (done % 50 === 0) {
-          s.status = { type: "indexing", progress: done, total }
-          Bus.publish(Event.Updated, {})
-        }
-      }
-      // Flush remaining progress only if not aborted
-      if (!aborted && done % 50 !== 0) {
-        s.status = { type: "indexing", progress: done, total }
-        Bus.publish(Event.Updated, {})
-      }
-      return !aborted
+
+      const FILE_CONCURRENCY = 10
+      await mapParallel(
+        batch,
+        FILE_CONCURRENCY,
+        async (file) => {
+          await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
+        },
+        s.abortController.signal,
+      )
+
+      done += batch.length
+      s.status = { type: "indexing", progress: done, total }
+      Bus.publish(Event.Updated, {})
+      return !s.abortController.signal.aborted
     }
 
     for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
@@ -446,9 +493,12 @@ export namespace Indexer {
   export function init() {
     if (!VuHitraSettings.indexingEnabled()) return
     const s = state()
-    s.status = { type: "indexing", progress: 0, total: 0 }
+    // Check services BEFORE setting status to "indexing" to avoid misleading UI
     Promise.resolve().then(async () => {
       try {
+        await checkServices()
+        s.status = { type: "indexing", progress: 0, total: 0 }
+        Bus.publish(Event.Updated, {})
         await runInitialIndex()
         watchForChanges()
       } catch (e) {
