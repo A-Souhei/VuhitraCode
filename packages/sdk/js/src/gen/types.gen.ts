@@ -970,6 +970,18 @@ export type KeybindsConfig = {
    * Toggle terminal title
    */
   terminal_title_toggle?: string
+  /**
+   * Toggle tips on home screen
+   */
+  tips_toggle?: string
+  /**
+   * Toggle shell mode in input
+   */
+  shell_toggle?: string
+  /**
+   * Toggle thinking blocks visibility
+   */
+  display_thinking?: string
 }
 
 export type AgentConfig = {

@@ -1384,6 +1384,10 @@ export type KeybindsConfig = {
    */
   tips_toggle?: string
   /**
+   * Toggle shell mode in input
+   */
+  shell_toggle?: string
+  /**
    * Toggle thinking blocks visibility
    */
   display_thinking?: string
