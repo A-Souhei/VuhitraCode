@@ -24,6 +24,8 @@ export namespace VuHitraSettings {
       .optional(),
     scout_model: ModelRefSchema,
     sentinel_model: ModelRefSchema,
+    agent_models: z.record(z.string(), ModelRefSchema).optional(),
+    subagent_models: z.record(z.string(), ModelRefSchema).optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -78,5 +80,27 @@ export namespace VuHitraSettings {
 
   export async function setSentinelModel(model: { providerID: string; modelID: string }) {
     await writeToDisk({ sentinel_model: model })
+  }
+
+  export function agentModel(name: string): { providerID?: string; modelID?: string } | undefined {
+    return state().agent_models?.[name]
+  }
+
+  export async function setAgentModel(name: string, model: { providerID: string; modelID: string }) {
+    const current = state().agent_models ?? {}
+    await writeToDisk({ agent_models: { ...current, [name]: model } })
+  }
+
+  export function subagentModel(name: string): { providerID?: string; modelID?: string } | undefined {
+    const override = state().subagent_models?.[name]
+    if (override) return override
+    if (name === "scout") return state().scout_model
+    if (name === "sentinel") return state().sentinel_model
+    return undefined
+  }
+
+  export async function setSubagentModel(name: string, model: { providerID: string; modelID: string }) {
+    const current = state().subagent_models ?? {}
+    await writeToDisk({ subagent_models: { ...current, [name]: model } })
   }
 }

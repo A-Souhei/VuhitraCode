@@ -191,6 +191,60 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
+    function makeAgentModelStore() {
+      const [store, setStore] = createStore<Record<string, { providerID: string; modelID: string }>>({})
+
+      function vuHitraPath() {
+        return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
+      }
+
+      const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
+
+      onMount(() => {
+        Filesystem.readJson(vuHitraPath())
+          .then((x: any) => {
+            const models = x?.agent_models
+            if (models && typeof models === "object") {
+              for (const [name, entry] of Object.entries(models)) {
+                const e = entry as any
+                if (
+                  typeof e?.modelID === "string" &&
+                  typeof e?.providerID === "string" &&
+                  modelFieldPattern.test(e.modelID) &&
+                  modelFieldPattern.test(e.providerID)
+                ) {
+                  setStore(name, { providerID: e.providerID, modelID: e.modelID })
+                }
+              }
+            }
+          })
+          .catch(() => {})
+      })
+
+      return {
+        get(name: string) {
+          return store[name]
+        },
+        async set(name: string, model: { providerID: string; modelID: string }) {
+          if (!modelFieldPattern.test(model.providerID) || !modelFieldPattern.test(model.modelID)) return
+          const filePath = vuHitraPath()
+          let current: Record<string, any> = {}
+          try {
+            current = await Filesystem.readJson(filePath)
+          } catch {}
+          await Filesystem.writeJson(filePath, {
+            ...current,
+            agent_models: {
+              ...(current.agent_models ?? {}),
+              [name]: { providerID: model.providerID, modelID: model.modelID },
+            },
+          })
+          setStore(name, { providerID: model.providerID, modelID: model.modelID })
+        },
+      }
+    }
+    const agentModels = makeAgentModelStore()
+
     const sentinelModel = makeSubagentModelStore("sentinel_model")
     const scoutModel = makeSubagentModelStore("scout_model")
 
@@ -528,6 +582,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     // Automatically update model when agent changes
     createEffect(() => {
       const value = agent.current()
+      const saved = agentModels.get(value.name)
+      if (saved?.providerID && saved?.modelID) {
+        if (isModelValid({ providerID: saved.providerID, modelID: saved.modelID }))
+          model.set({ providerID: saved.providerID, modelID: saved.modelID })
+        else
+          toast.show({
+            variant: "warning",
+            message: `Saved model ${saved.providerID}/${saved.modelID} for ${value.name} is not available`,
+            duration: 3000,
+          })
+        return
+      }
       if (value.model) {
         if (isModelValid(value.model))
           model.set({
@@ -548,6 +614,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       modelLock,
       sentinelModel,
       scoutModel,
+      agentModels,
       agent,
       mcp,
       review,
