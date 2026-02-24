@@ -1,5 +1,5 @@
 #!/bin/bash
-PKGDIR="${VUHITRACODE_DIR:-/home/toavina/Apps/opencode/packages/opencode}"
+PKGDIR="${VUHITRACODE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 if [ ! -d "$PKGDIR" ]; then echo "Error: project not found at $PKGDIR" >&2; exit 1; fi
 BUN=$(command -v bun); [ -n "$BUN" ] || { echo "Error: bun not found in PATH" >&2; exit 1; }
 exec env OPENCODE_CLI_NAME=vuhitracode "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts "$@"
