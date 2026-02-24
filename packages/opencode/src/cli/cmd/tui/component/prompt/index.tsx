@@ -35,6 +35,7 @@ import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
 import { DialogSelect } from "@tui/ui/dialog-select"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 export type PromptProps = {
   sessionID?: string
@@ -603,17 +604,9 @@ export function Prompt(props: PromptProps) {
                 value: a.name,
                 onSelect: async () => {
                   ctx.clear()
-                  const filePath = path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
-                  let existing: Record<string, any> = {}
-                  try {
-                    existing = await Filesystem.readJson(filePath)
-                  } catch {}
-                  await Filesystem.writeJson(filePath, {
-                    ...existing,
-                    subagent_models: {
-                      ...(existing.subagent_models ?? {}),
-                      [a.name]: { providerID: model.providerID, modelID: model.modelID },
-                    },
+                  await VuHitraSettings.setSubagentModel(a.name, {
+                    providerID: model.providerID,
+                    modelID: model.modelID,
                   })
                   toast.show({
                     variant: "success",

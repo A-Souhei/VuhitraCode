@@ -24,8 +24,24 @@ export namespace VuHitraSettings {
       .optional(),
     scout_model: ModelRefSchema,
     sentinel_model: ModelRefSchema,
-    agent_models: z.record(z.string(), ModelRefSchema).optional(),
-    subagent_models: z.record(z.string(), ModelRefSchema).optional(),
+    agent_models: z
+      .record(
+        z
+          .string()
+          .max(128)
+          .regex(/^[A-Za-z0-9_\-./:]+$/),
+        ModelRefSchema,
+      )
+      .optional(),
+    subagent_models: z
+      .record(
+        z
+          .string()
+          .max(128)
+          .regex(/^[A-Za-z0-9_\-./:]+$/),
+        ModelRefSchema,
+      )
+      .optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
