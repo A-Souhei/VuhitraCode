@@ -192,12 +192,15 @@ export namespace InstructionPrompt {
       current = path.dirname(current)
     }
 
-    const vuhitra = path.join(Instance.directory, ".vuhitra", "rules.md")
-    if (!already.has(vuhitra) && !isClaimed(messageID, vuhitra) && (await Filesystem.exists(vuhitra))) {
-      claim(messageID, vuhitra)
-      const content = await Filesystem.readText(vuhitra).catch(() => undefined)
-      if (content) {
-        results.push({ filepath: vuhitra, content: "Instructions from: " + vuhitra + "\n" + content })
+    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+      const vuhitra = path.join(Instance.directory, ".vuhitra", "rules.md")
+      if (!already.has(vuhitra) && !isClaimed(messageID, vuhitra) && (await Filesystem.exists(vuhitra))) {
+        claim(messageID, vuhitra)
+        const content = await Filesystem.readText(vuhitra).catch(() => undefined)
+        if (content) {
+          const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          results.push({ filepath: vuhitra, content: "Instructions from: " + vuhitra + "\n" + safe })
+        }
       }
     }
 
