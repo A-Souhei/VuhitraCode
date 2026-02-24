@@ -1,17 +1,5 @@
 #!/bin/bash
-# Development wrapper for vuhitracode
-# This script runs the CLI from the source directory
-
-# Default package directory - can be overridden via environment variable
 PKGDIR="${VUHITRACODE_DIR:-/home/toavina/Apps/opencode/packages/opencode}"
-
-# Skip passing PWD for commands that don't need it (init, help, version, etc.)
-case "${1:-}" in
-  init|help|version|completion|-h|--help|-v|--version)
-    exec bun run --cwd "$PKGDIR" --conditions=browser src/index.ts "$@"
-    ;;
-  *)
-    # Always pass current directory as first arg so the session opens in the right place
-    exec bun run --cwd "$PKGDIR" --conditions=browser src/index.ts "$PWD" "$@"
-    ;;
-esac
+if [ ! -d "$PKGDIR" ]; then echo "Error: project not found at $PKGDIR" >&2; exit 1; fi
+BUN=$(command -v bun); [ -n "$BUN" ] || { echo "Error: bun not found in PATH" >&2; exit 1; }
+exec env OPENCODE_CLI_NAME=vuhitracode "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts "$@"
