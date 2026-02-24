@@ -21,7 +21,11 @@ install-dev:
 
 install:
 	@mkdir -p ~/.local/bin
-	@sed 's|/home/toavina/Apps/opencode/packages/opencode|$(CURDIR)/packages/opencode|g' packages/opencode/bin/vuhitracode > ~/.local/bin/vuhitracode
+	@echo '#!/bin/bash' > ~/.local/bin/vuhitracode
+	@echo 'PKGDIR="$(CURDIR)/packages/opencode"' >> ~/.local/bin/vuhitracode
+	@echo 'if [ ! -d "$$PKGDIR" ]; then echo "Error: project not found at $$PKGDIR — re-run make install" >&2; exit 1; fi' >> ~/.local/bin/vuhitracode
+	@echo 'BUN=$$(command -v bun); [ -n "$$BUN" ] || { echo "Error: bun not found in PATH" >&2; exit 1; }' >> ~/.local/bin/vuhitracode
+	@echo 'exec env OPENCODE_CLI_NAME=vuhitracode "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$@"' >> ~/.local/bin/vuhitracode
 	@chmod +x ~/.local/bin/vuhitracode
 	@echo "Installed: vuhitracode → ~/.local/bin/vuhitracode"
 
