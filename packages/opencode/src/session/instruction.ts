@@ -186,7 +186,8 @@ export namespace InstructionPrompt {
         claim(messageID, found)
         const content = await Filesystem.readText(found).catch(() => undefined)
         if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
+          const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + safe })
         }
       }
       current = path.dirname(current)
