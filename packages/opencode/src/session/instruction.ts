@@ -125,7 +125,10 @@ export namespace InstructionPrompt {
 
     const files = Array.from(paths).map(async (p) => {
       const content = await Filesystem.readText(p).catch(() => "")
-      return content ? "Instructions from: " + p + "\n" + content : ""
+      const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      return safe
+        ? "Instructions from: " + p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "\n" + safe
+        : ""
     })
 
     const urls: string[] = []
@@ -140,7 +143,16 @@ export namespace InstructionPrompt {
       fetch(url, { signal: AbortSignal.timeout(5000) })
         .then((res) => (res.ok ? res.text() : ""))
         .catch(() => "")
-        .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
+        .then((x) => {
+          if (!x) return ""
+          const safe = x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          return safe
+            ? "Instructions from: " +
+                url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+                "\n" +
+                safe
+            : ""
+        }),
     )
 
     return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
@@ -187,7 +199,14 @@ export namespace InstructionPrompt {
         const content = await Filesystem.readText(found).catch(() => undefined)
         if (content) {
           const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + safe })
+          results.push({
+            filepath: found,
+            content:
+              "Instructions from: " +
+              found.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+              "\n" +
+              safe,
+          })
         }
       }
       current = path.dirname(current)
@@ -200,7 +219,14 @@ export namespace InstructionPrompt {
         const content = await Filesystem.readText(vuhitra).catch(() => undefined)
         if (content) {
           const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-          results.push({ filepath: vuhitra, content: "Instructions from: " + vuhitra + "\n" + safe })
+          results.push({
+            filepath: vuhitra,
+            content:
+              "Instructions from: " +
+              vuhitra.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+              "\n" +
+              safe,
+          })
         }
       }
     }
