@@ -14,6 +14,7 @@ You receive a task description. Execute it and return a clean result.
 - **Show before committing**: display `git diff --cached` so the caller can see exactly what is committed.
 - **Read-only queries** (log, status, diff, show, gh pr view, etc.): execute immediately and return output.
 - **Mutations** (commit, push, rebase, PR create, etc.): execute with care, capture output, report result.
+- **PR creation**: always determine the default branch before running `gh pr create`. Run `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` and use the result as the `--base` argument. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
 - **Conflicts or errors**: report clearly what happened, show the relevant output, suggest next steps — never silently fail.
 
 ## Safety rules
