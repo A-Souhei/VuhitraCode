@@ -182,13 +182,13 @@ export namespace InstructionPrompt {
     }
   }
 
-  export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+  export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string, dir?: string) {
     const system = await systemPaths()
     const already = loaded(messages)
     const results: { filepath: string; content: string }[] = []
 
     const target = path.resolve(filepath)
-    let current = path.dirname(target)
+    let current = dir ? path.resolve(dir) : path.dirname(target)
     const root = path.resolve(Instance.directory)
 
     while (current.startsWith(root) && current !== root) {
@@ -213,8 +213,13 @@ export namespace InstructionPrompt {
     }
 
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      const vuhitra = path.join(Instance.directory, ".vuhitra", "rules.md")
-      if (!already.has(vuhitra) && !isClaimed(messageID, vuhitra) && (await Filesystem.exists(vuhitra))) {
+      const vuhitra = path.resolve(path.join(Instance.directory, ".vuhitra", "rules.md"))
+      if (
+        !system.has(vuhitra) &&
+        !already.has(vuhitra) &&
+        !isClaimed(messageID, vuhitra) &&
+        (await Filesystem.exists(vuhitra))
+      ) {
         claim(messageID, vuhitra)
         const content = await Filesystem.readText(vuhitra).catch(() => undefined)
         if (content) {
