@@ -134,7 +134,14 @@ export const ReadTool = Tool.define("read", {
       const sliced = entries.slice(start, start + limit)
       const truncated = start + sliced.length < entries.length
 
-      const output = [
+      const instructions = await InstructionPrompt.resolve(
+        ctx.messages,
+        filepath,
+        ctx.messageID,
+        path.dirname(filepath),
+      )
+
+      let output = [
         `<path>${filepath}</path>`,
         `<type>directory</type>`,
         `<entries>`,
@@ -145,13 +152,17 @@ export const ReadTool = Tool.define("read", {
         `</entries>`,
       ].join("\n")
 
+      if (instructions.length > 0) {
+        output += `\n\n<system-reminder>\n${instructions.map((i) => i.content).join("\n\n")}\n</system-reminder>`
+      }
+
       return {
         title,
         output,
         metadata: {
           preview: sliced.slice(0, 20).join("\n"),
           truncated,
-          loaded: [] as string[],
+          loaded: instructions.map((i) => i.filepath),
         },
       }
     }
@@ -283,7 +294,6 @@ export const ReadTool = Tool.define("read", {
     }
   },
 })
-
 
 async function isBinaryFile(filepath: string, fileSize: number): Promise<boolean> {
   const ext = path.extname(filepath).toLowerCase()

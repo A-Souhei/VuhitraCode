@@ -46,6 +46,7 @@ export namespace InstructionPrompt {
   const state = Instance.state(() => {
     return {
       claims: new Map<string, Set<string>>(),
+      seenVuhitra: new Set<string>(),
     }
   })
 
@@ -125,7 +126,10 @@ export namespace InstructionPrompt {
 
     const files = Array.from(paths).map(async (p) => {
       const content = await Filesystem.readText(p).catch(() => "")
-      return content ? "Instructions from: " + p + "\n" + content : ""
+      const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      return safe
+        ? "Instructions from: " + p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "\n" + safe
+        : ""
     })
 
     const urls: string[] = []
@@ -140,7 +144,16 @@ export namespace InstructionPrompt {
       fetch(url, { signal: AbortSignal.timeout(5000) })
         .then((res) => (res.ok ? res.text() : ""))
         .catch(() => "")
-        .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
+        .then((x) => {
+          if (!x) return ""
+          const safe = x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          return safe
+            ? "Instructions from: " +
+                url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+                "\n" +
+                safe
+            : ""
+        }),
     )
 
     return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
@@ -170,13 +183,13 @@ export namespace InstructionPrompt {
     }
   }
 
-  export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+  export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string, dir?: string) {
     const system = await systemPaths()
     const already = loaded(messages)
     const results: { filepath: string; content: string }[] = []
 
     const target = path.resolve(filepath)
-    let current = path.dirname(target)
+    let current = dir ? path.resolve(dir) : path.dirname(target)
     const root = path.resolve(Instance.directory)
 
     while (current.startsWith(root) && current !== root) {
@@ -186,10 +199,44 @@ export namespace InstructionPrompt {
         claim(messageID, found)
         const content = await Filesystem.readText(found).catch(() => undefined)
         if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
+          const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          results.push({
+            filepath: found,
+            content:
+              "Instructions from: " +
+              found.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+              "\n" +
+              safe,
+          })
         }
       }
       current = path.dirname(current)
+    }
+
+    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+      const vuhitra = path.resolve(path.join(Instance.directory, ".vuhitra", "rules.md"))
+      if (
+        !system.has(vuhitra) &&
+        !already.has(vuhitra) &&
+        !state().seenVuhitra.has(vuhitra) &&
+        !isClaimed(messageID, vuhitra) &&
+        (await Filesystem.exists(vuhitra))
+      ) {
+        claim(messageID, vuhitra)
+        const content = await Filesystem.readText(vuhitra).catch(() => undefined)
+        if (content) {
+          const safe = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          results.push({
+            filepath: vuhitra,
+            content:
+              "Instructions from: " +
+              vuhitra.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+              "\n" +
+              safe,
+          })
+          state().seenVuhitra.add(vuhitra)
+        }
+      }
     }
 
     return results
