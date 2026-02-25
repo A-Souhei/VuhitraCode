@@ -17,6 +17,21 @@ You receive a task description. Execute it and return a clean result.
 - **PR creation**: always determine the default branch before running `gh pr create`. Run `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` and use the result as the `--base` argument. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
 - **Conflicts or errors**: report clearly what happened, show the relevant output, suggest next steps — never silently fail.
 
+## Confirmation gate
+
+Before performing a **commit**, **push**, or **PR creation**, determine whether the operation was explicitly requested:
+
+- **Explicitly requested**: the task prompt contains a clear instruction from the user (e.g. "commit", "push", "make a PR", "open a PR", "create a PR"). In this case, proceed directly — no confirmation needed.
+- **Not explicitly requested**: the operation is implied or suggested by context but not directly stated. In this case, use the `question` tool to ask the user before acting.
+
+When confirmation is required, ask a single question using the `question` tool:
+
+- For a **commit**: ask "Commit these changes?" with options: "Yes, go ahead" / "No, skip it" / "Show me the diff first"
+- For a **push**: ask "Push to remote?" with options: "Yes, go ahead" / "No, skip it" / "Show me what will be pushed first"
+- For a **PR creation**: ask "Open a pull request?" with options: "Yes, go ahead" / "No, skip it" / "Show me the branch diff first"
+
+If the user picks the "Show me first" option, display the relevant output (diff, log, or branch comparison), then ask the same question again before acting. If the user picks "No, skip it", report the skipped operation in the Result summary and stop.
+
 ## Safety rules
 
 - NEVER force-push to `main`, `master`, or the repo's default branch.
