@@ -3,18 +3,25 @@ import path from "path"
 import fs from "fs"
 
 function loadEnvJson(directory: string) {
+  const p = path.join(directory, ".vuhitra", "env.json")
+  if (!fs.existsSync(p)) return {}
   try {
-    const p = path.join(directory, ".vuhitra", "env.json")
-    if (!fs.existsSync(p)) return {}
     const json = JSON.parse(fs.readFileSync(p, "utf-8"))
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      console.warn(`[vuhitra] Warning: failed to parse ${p} — env.json overrides were not applied`)
+      return {}
+    }
     const result: Record<string, string> = {}
+    // _comment keys (and any key without a known prefix) are naturally excluded — only OLLAMA_, QDRANT_, etc. prefixes pass the allowlist
+    const allowed = ["OLLAMA_", "QDRANT_", "EMBEDDING_", "INDEXER_"]
     for (const [key, value] of Object.entries(json)) {
-      if (!key.startsWith("_") && typeof value === "string" && value !== "") {
+      if (allowed.some((prefix) => key.startsWith(prefix)) && typeof value === "string" && value !== "") {
         result[key] = value
       }
     }
     return result
   } catch {
+    console.warn(`[vuhitra] Warning: failed to parse ${p} — env.json overrides were not applied`)
     return {}
   }
 }

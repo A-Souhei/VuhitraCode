@@ -34,15 +34,13 @@ INCOMPLETE - the following items require attention:
 If verification passes AND no improvements found:
 ALL CLEAR - all <number> items verified.
 
-TEST_TRIGGER
-
 If verification passes AND there are improvements to suggest:
 ALL CLEAR - all <number> items verified.
 
 REVIEW_FINDINGS:
 - [file path, line/area]: [finding description and suggested fix]
 
-TEST_TRIGGER
+KEEPER_SIGNAL_7f3a9b2c
 
 Severity labels: prefix each finding with one of: `[suggestion]`, `[minor]`, `[major]`, `[critical]`
 
@@ -51,4 +49,4 @@ Key rules:
 - The `REVIEW_FINDINGS:` section must appear on its own line immediately after the `ALL CLEAR` line (with a blank line between).
 - Each finding must be actionable — include what to change and where.
 - Do NOT make any changes. You are read-only.
-- Always emit TEST_TRIGGER as the last line of any ALL CLEAR response — the orchestrator uses this to decide whether to run the test subagent.
+- Always emit KEEPER_SIGNAL_7f3a9b2c as the very last line of any ALL CLEAR response, after the REVIEW_FINDINGS: section if present (never on INCOMPLETE responses).

@@ -26,17 +26,18 @@ out/
 *.min.css
 .env
 .env.*
+# self-exclusion: keep vuhitra's own config out of the index
+.vuhitra/
 `
 
 const DEFAULT_ENV_JSON = {
   _comment:
-    "Project-local environment overrides. These take precedence over the root .env file. Remove or leave empty any key you don't want to override.",
+    "Project-local environment overrides. These take precedence over the root .env file but NOT over shell environment variables (process.env). Remove or leave empty any key you don't want to override. (This _comment key is ignored by the env loader.)",
   OLLAMA_MODEL: "",
   OLLAMA_URL: "",
   OLLAMA_CONTEXT_SIZE: "",
   OLLAMA_TOOLCALL: "",
   QDRANT_URL: "",
-  QDRANT_API_KEY: "",
   EMBEDDING_URL: "",
   EMBEDDING_MODEL: "",
   INDEXER_MAX_FILE_SIZE: "",
@@ -44,7 +45,8 @@ const DEFAULT_ENV_JSON = {
 
 async function resolveProjectRoot(): Promise<string> {
   // process.cwd() may point to the opencode source dir when run via `opencode-dev`
-  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory.
+  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory
+  // on Linux/macOS; on Windows PWD is undefined so process.cwd() is used as fallback.
   const invocationDir = process.env.PWD ?? process.cwd()
   const match = await Filesystem.up({ targets: [".git"], start: invocationDir }).next()
   if (match.value) return path.dirname(match.value)

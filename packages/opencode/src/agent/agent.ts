@@ -25,6 +25,7 @@ import PROMPT_INTEGRITY_TEST from "./prompt/integrity-test.txt"
 import PROMPT_UNIT_TEST from "./prompt/unit-test.txt"
 import PROMPT_REVIEW from "./prompt/review.txt"
 import PROMPT_CHORES from "./prompt/chores.txt"
+import PROMPT_QUESTION from "./prompt/question.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -170,7 +171,7 @@ export namespace Agent {
       tselatra: {
         name: "tselatra",
         description:
-          "Parallel implementation agent. Orchestrates up to 4 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -188,7 +189,7 @@ export namespace Agent {
       sentinel: {
         name: "sentinel",
         description:
-          "Worker agent for parallel TODO execution. Up to 4 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
+          "Worker agent for parallel TODO execution. Up to 7 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
         options: {},
         // user overrides are applied before the task restriction so a permissive
         // user config cannot allow sentinels to spawn arbitrary subagents beyond scouts.
@@ -471,6 +472,12 @@ export namespace Agent {
               "gh auth *": "deny",
               "gh secret *": "deny",
               "gh ssh-key *": "deny",
+              // gh api: allow read-only PR fetching only (specific sub-paths first, base PR fetch last)
+              "gh api repos/*/pulls/*/comments": "allow",
+              "gh api repos/*/pulls/*/reviews": "allow",
+              "gh api repos/*/issues/*/comments": "allow",
+              "gh api repos/*/pulls/*": "allow", // base PR object (e.g. /pulls/14)
+              "gh api *": "deny",
               "svn checkout *": "allow",
               "svn update *": "allow",
               "svn commit *": "allow",
@@ -521,6 +528,37 @@ export namespace Agent {
         prompt: PROMPT_EXPLORE,
         options: {},
         mode: "subagent",
+        native: true,
+      },
+      question: {
+        name: "question",
+        description:
+          "Read-only question-answering agent. Use this when you need to answer questions about the codebase or look up external documentation. It has read, glob, grep, list, codesearch, and webfetch access but cannot write or edit files.",
+        options: {},
+        // user overrides applied before the read-only restriction so users
+        // cannot accidentally grant question agent write access.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            task: "deny", // explicit: prevent subagent spawning (redundant with "*" but documents intent)
+            read: "allow",
+            glob: "allow",
+            grep: "allow",
+            list: "allow",
+            webfetch: "allow",
+            websearch: "ask",
+            codesearch: "allow",
+            question: "allow",
+            external_directory: {
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+            },
+          }),
+        ),
+        prompt: PROMPT_QUESTION,
+        mode: "primary",
         native: true,
       },
       compaction: {
