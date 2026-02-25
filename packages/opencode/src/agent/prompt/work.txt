@@ -46,7 +46,53 @@ After ALL items show `status: "completed"`:
    e.g.: `- Add unit tests for auth module (status: completed)`
    The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
 2. Wait for the keeper's response:
-   - If the response starts with `ALL CLEAR`, you are done. Stop.
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`), fix the issues, and repeat Phase 3 and Phase 4.
+   - If the response starts with `ALL CLEAR` and **also** contains a `REVIEW_FINDINGS:` section → proceed to Phase 4b.
+   - If the response starts with `ALL CLEAR` with NO `REVIEW_FINDINGS:` section → proceed to Phase 5.
 
 Do not declare the task complete until keeper returns `ALL CLEAR`.
+
+---
+
+## Phase 4b – Review findings (optional)
+
+Reached only when keeper returned `ALL CLEAR` with a `REVIEW_FINDINGS:` section.
+
+**Check the user's original request first:**
+- If the user explicitly said to skip reviews (e.g. "no reviews", "skip reviews", "no keeper review") → skip Phase 4b entirely and proceed to Phase 5.
+- If the user explicitly asked to fix keeper reviews (e.g. "fix keeper reviews", "auto-fix reviews", "apply keeper findings") → skip the question and go straight to fixing.
+- Otherwise: present the findings using the `question` tool — "The keeper found improvement suggestions. Would you like to apply them?" with options "Yes, fix all findings" / "No, skip". If **No**: proceed to Phase 5.
+
+To fix: track a **review round counter** starting at 1, incrementing after each fix+re-verify cycle. If the counter exceeds `REVIEW_MAX_ROUNDS` (see Agent Settings below), stop the auto-fix loop, inform the user that the round limit was reached, and proceed to Phase 5. Otherwise, work through each finding one at a time (add as new `TodoWrite` items with `status: "pending"`, set `in_progress`, fix the file, set `completed`) exactly like Phase 3. After all fixes are applied, call the Keeper again (return to Phase 4) to re-verify.
+
+Do **not** commit or invoke `chores` after applying findings — committing is the user's responsibility.
+
+---
+
+## Phase 5 – Testing
+
+Reached after keeper says `ALL CLEAR` and all review findings (if any) have been fixed or skipped.
+
+**Check the user's original request first:**
+- If the user explicitly said to skip tests (e.g. "no tests", "skip tests", "don't run tests") → skip Phase 5 entirely and declare the task complete.
+- If the user explicitly said to run tests → skip step 1 and go directly to step 2.
+- Otherwise → follow step 1.
+
+1. Ask the user via the `question` tool:
+   - Question: "Would you like to run tests on the changed files?"
+   - Options: `"Yes — integrity + unit"` / `"Yes — integrity only"` / `"Yes — unit only"` / `"No, skip"`
+   - If **No**: declare the task complete and stop.
+
+2. Determine which subagent(s) to dispatch based on user's choice (from step 1 or their original request):
+   - **Generic / unspecified / "integrity + unit"**: call `Task` with `subagent_type: "test"`. Wait for `TEST_PASS` or `TEST_FAIL`.
+   - **Integrity only**: call `Task` with `subagent_type: "integrity-test"`. If it passes (`INTEGRITY_PASS`), ask: "Integrity checks passed. Would you like to also run unit tests?" Options: `"Yes"` / `"No"`. If yes, call `Task` with `subagent_type: "unit-test"`.
+   - **Unit only**: call `Task` with `subagent_type: "unit-test"`. Wait for `TEST_PASS` or `TEST_FAIL`.
+   - **Both (explicitly specified)**: call `integrity-test` first. If it passes, call `unit-test`. If integrity fails, stop and report.
+
+   For each call, include in the prompt: the list of changed files, a summary of what was implemented, and any relevant context.
+
+3. Evaluate the final result:
+   - If all tests passed → declare the task complete and stop.
+   - If any failed → report the failure to the user and stop. Do not retry automatically.
+
+Do **not** commit or invoke `chores` after testing — committing is the user's responsibility.

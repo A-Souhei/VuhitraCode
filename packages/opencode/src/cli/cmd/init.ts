@@ -26,11 +26,27 @@ out/
 *.min.css
 .env
 .env.*
+# self-exclusion: keep vuhitra's own config out of the index
+.vuhitra/
 `
+
+const DEFAULT_ENV_JSON = {
+  _comment:
+    "Project-local environment overrides. These take precedence over the root .env file but NOT over shell environment variables (process.env). Remove or leave empty any key you don't want to override. (This _comment key is ignored by the env loader.)",
+  OLLAMA_MODEL: "",
+  OLLAMA_URL: "",
+  OLLAMA_CONTEXT_SIZE: "",
+  OLLAMA_TOOLCALL: "",
+  QDRANT_URL: "",
+  EMBEDDING_URL: "",
+  EMBEDDING_MODEL: "",
+  INDEXER_MAX_FILE_SIZE: "",
+}
 
 async function resolveProjectRoot(): Promise<string> {
   // process.cwd() may point to the opencode source dir when run via `opencode-dev`
-  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory.
+  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory
+  // on Linux/macOS; on Windows PWD is undefined so process.cwd() is used as fallback.
   const invocationDir = process.env.PWD ?? process.cwd()
   const match = await Filesystem.up({ targets: [".git"], start: invocationDir }).next()
   if (match.value) return path.dirname(match.value)
@@ -55,6 +71,7 @@ export const InitCommand = cmd({
       const vuHitraDir = path.join(root, ".vuhitra")
       const settingsPath = path.join(vuHitraDir, "settings.json")
       const indexIgnorePath = path.join(vuHitraDir, "index-ignore")
+      const envJsonPath = path.join(vuHitraDir, "env.json")
 
       if (!existsSync(vuHitraDir)) {
         await mkdir(vuHitraDir, { recursive: true })
@@ -80,6 +97,13 @@ export const InitCommand = cmd({
         prompts.log.success(".vuhitra/index-ignore")
       } else {
         prompts.log.info(".vuhitra/index-ignore already exists, skipped")
+      }
+
+      if (!existsSync(envJsonPath)) {
+        await writeFile(envJsonPath, JSON.stringify(DEFAULT_ENV_JSON, null, 2) + "\n", "utf-8")
+        prompts.log.success(".vuhitra/env.json")
+      } else {
+        prompts.log.info(".vuhitra/env.json already exists, skipped")
       }
 
       prompts.outro("Done")

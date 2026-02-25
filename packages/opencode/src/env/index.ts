@@ -2,6 +2,30 @@ import { Instance } from "../project/instance"
 import path from "path"
 import fs from "fs"
 
+function loadEnvJson(directory: string) {
+  const p = path.join(directory, ".vuhitra", "env.json")
+  if (!fs.existsSync(p)) return {}
+  try {
+    const json = JSON.parse(fs.readFileSync(p, "utf-8"))
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      console.warn(`[vuhitra] Warning: failed to parse ${p} — env.json overrides were not applied`)
+      return {}
+    }
+    const result: Record<string, string> = {}
+    // _comment keys (and any key without a known prefix) are naturally excluded — only OLLAMA_, QDRANT_, etc. prefixes pass the allowlist
+    const allowed = ["OLLAMA_", "QDRANT_", "EMBEDDING_", "INDEXER_"]
+    for (const [key, value] of Object.entries(json)) {
+      if (allowed.some((prefix) => key.startsWith(prefix)) && typeof value === "string" && value !== "") {
+        result[key] = value
+      }
+    }
+    return result
+  } catch {
+    console.warn(`[vuhitra] Warning: failed to parse ${p} — env.json overrides were not applied`)
+    return {}
+  }
+}
+
 function loadEnvFile(directory: string) {
   try {
     const envPath = path.join(directory, ".env")
@@ -39,17 +63,14 @@ function loadEnvFile(directory: string) {
 
 export namespace Env {
   const state = Instance.state(() => {
-    // Create a shallow copy to isolate environment per instance
-    // Prevents parallel tests from interfering with each other's env vars
     const base = { ...process.env } as Record<string, string | undefined>
 
-    // Load .env file from project directory (only in project context, not during testing)
-    // Instance.state already memoizes this per-directory, so no extra flag needed
     const directory = Instance.directory
     if (directory && !process.env.OPENCODE_TEST_HOME) {
       const fileEnv = loadEnvFile(directory)
-      // Merge file env into base, but process.env takes precedence
-      return { ...fileEnv, ...base }
+      const jsonEnv = loadEnvJson(directory)
+      // Precedence: process.env > jsonEnv > fileEnv
+      return { ...fileEnv, ...jsonEnv, ...base }
     }
 
     return base

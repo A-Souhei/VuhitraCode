@@ -22,21 +22,15 @@
     },
     "review": {
       "color": "error",
-      "permission": {
-        "question": "allow",
-      },
     },
     "ship": {
       "color": "accent",
-      "permission": {
-        "question": "allow",
-      },
     },
     "chores": {
       "color": "#10B981",
-      "permission": {
-        "question": "allow",
-      },
+    },
+    "question": {
+      "color": "#6366F1",
     },
   },
   "tools": {

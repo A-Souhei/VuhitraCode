@@ -43,6 +43,7 @@ export namespace VuHitraSettings {
         ModelRefSchema,
       )
       .optional(),
+    review_max_rounds: z.number().int().positive().optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -127,5 +128,13 @@ export namespace VuHitraSettings {
   export async function setSubagentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
     const current = readFromDisk(dir).subagent_models ?? {}
     await writeToDisk({ subagent_models: { ...current, [name]: model } }, dir)
+  }
+
+  export function reviewMaxRounds() {
+    return state().review_max_rounds ?? 7
+  }
+
+  export async function setReviewMaxRounds(n: number) {
+    await writeToDisk({ review_max_rounds: n })
   }
 }

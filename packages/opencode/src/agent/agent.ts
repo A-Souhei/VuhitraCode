@@ -15,13 +15,17 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
-import PROMPT_SUPER from "./prompt/super.txt"
+import PROMPT_TSELATRA from "./prompt/tselatra.txt"
+import PROMPT_MANAZAVA from "./prompt/manazava.txt"
 import PROMPT_SENTINEL from "./prompt/sentinel.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
+import PROMPT_INTEGRITY_TEST from "./prompt/integrity-test.txt"
+import PROMPT_UNIT_TEST from "./prompt/unit-test.txt"
 import PROMPT_REVIEW from "./prompt/review.txt"
 import PROMPT_CHORES from "./prompt/chores.txt"
+import PROMPT_QUESTION from "./prompt/question.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -29,6 +33,7 @@ import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Env } from "../env"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 export namespace Agent {
   export const Info = z
@@ -89,6 +94,8 @@ export namespace Agent {
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
+    const maxRounds = VuHitraSettings.reviewMaxRounds()
+    const reviewSettings = `\n\n## Agent Settings\n- REVIEW_MAX_ROUNDS: ${maxRounds}`
 
     const result: Record<string, Info> = {
       build: {
@@ -143,14 +150,31 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_WORK,
+        prompt: PROMPT_WORK + reviewSettings,
         mode: "primary",
         native: true,
       },
-      super: {
-        name: "super",
+      manazava: {
+        name: "manazava",
         description:
-          "Parallel implementation agent. Orchestrates up to 3 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Tselatra parallel orchestrator.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_MANAZAVA,
+        mode: "primary",
+        native: true,
+      },
+      tselatra: {
+        name: "tselatra",
+        description:
+          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -161,14 +185,14 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_SUPER,
+        prompt: PROMPT_TSELATRA + reviewSettings,
         mode: "primary",
         native: true,
       },
       sentinel: {
         name: "sentinel",
         description:
-          "Worker agent for parallel TODO execution. Up to 3 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
+          "Worker agent for parallel TODO execution. Up to 7 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
         options: {},
         // user overrides are applied before the task restriction so a permissive
         // user config cannot allow sentinels to spawn arbitrary subagents beyond scouts.
@@ -245,17 +269,79 @@ export namespace Agent {
       test: {
         name: "test",
         description:
-          "Creates, runs, and fixes tests for completed work. Can be selected manually or launched automatically after the work agent finishes.",
+          "ALWAYS use this when writing tests. Runs tests on changed files, finds and executes existing test suites, creates new tests if needed, and reports TEST_PASS or TEST_FAIL.",
         options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow test to spawn arbitrary subagents beyond chores.
         permission: PermissionNext.merge(
           defaults,
+          user,
           PermissionNext.fromConfig({
             question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
           }),
-          user,
         ),
         prompt: PROMPT_TEST,
-        mode: "primary",
+        mode: "subagent",
+        native: true,
+      },
+      "integrity-test": {
+        name: "integrity-test",
+        description:
+          "Subagent. Runs code integrity checks (lint, type-check, compile, build) on changed files. Does not run unit tests. Reports INTEGRITY_PASS or INTEGRITY_FAIL.",
+        options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow integrity-test to spawn arbitrary subagents beyond chores.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
+          }),
+        ),
+        prompt: PROMPT_INTEGRITY_TEST,
+        mode: "subagent",
+        native: true,
+      },
+      "unit-test": {
+        name: "unit-test",
+        description:
+          "Subagent. Runs and creates unit tests for changed files. Does not run lint or type-check. Reports TEST_PASS or TEST_FAIL.",
+        options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow unit-test to spawn arbitrary subagents beyond chores.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
+          }),
+        ),
+        prompt: PROMPT_UNIT_TEST,
+        mode: "subagent",
         native: true,
       },
       review: {
@@ -389,6 +475,12 @@ export namespace Agent {
               "gh auth *": "deny",
               "gh secret *": "deny",
               "gh ssh-key *": "deny",
+              // gh api: allow read-only PR fetching only (specific sub-paths first, base PR fetch last)
+              "gh api repos/*/pulls/*/comments": "allow",
+              "gh api repos/*/pulls/*/reviews": "allow",
+              "gh api repos/*/issues/*/comments": "allow",
+              "gh api repos/*/pulls/*": "allow", // base PR object (e.g. /pulls/14)
+              "gh api *": "deny",
               "svn checkout *": "allow",
               "svn update *": "allow",
               "svn commit *": "allow",
@@ -439,6 +531,37 @@ export namespace Agent {
         prompt: PROMPT_EXPLORE,
         options: {},
         mode: "subagent",
+        native: true,
+      },
+      question: {
+        name: "question",
+        description:
+          "Read-only question-answering agent. Use this when you need to answer questions about the codebase or look up external documentation. It has read, glob, grep, list, codesearch, and webfetch access but cannot write or edit files.",
+        options: {},
+        // user overrides applied before the read-only restriction so users
+        // cannot accidentally grant question agent write access.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            task: "deny", // explicit: prevent subagent spawning (redundant with "*" but documents intent)
+            read: "allow",
+            glob: "allow",
+            grep: "allow",
+            list: "allow",
+            webfetch: "allow",
+            websearch: "ask",
+            codesearch: "allow",
+            question: "allow",
+            external_directory: {
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+            },
+          }),
+        ),
+        prompt: PROMPT_QUESTION,
+        mode: "primary",
         native: true,
       },
       compaction: {
