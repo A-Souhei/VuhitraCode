@@ -15,11 +15,14 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
-import PROMPT_SUPER from "./prompt/super.txt"
+import PROMPT_TSELATRA from "./prompt/tselatra.txt"
+import PROMPT_MANAZAVA from "./prompt/manazava.txt"
 import PROMPT_SENTINEL from "./prompt/sentinel.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
+import PROMPT_INTEGRITY_TEST from "./prompt/integrity-test.txt"
+import PROMPT_UNIT_TEST from "./prompt/unit-test.txt"
 import PROMPT_REVIEW from "./prompt/review.txt"
 import PROMPT_CHORES from "./prompt/chores.txt"
 import { PermissionNext } from "@/permission/next"
@@ -147,10 +150,27 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
-      super: {
-        name: "super",
+      manazava: {
+        name: "manazava",
         description:
-          "Parallel implementation agent. Orchestrates up to 3 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Tselatra parallel orchestrator.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_MANAZAVA,
+        mode: "primary",
+        native: true,
+      },
+      tselatra: {
+        name: "tselatra",
+        description:
+          "Parallel implementation agent. Orchestrates up to 4 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -161,14 +181,14 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_SUPER,
+        prompt: PROMPT_TSELATRA,
         mode: "primary",
         native: true,
       },
       sentinel: {
         name: "sentinel",
         description:
-          "Worker agent for parallel TODO execution. Up to 3 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
+          "Worker agent for parallel TODO execution. Up to 4 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
         options: {},
         // user overrides are applied before the task restriction so a permissive
         // user config cannot allow sentinels to spawn arbitrary subagents beyond scouts.
@@ -245,17 +265,79 @@ export namespace Agent {
       test: {
         name: "test",
         description:
-          "Creates, runs, and fixes tests for completed work. Can be selected manually or launched automatically after the work agent finishes.",
+          "ALWAYS use this when writing tests. Runs tests on changed files, finds and executes existing test suites, creates new tests if needed, and reports TEST_PASS or TEST_FAIL.",
         options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow test to spawn arbitrary subagents beyond chores.
         permission: PermissionNext.merge(
           defaults,
+          user,
           PermissionNext.fromConfig({
             question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
           }),
-          user,
         ),
         prompt: PROMPT_TEST,
-        mode: "primary",
+        mode: "subagent",
+        native: true,
+      },
+      "integrity-test": {
+        name: "integrity-test",
+        description:
+          "Subagent. Runs code integrity checks (lint, type-check, compile, build) on changed files. Does not run unit tests. Reports INTEGRITY_PASS or INTEGRITY_FAIL.",
+        options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow integrity-test to spawn arbitrary subagents beyond chores.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
+          }),
+        ),
+        prompt: PROMPT_INTEGRITY_TEST,
+        mode: "subagent",
+        native: true,
+      },
+      "unit-test": {
+        name: "unit-test",
+        description:
+          "Subagent. Runs and creates unit tests for changed files. Does not run lint or type-check. Reports TEST_PASS or TEST_FAIL.",
+        options: {},
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow unit-test to spawn arbitrary subagents beyond chores.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            question: "allow",
+            bash: "allow",
+            edit: "allow",
+            write: "allow",
+            read: "allow",
+            task: {
+              chores: "allow",
+              "*": "deny",
+            },
+          }),
+        ),
+        prompt: PROMPT_UNIT_TEST,
+        mode: "subagent",
         native: true,
       },
       review: {
