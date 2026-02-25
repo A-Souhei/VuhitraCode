@@ -12,6 +12,7 @@ import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { Provider } from "@/provider/provider"
+import { Log } from "@/util/log"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -113,7 +114,15 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       const resolvedVuHitraModel = await (async () => {
         if (!vuHitraModel?.modelID || !vuHitraModel?.providerID) return undefined
         const validated = await Provider.getModel(vuHitraModel.providerID, vuHitraModel.modelID).catch(() => undefined)
-        return validated ? { modelID: vuHitraModel.modelID, providerID: vuHitraModel.providerID } : undefined
+        if (!validated) {
+          Log.Default.warn("task: subagent model override not found, falling back to default", {
+            subagent: params.subagent_type,
+            providerID: vuHitraModel.providerID,
+            modelID: vuHitraModel.modelID,
+          })
+          return undefined
+        }
+        return { modelID: vuHitraModel.modelID, providerID: vuHitraModel.providerID }
       })()
 
       const model = resolvedVuHitraModel ??

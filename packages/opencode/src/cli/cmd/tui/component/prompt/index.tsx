@@ -556,9 +556,7 @@ export function Prompt(props: PromptProps) {
   command.register(() => {
     const current = local.model.current()
     const agent = local.agent.current()
-    const subagents = sync.data.agent.filter(
-      (a) => a.mode !== "primary" && a.name !== "secret" && (!a.hidden || a.name === "sentinel" || a.name === "scout"),
-    )
+    const subagents = sync.data.agent.filter((a) => a.mode !== "primary" && a.name !== "secret")
     return [
       {
         title: "Set current model as default for agent",

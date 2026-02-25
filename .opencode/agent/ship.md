@@ -3,9 +3,15 @@ description: Stage, commit, push, open a PR, wait for automated review, triage c
 color: "#7C3AED"
 ---
 
-You are an automated PR shipping agent. Execute the following phases in strict order. Stop immediately if any phase fails unless otherwise noted.
+You are an automated PR shipping **orchestrator**. You do **not** run any `git` or `gh` commands yourself — all VCS operations are delegated to the `chores` subagent via `Task`. You read the text returned by each `Task` call and use it to decide what to do next.
 
-**Cross-phase variables** (carry these forward through every phase):
+**What ship does directly:** reads files, applies code fixes (Phases 7 and 9), composes commit messages and PR descriptions, and drives the overall phase logic.
+
+**What chores does:** every `git ...` and `gh ...` command.
+
+Execute the following phases in strict order. Stop immediately if any phase fails unless otherwise noted.
+
+**Cross-phase variables** (carry these forward through every phase — extract them from the text returned by chores):
 
 | Variable         | Set in  | Used in      |
 | ---------------- | ------- | ------------ |
@@ -20,47 +26,59 @@ You are an automated PR shipping agent. Execute the following phases in strict o
 
 ## Phase 1 — Branch guard
 
-```bash
-git status --short
+Delegate to chores to check working tree status:
+
+```
+Task(
+  description="Check git status",
+  prompt="Run: git status --short. Return the full output verbatim.",
+  subagent_type="chores"
+)
 ```
 
-Check for merge conflicts first (lines starting with `UU`, `AA`, `DD`, etc.). If any exist: report them and stop — do not fix them.
+Inspect the returned output for merge conflicts (lines starting with `UU`, `AA`, `DD`, etc.). If any exist: report them and stop — do not fix them.
 
-Then:
+Then delegate to chores to get the current branch and the repo's default branch:
 
-```bash
-BRANCH=$(git branch --show-current)
-DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
+```
+Task(
+  description="Get current branch and default branch",
+  prompt="Run the following two commands and return each result on a labelled line:\n1. git branch --show-current\n2. gh repo view --json defaultBranchRef -q '.defaultBranchRef.name'\nReturn output as:\nBRANCH: <value>\nDEFAULT_BRANCH: <value>",
+  subagent_type="chores"
+)
 ```
 
-- If `BRANCH` is `main`, `master`, or equals `$DEFAULT_BRANCH`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then:
-  ```bash
-  git checkout -b <new-branch-name>
-  BRANCH=$(git branch --show-current)
+Extract `BRANCH` and `DEFAULT_BRANCH` from the returned text.
+
+- If `BRANCH` is `main`, `master`, or equals `DEFAULT_BRANCH`: derive a new branch name in the form `<prefix>/<short-description>` from the staged/unstaged diff, then delegate to chores:
+
   ```
+  Task(
+    description="Create and switch to new feature branch",
+    prompt="Run: git checkout -b <new-branch-name>. Then run: git branch --show-current. Return the current branch name as:\nBRANCH: <value>",
+    subagent_type="chores"
+  )
+  ```
+
+  Update `BRANCH` from the returned text.
+
 - If already on a feature branch: continue with the current `BRANCH` value.
 
 ---
 
 ## Phase 2 — Stage and commit
 
-Inspect `git status --short` output before staging. If any suspicious files appear (e.g. `*.env`, `*secret*`, `*.key`, `.env*`): report them and stop — do not stage or commit.
+Delegate to chores to check for suspicious files, stage all changes, and show the diff — atomically in a single Task to avoid race conditions:
 
-```bash
-# Extract filename from status (skip 3-char status prefix, preserves spaces/renames)
-# Match: .env/.key/.pem files, secret/credential/password config files only
-SUSPICIOUS=$(git status --short | grep -vE '^D ' | cut -c4- | grep -E '\.(env|key|pem|p12|pfx)$|\.env[^/]*$|[^/]*(secret|credential|password)[^/]*\.(json|ya?ml|cfg|conf|ini|txt|toml)$' || true)
-if [ -n "$SUSPICIOUS" ]; then
-  echo "ERROR: Suspicious files detected — aborting:"
-  echo "$SUSPICIOUS"
-  exit 1
-fi
-git add -A
-git status --short
-git diff --cached
+```
+Task(
+  description="Check for suspicious files, stage all changes, and show cached diff",
+  prompt="Run the following commands in sequence and return all output verbatim:\n1. git status --short\nIf any file matching *.env, *secret*, *.key, .env*, *.pem, *.p12, *.pfx appears in the output, report them and stop — do not proceed to staging.\n2. git add -A\n3. git status --short\n4. git diff --cached\nReturn all output verbatim.",
+  subagent_type="chores"
+)
 ```
 
-Compose a semantic commit message. Store the prefix for reuse in Phase 10:
+Review the staged diff returned by chores. Compose a semantic commit message. Store the prefix for reuse in Phase 10:
 
 **Prefixes:** `feat:` / `fix:` / `perf:` / `docs:` / `tui:` / `core:` / `ci:` / `ignore:` / `wip:`
 
@@ -68,30 +86,53 @@ Compose a semantic commit message. Store the prefix for reuse in Phase 10:
 - Explain **WHY** from an end-user perspective, not just WHAT changed.
 - Be specific — no generic messages like "improved agent experience".
 
-```bash
-COMMIT_PREFIX="<prefix>"   # e.g. "feat"
-git commit -m "${COMMIT_PREFIX}: <message>"
+Set `COMMIT_PREFIX` to the chosen prefix (e.g. `"feat"`). Then delegate the commit to chores:
+
+```
+Task(
+  description="Commit staged changes",
+  prompt="Run: git commit -m \"<COMMIT_PREFIX>: <message>\". Return the full output verbatim.",
+  subagent_type="chores"
+)
 ```
 
 ---
 
 ## Phase 3 — Push and create PR
 
-Use `$BRANCH` and `$DEFAULT_BRANCH` from Phase 1. `$DEFAULT_BRANCH` is already resolved — do not call `gh repo view` again.
+Use `BRANCH` and `DEFAULT_BRANCH` from Phase 1. `DEFAULT_BRANCH` is already resolved — do not ask chores to call `gh repo view` again.
 
-```bash
-git push -u origin "$BRANCH"
+Delegate the push to chores:
 
-# Handle the case where a PR already exists for this branch
-PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number' 2>/dev/null)
-
-if [ -z "$PR_NUMBER" ]; then
-  PR_URL=$(gh pr create --base "$DEFAULT_BRANCH" --title "<title>" --body "<body>")
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP '(?<=/pull/)[0-9]+')
-fi
-
-echo "PR number: $PR_NUMBER"
 ```
+Task(
+  description="Push branch to origin",
+  prompt="Run: git push -u origin \"<BRANCH>\". Return the full output verbatim.",
+  subagent_type="chores"
+)
+```
+
+Delegate to chores to check whether a PR already exists for this branch:
+
+```
+Task(
+  description="Check for existing PR on branch",
+  prompt="Run: gh pr list --head \"<BRANCH>\" --json number -q '.[0].number'. Return the output as:\nPR_NUMBER: <value or empty>",
+  subagent_type="chores"
+)
+```
+
+Extract `PR_NUMBER` from the returned text. If it is empty, delegate PR creation to chores:
+
+```
+Task(
+  description="Create pull request",
+  prompt="Run: gh pr create --base \"<DEFAULT_BRANCH>\" --title \"<title>\" --body \"<body>\". Return the PR URL verbatim.",
+  subagent_type="chores"
+)
+```
+
+Parse `PR_NUMBER` from the returned PR URL (the integer after `/pull/`).
 
 If `PR_NUMBER` is still empty after both steps: print `"ERROR: failed to determine PR number"` and stop.
 
@@ -99,60 +140,79 @@ If `PR_NUMBER` is still empty after both steps: print `"ERROR: failed to determi
 
 ## Phase 4 — Poll for automated review
 
+Delegate to chores to get the repo name:
+
+```
+Task(
+  description="Get repo name with owner",
+  prompt="Run: gh repo view --json nameWithOwner -q .nameWithOwner. Return the output as:\nREPO: <value>",
+  subagent_type="chores"
+)
+```
+
+Extract `REPO` from the returned text.
+
+Then poll for the bot review. Repeat up to 20 times (waiting 30 seconds between iterations), delegating each check to chores:
+
 On each iteration, check **two** signals from the autoreviewer bot — in this order:
 
-1. **Formal review** (`/pulls/{PR_NUMBER}/reviews`): a bot entry with `state == "COMMENTED"` means the bot left inline comments → proceed to Phase 5.
-2. **Issue comment** (`/issues/{PR_NUMBER}/comments`): a comment from a bot whose body contains complete affirmative phrases such as "no issues found", "nothing to report", "did not find any", "no review comments", "looks good to me", or "no comments found" — **and lacks contradicting qualifiers** like "but", "however", "except", "although", "issue(s) with", or "problem(s)" — → the bot ran but found nothing → print `"Autoreviewer found no issues — done."` and stop.
+**Signal 1 — Formal review:**
 
-Ignore all comments from non-bot users, and also ignore comments from `github-actions[bot]` — those are CI/workflow notices, not autoreviewer signals.
-
-```bash
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-REVIEW_COUNT=0
-for i in $(seq 1 20); do
-  echo "Waiting for automated review... ($i/20)"
-
-  REVIEW_COUNT=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews 2>/dev/null \
-    | jq '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | length' 2>/dev/null || echo 0)
-  if [ "$REVIEW_COUNT" -gt 0 ]; then
-    echo "Bot review found."
-    break
-  fi
-
-  NO_ISSUE_COMMENT=$(gh api repos/${REPO}/issues/${PR_NUMBER}/comments \
-    | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .body != null) | .body] | map(ascii_downcase) | .[] | select(test("no issues found|nothing to report|did not find any|no review comments|looks good to me|no comments found") and (test("\\b(but|however|except|although)\\b|issue[s]? with|problems?") | not))' \
-    | head -1)
-  if [ -n "$NO_ISSUE_COMMENT" ]; then
-    echo "Autoreviewer found no issues — done."
-    exit 0  # terminates the agent entirely — bot ran and found nothing
-  fi
-
-  sleep 30
-done
-
-if [ "$REVIEW_COUNT" -eq 0 ]; then
-  echo "Timed out waiting for automated review — done."
-  exit 0
-fi
 ```
+Task(
+  description="Check for bot formal review",
+  prompt="Run: gh api repos/<REPO>/pulls/<PR_NUMBER>/reviews. Return the full JSON verbatim.",
+  subagent_type="chores"
+)
+```
+
+Parse the returned JSON: if any entry has `user.type == "Bot"` and `user.login != "github-actions[bot]"` and `state == "COMMENTED"` → bot left inline comments → proceed to Phase 5.
+
+**Signal 2 — Issue comment (only if Signal 1 not triggered):**
+
+```
+Task(
+  description="Check for bot no-issues comment",
+  prompt="Run: gh api repos/<REPO>/issues/<PR_NUMBER>/comments. Return the full JSON verbatim.",
+  subagent_type="chores"
+)
+```
+
+Parse the returned JSON: if any comment has `user.type == "Bot"` and `user.login != "github-actions[bot]"` and its lowercased body matches one of: "no issues found", "nothing to report", "did not find any", "no review comments", "looks good to me", "no comments found" — **and does not contain** "but", "however", "except", "although", "issue(s) with", or "problem(s)" — → print `"Autoreviewer found no issues — done."` and stop.
+
+Ignore all comments from non-bot users and from `github-actions[bot]`.
+
+If 20 iterations complete without a bot review: print `"Timed out waiting for automated review — done."` and stop.
 
 ---
 
 ## Phase 5 — Fetch comments
 
-```bash
-REVIEWS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews)
-BOT_REVIEW_ID=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .id')
+Delegate to chores to fetch all reviews:
 
-if [ -z "$BOT_REVIEW_ID" ] || [ "$BOT_REVIEW_ID" = "null" ]; then
-  echo "No bot review found — done."
-  exit 0
-fi
-
-BOT_REVIEW_BODY=$(echo "$REVIEWS" | jq -r '[.[] | select(.user.type == "Bot" and .user.login != "github-actions[bot]" and .state == "COMMENTED")] | first | .body')
-COMMENTS=$(gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews/${BOT_REVIEW_ID}/comments)
-COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
 ```
+Task(
+  description="Fetch all PR reviews",
+  prompt="Run: gh api repos/<REPO>/pulls/<PR_NUMBER>/reviews. Return the full JSON verbatim.",
+  subagent_type="chores"
+)
+```
+
+Parse the returned JSON to find the first bot review entry where `user.type == "Bot"` and `user.login != "github-actions[bot]"` and `state == "COMMENTED"`. Extract its `id` as `BOT_REVIEW_ID` and its `body` as `BOT_REVIEW_BODY`.
+
+If `BOT_REVIEW_ID` is missing or null: print `"No bot review found — done."` and stop.
+
+Delegate to chores to fetch the inline comments for that review:
+
+```
+Task(
+  description="Fetch inline comments for bot review",
+  prompt="Run: gh api repos/<REPO>/pulls/<PR_NUMBER>/reviews/<BOT_REVIEW_ID>/comments. Return the full JSON verbatim.",
+  subagent_type="chores"
+)
+```
+
+Parse the returned JSON. Store the array as `COMMENTS` and its length as `COMMENT_COUNT`.
 
 **If `COMMENT_COUNT` is 0 AND `BOT_REVIEW_BODY` is blank → print `"No review comments — done."` and STOP.**
 
@@ -160,7 +220,7 @@ COMMENT_COUNT=$(echo "$COMMENTS" | jq 'length')
 
 ## Phase 6 — Triage comments
 
-For each comment, evaluate all four criteria:
+For each comment in `COMMENTS`, evaluate all four criteria:
 
 1. **Real** — the issue is genuine, not a false positive
 2. **In scope** — the issue relates to code changed in this PR
@@ -180,7 +240,7 @@ Verdict is either **PERTINENT** or **SKIP**.
 
 ## Phase 7 — Apply fixes
 
-For each PERTINENT comment:
+For each PERTINENT comment (ship applies all fixes directly — no chores involvement here):
 
 - Read the target file and the `diff_hunk` from the comment.
 - Apply the fix.
@@ -205,23 +265,22 @@ From the `@review` output, apply only the **top two severity tiers** (typically 
 
 Skip all lower-severity findings.
 
+Ship applies all fixes directly — no chores involvement needed here.
+
 ---
 
 ## Phase 10 — Final push
 
-Use `$COMMIT_PREFIX` from Phase 2 and `$BRANCH` from Phase 1.
+Use `COMMIT_PREFIX` from Phase 2 and `BRANCH` from Phase 1.
 
-```bash
-git add -A
-git diff --cached
-git commit -m "$(cat <<EOF
-${COMMIT_PREFIX}: address automated review comments
+Compose the commit message body listing each addressed item specifically.
 
-- <item 1: what was fixed and which comment it addressed>
-- <item 2: what was fixed and which comment it addressed>
-EOF
-)"
-git push
+Delegate to chores to stage, commit, and push:
+
 ```
-
-List each addressed item specifically in the commit body.
+Task(
+  description="Stage, commit, and push review fixes",
+  prompt="Run the following commands in sequence and return all output:\n1. git add -A\n2. git diff --cached\n3. git commit -m \"<COMMIT_PREFIX>: address automated review comments\n\n- <item 1: what was fixed and which comment it addressed>\n- <item 2: what was fixed and which comment it addressed>\"\n4. git push\nReturn all output verbatim.",
+  subagent_type="chores"
+)
+```
