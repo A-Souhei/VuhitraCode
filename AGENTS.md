@@ -111,3 +111,28 @@ const table = sqliteTable("session", {
 - Avoid mocks as much as possible
 - Test actual implementation, do not duplicate logic into tests
 - Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
+
+## VCS Operations — Mandatory Delegation
+
+**NEVER run git, gh, svn, or hg commands yourself.** You do not have permission to execute VCS commands. Any attempt to run `git`, `gh`, `svn`, or `hg` will be automatically denied.
+
+Instead, ALWAYS delegate VCS work to the `chores` subagent via the Task tool:
+
+```
+Task(
+  description="<short description of VCS op>",
+  prompt="<full description of what VCS operation to perform and any relevant context>",
+  subagent_type="chores"
+)
+```
+
+This applies to ALL VCS operations without exception:
+
+- Reading state: `git status`, `git log`, `git diff`, `git show`, `gh pr view`, etc.
+- Mutations: `git add`, `git commit`, `git push`, `git pull`, `git rebase`, `git merge`, `git stash`, etc.
+- PR workflow: `gh pr create`, `gh pr merge`, `gh pr list`, etc.
+- Branching: `git branch`, `git checkout`, `git switch`, etc.
+
+The `chores` subagent is the sole authorized agent for version control. It will execute the operation and return the result to you.
+
+> **Exception**: If YOU are the `chores` subagent, you ARE authorized to run `git`, `gh`, `svn`, and `hg` commands directly. The above delegation rule applies to all OTHER agents delegating TO you — not to your own execution.
