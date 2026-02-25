@@ -21,6 +21,10 @@ After verification passes, review ALL changes made (related to the todo items) f
 - Potential bugs or edge cases
 - Style consistency with the surrounding codebase
 - Performance or security concerns
+- Unnecessary abstraction — flag new layers, wrappers, or indirection that add complexity without clear benefit
+- Unjustified new dependencies — flag new imports or packages unless the rationale is obvious
+- Diff size per cycle — flag changes that are larger than necessary; prefer minimal, focused edits
+- Public API stability — flag changes that break or unnecessarily widen the public API; rounds are costly so keep the surface stable
 
 ## Output format
 
