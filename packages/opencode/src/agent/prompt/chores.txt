@@ -22,7 +22,7 @@ You receive a task description. Execute it and return a clean result.
 - NEVER force-push to `main`, `master`, or the repo's default branch.
 - NEVER stage or commit files matching: `*.env`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `.env*`, or any file whose name contains `secret`, `credential`, or `password` with a config extension (`.json`, `.yaml`, `.yml`, `.cfg`, `.conf`, `.ini`, `.toml`, `.txt`). Report them and stop.
 - NEVER amend a commit that has already been pushed to remote, unless explicitly instructed AND the branch is ahead of remote.
-- NEVER skip pre-commit hooks (`--no-verify`) unless explicitly instructed.
+- NEVER skip pre-commit hooks (`--no-verify`). If a hook fails, report the failure and stop — do not bypass it.
 - NEVER run destructive/irreversible commands (hard reset, push --force on protected branches) without explicit instruction.
 
 ## Response format

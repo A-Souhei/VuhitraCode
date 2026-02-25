@@ -68,24 +68,12 @@ Extract `BRANCH` and `DEFAULT_BRANCH` from the returned text.
 
 ## Phase 2 — Stage and commit
 
-Delegate to chores to check for suspicious files before staging:
+Delegate to chores to check for suspicious files, stage all changes, and show the diff — atomically in a single Task to avoid race conditions:
 
 ```
 Task(
-  description="Check for suspicious files before staging",
-  prompt="Run: git status --short. Return the full output verbatim.",
-  subagent_type="chores"
-)
-```
-
-Inspect the returned output. If any suspicious files appear (e.g. `*.env`, `*secret*`, `*.key`, `.env*`): report them and stop — do not stage or commit.
-
-Delegate to chores to stage all changes and show the diff:
-
-```
-Task(
-  description="Stage all changes and show cached diff",
-  prompt="Run the following commands in sequence and return all output:\n1. git add -A\n2. git status --short\n3. git diff --cached\nReturn all output verbatim.",
+  description="Check for suspicious files, stage all changes, and show cached diff",
+  prompt="Run the following commands in sequence and return all output verbatim:\n1. git status --short\nIf any file matching *.env, *secret*, *.key, .env*, *.pem, *.p12, *.pfx appears in the output, report them and stop — do not proceed to staging.\n2. git add -A\n3. git status --short\n4. git diff --cached\nReturn all output verbatim.",
   subagent_type="chores"
 )
 ```
