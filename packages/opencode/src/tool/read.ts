@@ -134,7 +134,12 @@ export const ReadTool = Tool.define("read", {
       const sliced = entries.slice(start, start + limit)
       const truncated = start + sliced.length < entries.length
 
-      const instructions = await InstructionPrompt.resolve(ctx.messages, filepath, ctx.messageID, filepath)
+      const instructions = await InstructionPrompt.resolve(
+        ctx.messages,
+        filepath,
+        ctx.messageID,
+        path.dirname(filepath),
+      )
 
       let output = [
         `<path>${filepath}</path>`,

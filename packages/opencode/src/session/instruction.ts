@@ -46,6 +46,7 @@ export namespace InstructionPrompt {
   const state = Instance.state(() => {
     return {
       claims: new Map<string, Set<string>>(),
+      seenVuhitra: new Set<string>(),
     }
   })
 
@@ -217,6 +218,7 @@ export namespace InstructionPrompt {
       if (
         !system.has(vuhitra) &&
         !already.has(vuhitra) &&
+        !state().seenVuhitra.has(vuhitra) &&
         !isClaimed(messageID, vuhitra) &&
         (await Filesystem.exists(vuhitra))
       ) {
@@ -232,6 +234,7 @@ export namespace InstructionPrompt {
               "\n" +
               safe,
           })
+          state().seenVuhitra.add(vuhitra)
         }
       }
     }
