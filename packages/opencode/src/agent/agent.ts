@@ -21,6 +21,7 @@ import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
 import PROMPT_REVIEW from "./prompt/review.txt"
+import PROMPT_CHORES from "./prompt/chores.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -78,6 +79,13 @@ export namespace Agent {
         "*.env": "ask",
         "*.env.*": "ask",
         "*.env.example": "allow",
+      },
+      bash: {
+        "*": "allow",
+        "git *": "deny",
+        "gh *": "deny",
+        "svn *": "deny",
+        "hg *": "deny",
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
@@ -278,6 +286,35 @@ export namespace Agent {
           user,
         ),
         options: {},
+        mode: "subagent",
+        native: true,
+      },
+      chores: {
+        name: "chores",
+        description:
+          "VCS specialist. Handles ALL version control operations: git add/commit/push/pull/fetch/rebase/merge/branch/stash/tag, PR creation and management via gh, conflict resolution. Any agent that needs to run a git or gh command MUST delegate to this agent via Task.",
+        options: {},
+        // user overrides applied before the strict bash restriction so users
+        // cannot accidentally grant chores access to non-VCS operations.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: "deny",
+            bash: {
+              "*": "deny",
+              "git *": "allow",
+              "gh *": "allow",
+              "svn *": "allow",
+              "hg *": "allow",
+              "git config *": "allow",
+              "git remote *": "allow",
+              "git stash *": "allow",
+            },
+          }),
+        ),
+        prompt: PROMPT_CHORES,
         mode: "subagent",
         native: true,
       },

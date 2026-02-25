@@ -32,6 +32,12 @@
         "question": "allow",
       },
     },
+    "chores": {
+      "color": "#10B981",
+      "permission": {
+        "question": "allow",
+      },
+    },
   },
   "tools": {
     "github-triage": false,
