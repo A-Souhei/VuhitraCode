@@ -46,7 +46,12 @@ After ALL items show `status: "completed"`:
    e.g.: `- Add unit tests for auth module (status: completed)`
    The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
 2. Wait for the keeper's response:
-   - If the response starts with `ALL CLEAR`, you are done. Stop.
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`), fix the issues, and repeat Phase 3 and Phase 4.
+   - If the response starts with `ALL CLEAR` AND the response also contains a `REVIEW_FINDINGS:` section:
+     - If the user explicitly asked to fix keeper reviews (e.g. "fix keeper reviews", "auto-fix reviews", "apply keeper findings") → skip the question and go straight to fixing.
+     - Otherwise: present the findings using the `question` tool — "The keeper found improvement suggestions. Would you like to apply them?" with options "Yes, fix all findings" / "No, skip". If **No**: declare complete and stop.
+     - To fix: work through each finding one at a time (set `in_progress`, fix the file, set `completed`) exactly like Phase 3. After all fixes are applied, call the Keeper again to re-verify.
+     - Do **not** commit or invoke `chores` after applying findings — committing is the user's responsibility.
+   - If the response starts with `ALL CLEAR` with NO `REVIEW_FINDINGS:` section: you are done. Stop immediately.
 
 Do not declare the task complete until keeper returns `ALL CLEAR`.

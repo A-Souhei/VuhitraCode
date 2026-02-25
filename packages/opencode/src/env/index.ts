@@ -2,6 +2,23 @@ import { Instance } from "../project/instance"
 import path from "path"
 import fs from "fs"
 
+function loadEnvJson(directory: string) {
+  try {
+    const p = path.join(directory, ".vuhitra", "env.json")
+    if (!fs.existsSync(p)) return {}
+    const json = JSON.parse(fs.readFileSync(p, "utf-8"))
+    const result: Record<string, string> = {}
+    for (const [key, value] of Object.entries(json)) {
+      if (!key.startsWith("_") && typeof value === "string" && value !== "") {
+        result[key] = value
+      }
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
 function loadEnvFile(directory: string) {
   try {
     const envPath = path.join(directory, ".env")
@@ -39,17 +56,14 @@ function loadEnvFile(directory: string) {
 
 export namespace Env {
   const state = Instance.state(() => {
-    // Create a shallow copy to isolate environment per instance
-    // Prevents parallel tests from interfering with each other's env vars
     const base = { ...process.env } as Record<string, string | undefined>
 
-    // Load .env file from project directory (only in project context, not during testing)
-    // Instance.state already memoizes this per-directory, so no extra flag needed
     const directory = Instance.directory
     if (directory && !process.env.OPENCODE_TEST_HOME) {
       const fileEnv = loadEnvFile(directory)
-      // Merge file env into base, but process.env takes precedence
-      return { ...fileEnv, ...base }
+      const jsonEnv = loadEnvJson(directory)
+      // Precedence: process.env > jsonEnv > fileEnv
+      return { ...fileEnv, ...jsonEnv, ...base }
     }
 
     return base

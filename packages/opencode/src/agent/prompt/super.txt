@@ -62,7 +62,30 @@ After ALL items show `status: "completed"`:
    e.g.: `- Add unit tests for auth module (status: completed)`
    The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
 3. Wait for the keeper's response:
-   - If the response starts with `ALL CLEAR`, you are done. Stop.
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`) and dispatch new Sentinels to fix them — exactly as in Phase 3. Do not fix issues yourself. Then call the Keeper again to re-verify.
+   - If the response starts with `ALL CLEAR` and does **not** contain a `REVIEW_FINDINGS:` section → you are done. Stop immediately.
+   - If the response starts with `ALL CLEAR` and **also** contains a `REVIEW_FINDINGS:` section → proceed to Phase 4b below.
 
 Do not declare the task complete until keeper returns `ALL CLEAR`.
+
+---
+
+## Phase 4b – Review findings (optional)
+
+Reached only when the keeper returned `ALL CLEAR` with a `REVIEW_FINDINGS:` section. Verification passed, but the keeper has improvement suggestions.
+
+**Check the user's original request first:**
+- If the user explicitly asked to fix keeper reviews (e.g. "fix keeper reviews", "auto-fix reviews", "apply keeper findings") → skip steps 1–2 and go directly to step 3.
+- Otherwise → follow steps 1–2.
+
+1. Present the findings to the user via the `question` tool:
+   - Question: "The keeper found improvement suggestions. Would you like to apply them?"
+   - Options: `"Yes, fix all findings"` / `"No, skip"`
+
+2. If the user chooses **No, skip**: declare the task complete and stop.
+
+3. Fix all findings:
+   - Treat each finding as a new mini-task (add them via `TodoWrite` as `status: "pending"` items).
+   - Dispatch Sentinels to apply them — up to 3 at a time, following the same batch rules as Phase 3. Do not implement the fixes yourself.
+   - After all finding-tasks are completed, call the Keeper again (return to Phase 4) to re-verify.
+   - Do **not** commit or invoke `chores` after applying findings — committing is the user's responsibility.
