@@ -33,6 +33,7 @@ import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Env } from "../env"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 export namespace Agent {
   export const Info = z
@@ -93,6 +94,8 @@ export namespace Agent {
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
+    const maxRounds = VuHitraSettings.reviewMaxRounds()
+    const reviewSettings = `\n\n## Agent Settings\n- REVIEW_MAX_ROUNDS: ${maxRounds}`
 
     const result: Record<string, Info> = {
       build: {
@@ -147,7 +150,7 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_WORK,
+        prompt: PROMPT_WORK + reviewSettings,
         mode: "primary",
         native: true,
       },
@@ -182,7 +185,7 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_TSELATRA,
+        prompt: PROMPT_TSELATRA + reviewSettings,
         mode: "primary",
         native: true,
       },

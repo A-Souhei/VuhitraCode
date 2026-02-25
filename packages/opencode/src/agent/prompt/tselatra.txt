@@ -86,9 +86,11 @@ Reached only when the keeper returned `ALL CLEAR` with a `REVIEW_FINDINGS:` sect
 2. If the user chooses **No, skip**: proceed to Phase 5.
 
 3. Fix all findings:
+   - Track a **review round counter** starting at 1, incrementing after each fix+re-verify cycle.
+   - If the counter exceeds `REVIEW_MAX_ROUNDS` (see Agent Settings below), stop the auto-fix loop, inform the user that the round limit was reached, and proceed to Phase 5.
    - Treat each finding as a new mini-task (add them via `TodoWrite` as `status: "pending"` items).
-       - Dispatch Sentinels to apply them — up to 7 at a time, following the same batch rules as Phase 3. Do not implement the fixes yourself.
-   - After all finding-tasks are completed, call the Keeper again (return to Phase 4) to re-verify.
+   - Dispatch Sentinels to apply them — up to 7 at a time, following the same batch rules as Phase 3. Do not implement the fixes yourself.
+   - After all finding-tasks are completed, call `TodoRead` to get the updated list, then call the Keeper again (return to Phase 4) to re-verify.
    - Do **not** commit or invoke `chores` after applying findings — committing is the user's responsibility.
 
 ---

@@ -63,7 +63,7 @@ Reached only when keeper returned `ALL CLEAR` with a `REVIEW_FINDINGS:` section.
 - If the user explicitly asked to fix keeper reviews (e.g. "fix keeper reviews", "auto-fix reviews", "apply keeper findings") → skip the question and go straight to fixing.
 - Otherwise: present the findings using the `question` tool — "The keeper found improvement suggestions. Would you like to apply them?" with options "Yes, fix all findings" / "No, skip". If **No**: proceed to Phase 5.
 
-To fix: work through each finding one at a time (add as new `TodoWrite` items with `status: "pending"`, set `in_progress`, fix the file, set `completed`) exactly like Phase 3. After all fixes are applied, call the Keeper again (return to Phase 4) to re-verify.
+To fix: track a **review round counter** starting at 1, incrementing after each fix+re-verify cycle. If the counter exceeds `REVIEW_MAX_ROUNDS` (see Agent Settings below), stop the auto-fix loop, inform the user that the round limit was reached, and proceed to Phase 5. Otherwise, work through each finding one at a time (add as new `TodoWrite` items with `status: "pending"`, set `in_progress`, fix the file, set `completed`) exactly like Phase 3. After all fixes are applied, call the Keeper again (return to Phase 4) to re-verify.
 
 Do **not** commit or invoke `chores` after applying findings — committing is the user's responsibility.
 
