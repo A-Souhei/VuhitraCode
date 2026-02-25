@@ -349,6 +349,7 @@ export namespace Agent {
               "git reset *": "allow",
               "git push --force*": "deny",
               "git push * --force": "deny",
+              "git push --force-with-lease": "deny",
               "git push * --force-with-lease": "deny",
               "git reset --hard*": "deny",
               "git reset --soft*": "deny",
