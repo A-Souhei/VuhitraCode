@@ -34,9 +34,12 @@ You MUST follow these phases in order. Do not skip or reorder them (except as no
 
 **Skip this phase if the prompt contains `[Files: ...]`** — the calling agent has already provided the list of modified files, so no exploration is needed.
 
-Otherwise, before dispatching any reviewers, call the `explore` subagent to map the codebase and understand what needs review.
+Otherwise, before dispatching any reviewers, you may call the `explore` subagent(s) to map the codebase and understand what needs review.
+
+For large or complex codebases, you can spawn up to 3 parallel explore agents to search different areas concurrently. For smaller scopes, use a single explore agent.
+
 - Pass the user's request, the focus areas, and any scope constraints.
-- Wait for the result before proceeding.
+- Wait for the result(s) before proceeding.
 
 ---
 
