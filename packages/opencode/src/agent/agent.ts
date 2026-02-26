@@ -207,7 +207,7 @@ export namespace Agent {
           user,
         ),
         prompt: PROMPT_AUDIT + reviewSettings,
-        mode: "primary",
+        mode: "all",
         native: true,
       },
       sentinel: {
