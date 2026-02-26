@@ -548,25 +548,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })
 
-    const REVIEW_FOCUS_IDS = ["security", "performance", "logic", "style", "tests", "docs"] as const
-
-    const review = (() => {
-      const [store, setStore] = createStore<{ selected: string[] }>({ selected: [] })
-      return {
-        selected() {
-          return store.selected
-        },
-        set(areas: string[]) {
-          const valid = areas.every((a) => REVIEW_FOCUS_IDS.includes(a as (typeof REVIEW_FOCUS_IDS)[number]))
-          if (!valid) return
-          setStore("selected", areas)
-        },
-        clear() {
-          setStore("selected", [])
-        },
-      }
-    })()
-
     const mcp = {
       isEnabled(name: string) {
         const status = sync.data.mcp[name]
@@ -622,7 +603,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       agentModels,
       agent,
       mcp,
-      review,
     }
     return result
   },

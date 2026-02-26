@@ -647,14 +647,6 @@ export function Prompt(props: PromptProps) {
     const messageID = Identifier.ascending("message")
     let inputText = store.prompt.input
 
-    // Prepend review focus areas when the review agent is active
-    if (local.agent.current()?.name === "review") {
-      const focuses = local.review.selected()
-      if (focuses.length > 0) {
-        inputText = `[Review focus: ${focuses.join(", ")}]\n\n${inputText}`
-      }
-    }
-
     // Expand pasted text inline before submitting
     const allExtmarks = input.extmarks.getAllForTypeId(promptPartTypeId)
     const sortedExtmarks = allExtmarks.sort((a: { start: number }, b: { start: number }) => b.start - a.start)

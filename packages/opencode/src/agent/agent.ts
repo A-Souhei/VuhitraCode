@@ -24,7 +24,6 @@ import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
 import PROMPT_INTEGRITY_TEST from "./prompt/integrity-test.txt"
 import PROMPT_UNIT_TEST from "./prompt/unit-test.txt"
-import PROMPT_REVIEW from "./prompt/review.txt"
 import PROMPT_CHORES from "./prompt/chores.txt"
 import PROMPT_QUESTION from "./prompt/question.txt"
 import { PermissionNext } from "@/permission/next"
@@ -376,22 +375,6 @@ export namespace Agent {
         ),
         prompt: PROMPT_UNIT_TEST,
         mode: "subagent",
-        native: true,
-      },
-      review: {
-        name: "review",
-        description:
-          "Reviews completed implementation and surfaces findings by severity. Accepts optional focus areas (security, performance, logic, style, tests, docs).",
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-          }),
-          user,
-        ),
-        prompt: PROMPT_REVIEW,
-        mode: "primary",
         native: true,
       },
       general: {
