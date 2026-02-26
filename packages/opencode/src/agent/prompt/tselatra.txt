@@ -58,9 +58,9 @@ After ALL items show `status: "completed"`:
 
 1. Call `TodoRead` to get the current list.
 2. Call the `Task` tool with `subagent_type: "keeper"` and include the full todo list in the prompt. Format each item as:
-   `- [item content] (status: STATUS)`
-   e.g.: `- Add unit tests for auth module (status: completed)`
-   The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
+    `- [item content] (status: STATUS)`
+    e.g.: `- Add unit tests for auth module (status: completed)`
+   The keeper has read-only tools (Read, Glob, Grep, Task) and can delegate to the `audit` subagent via Task. The keeper will verify changes in the codebase.
 3. Wait for the keeper's response:
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`) and dispatch new Sentinels to fix them — exactly as in Phase 3. Do not fix issues yourself. Then call `TodoRead` to get the updated list, and call the Keeper again with the fresh list.
    - If the response starts with `ALL CLEAR` and does **not** contain a `REVIEW_FINDINGS:` section → proceed to Phase 5.

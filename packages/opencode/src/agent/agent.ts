@@ -294,7 +294,7 @@ export namespace Agent {
       keeper: {
         name: "keeper",
         description:
-          "Verifies that all todo items are genuinely completed. Has read-only tools (read, glob, grep) to verify changes. Called automatically by the work agent.",
+          "Verifies that all todo items are genuinely completed, then delegates code review to the audit subagent. Called automatically by the work agent.",
         options: {},
         // user overrides are applied before the read-only restriction so a permissive
         // user config cannot grant keepers write or edit access.
@@ -307,7 +307,10 @@ export namespace Agent {
             glob: "allow",
             grep: "allow",
             list: "allow",
-            task: "deny",
+            task: {
+              audit: "allow",
+              "*": "deny",
+            },
           }),
         ),
         prompt: PROMPT_KEEPER,

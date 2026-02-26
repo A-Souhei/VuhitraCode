@@ -265,6 +265,7 @@
       "version": "1.2.10",
       "bin": {
         "opencode": "./bin/opencode",
+        "vuhitracode": "./bin/vuhitracode",
       },
       "dependencies": {
         "@actions/core": "1.11.1",
