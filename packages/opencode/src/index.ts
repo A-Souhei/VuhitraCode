@@ -28,6 +28,7 @@ import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
+import { SetCommand } from "./cli/cmd/set"
 import { InitCommand } from "./cli/cmd/init"
 import path from "path"
 import { Global } from "./global"
@@ -143,6 +144,7 @@ const cli = yargs(hideBin(process.argv))
   .command(PrCommand)
   .command(SessionCommand)
   .command(DbCommand)
+  .command(SetCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

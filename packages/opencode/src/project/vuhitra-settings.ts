@@ -74,6 +74,7 @@ export namespace VuHitraSettings {
     const filePath = path.join(dir ?? Instance.directory, ".vuhitra", "settings.json")
     const current = readFromDisk(dir)
     const merged = { ...current, ...update }
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
     // Mutate the cached state in-place so reads within the same process see the new values immediately.
     // Only update the in-memory cache when operating on the canonical Instance directory.
