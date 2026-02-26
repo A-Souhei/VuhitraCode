@@ -19,7 +19,7 @@ const SetReviewMaxRoundCommand = cmd({
       }),
   async handler(args) {
     await Instance.provide({
-      directory: process.cwd(),
+      directory: process.env.PWD ?? process.cwd(),
       async fn() {
         const prev = VuHitraSettings.reviewMaxRounds()
         await VuHitraSettings.setReviewMaxRounds(args.n)
