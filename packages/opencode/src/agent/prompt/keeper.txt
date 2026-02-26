@@ -16,18 +16,35 @@ You will receive a todo list. Your job is to verify that every completed item wa
 
 ## Phase 2 — Code Review (delegated to audit)
 
-After verification passes, delegate comprehensive code review to the audit agent:
+After verification passes, perform comprehensive code review by delegating to the audit agent:
 
-1. Call the `Task` tool with `subagent_type: "audit"` and include `[Keeper mode]` in the prompt
-2. Pass the list of changed files and context about the implementation
-3. The audit agent will dispatch inspect workers to review code for quality, security, best practices, and potential improvements
-4. Wait for audit's response and collect the findings:
-   - If audit returns `AUDIT_DONE — no findings.` → no improvements suggested, proceed to output
-   - If audit returns `AUDIT_DONE — findings follow:` with `REVIEW_FINDINGS:` section → extract all findings
-5. Format findings for output:
-   - Each finding from audit should include severity prefix: `[critical]`, `[major]`, `[minor]`, or `[suggestion]`
-   - Include file path, line/area, description, and suggested fix
-   - Group by severity in output (critical → major → minor → suggestion)
+**Step 1: Prepare audit request**
+- Collect the list of files that were modified (from the completed todo items)
+- Summarize what was implemented
+- Mark this request as `[Keeper mode]` so audit operates silently
+
+**Step 2: Call audit agent**
+- Use the `Task` tool with `subagent_type: "audit"`
+- In the prompt, include:
+  - `[Keeper mode]` tag at the start
+  - Brief description of what to review
+  - List of modified files
+  - Context about the implementation
+- Wait for the audit agent to complete
+
+**Step 3: Parse audit response**
+- Audit will respond with one of:
+  - `AUDIT_DONE — no findings.` → no improvements needed
+  - `AUDIT_DONE — findings follow:` followed by `REVIEW_FINDINGS:` section → improvements found
+- Extract the `REVIEW_FINDINGS:` section if present
+- Each finding will be severity-prefixed: `[critical]`, `[major]`, `[minor]`, or `[suggestion]`
+
+**Step 4: Format and report findings**
+- If audit found no findings: continue to output with "no improvements found"
+- If audit found findings:
+  - Group them by severity (critical → major → minor → suggestion)
+  - Include file path, area, description, and suggested fix for each
+  - Report all findings to the caller (all severity levels)
 
 ## Output format
 
@@ -54,6 +71,9 @@ KEEPER_SIGNAL_7f3a9b2c
 Severity labels: prefix each finding with one of: `[suggestion]`, `[minor]`, `[major]`, `[critical]`
 
 Key rules:
+- Phase 1 verification MUST pass before proceeding to Phase 2. If any item fails verification, output INCOMPLETE and skip Phase 2 entirely.
+- Phase 2 MUST always run if Phase 1 passes. Always delegate to audit for code review — never skip it.
+- Keeper MUST wait for audit to complete and must parse the `AUDIT_DONE` signal to know when audit is finished.
 - ALL findings are reported (all severity levels), not just critical/major — the caller decides what to act on.
 - The `REVIEW_FINDINGS:` section must appear on its own line immediately after the `ALL CLEAR` line (with a blank line between).
 - Each finding must be actionable — include what to change and where.
