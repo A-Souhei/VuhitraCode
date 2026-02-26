@@ -176,7 +176,7 @@ export namespace Agent {
       tselatra: {
         name: "tselatra",
         description:
-          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification and Audit for code review.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -296,8 +296,7 @@ export namespace Agent {
       },
       keeper: {
         name: "keeper",
-        description:
-          "Verifies that all todo items are genuinely completed, then delegates code review to the audit subagent. Called automatically by the work agent.",
+        description: "Verifies that all todo items are genuinely completed. Called automatically by the work agent.",
         options: {},
         // user overrides are applied before the read-only restriction so a permissive
         // user config cannot grant keepers write or edit access.
@@ -310,11 +309,7 @@ export namespace Agent {
             glob: "allow",
             grep: "allow",
             list: "allow",
-            question: "allow",
-            task: {
-              audit: "allow",
-              "*": "deny",
-            },
+            task: "deny",
           }),
         ),
         prompt: PROMPT_KEEPER,
