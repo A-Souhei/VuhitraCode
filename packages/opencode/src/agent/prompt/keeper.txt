@@ -17,10 +17,17 @@ You will receive a todo list. Your job is to verify that every completed item wa
 ## Phase 2 — Code Review (delegated to audit)
 
 After verification passes, delegate comprehensive code review to the audit agent:
-- Call the `Task` tool with `subagent_type: "audit"` and include `[Keeper mode]` in the prompt
-- Pass the list of changed files and context about the implementation
-- The audit agent will dispatch inspect workers to review code for quality, security, best practices, and potential improvements
-- Wait for audit's response and collect the findings
+
+1. Call the `Task` tool with `subagent_type: "audit"` and include `[Keeper mode]` in the prompt
+2. Pass the list of changed files and context about the implementation
+3. The audit agent will dispatch inspect workers to review code for quality, security, best practices, and potential improvements
+4. Wait for audit's response and collect the findings:
+   - If audit returns `AUDIT_DONE — no findings.` → no improvements suggested, proceed to output
+   - If audit returns `AUDIT_DONE — findings follow:` with `REVIEW_FINDINGS:` section → extract all findings
+5. Format findings for output:
+   - Each finding from audit should include severity prefix: `[critical]`, `[major]`, `[minor]`, or `[suggestion]`
+   - Include file path, line/area, description, and suggested fix
+   - Group by severity in output (critical → major → minor → suggestion)
 
 ## Output format
 
@@ -31,10 +38,12 @@ If any item is not completed or verification fails (skip Phase 2):
 INCOMPLETE - the following items require attention:
 - [item content] (reason: brief explanation of what's missing or wrong)
 
-If verification passes AND no improvements found:
+If verification passes AND no improvements found (audit returns no findings):
 ALL CLEAR - all <number> items verified.
 
-If verification passes AND there are improvements to suggest:
+KEEPER_SIGNAL_7f3a9b2c
+
+If verification passes AND there are improvements to suggest (audit returns findings):
 ALL CLEAR - all <number> items verified.
 
 REVIEW_FINDINGS:
