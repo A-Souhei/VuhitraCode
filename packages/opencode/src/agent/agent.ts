@@ -199,7 +199,10 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             question: "allow",
-            task: "allow",
+            task: {
+              inspect: "allow",
+              "*": "deny",
+            },
           }),
           user,
         ),
