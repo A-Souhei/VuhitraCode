@@ -16,6 +16,8 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
 import PROMPT_TSELATRA from "./prompt/tselatra.txt"
+import PROMPT_AUDIT from "./prompt/audit.txt"
+import PROMPT_INSPECT from "./prompt/inspect.txt"
 import PROMPT_MANAZAVA from "./prompt/manazava.txt"
 import PROMPT_SENTINEL from "./prompt/sentinel.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
@@ -189,6 +191,22 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
+      audit: {
+        name: "audit",
+        description: `Pure code review orchestrator. Dispatches up to ${maxRounds} Inspect agents concurrently to review code for quality, security, and best practices. Never modifies files.`,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_AUDIT + reviewSettings,
+        mode: "primary",
+        native: true,
+      },
       sentinel: {
         name: "sentinel",
         description:
@@ -238,6 +256,37 @@ export namespace Agent {
           }),
         ),
         prompt: PROMPT_SCOUT,
+        mode: "subagent",
+        native: true,
+        hidden: true,
+      },
+      inspect: {
+        name: "inspect",
+        description:
+          "Read-only code review worker. Reviews an assigned scope and reports findings by severity. Spawned by the audit orchestrator.",
+        options: {},
+        // user overrides are applied before the read-only restriction so a permissive
+        // user config cannot grant inspect agents write or edit access.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            read: "allow",
+            glob: "allow",
+            grep: "allow",
+            list: "allow",
+            task: {
+              scout: "allow",
+              "*": "deny",
+            },
+            external_directory: {
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+            },
+          }),
+        ),
+        prompt: PROMPT_INSPECT,
         mode: "subagent",
         native: true,
         hidden: true,
