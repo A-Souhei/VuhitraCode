@@ -18,7 +18,6 @@ import PROMPT_WORK from "./prompt/work.txt"
 import PROMPT_ALICE from "./prompt/alice.txt"
 import PROMPT_AUDIT from "./prompt/audit.txt"
 import PROMPT_INSPECT from "./prompt/inspect.txt"
-import PROMPT_MANAZAVA from "./prompt/manazava.txt"
 import PROMPT_SENTINEL from "./prompt/sentinel.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
@@ -153,23 +152,6 @@ export namespace Agent {
           user,
         ),
         prompt: PROMPT_WORK + reviewSettings,
-        mode: "primary",
-        native: true,
-      },
-      manazava: {
-        name: "manazava",
-        description:
-          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Alice parallel orchestrator.",
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            task: "allow",
-          }),
-          user,
-        ),
-        prompt: PROMPT_MANAZAVA,
         mode: "primary",
         native: true,
       },
