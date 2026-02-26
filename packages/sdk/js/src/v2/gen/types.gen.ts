@@ -76,11 +76,22 @@ export type EventFileWatcherUpdated = {
   }
 }
 
+export type IndexerStatus =
+  | {
+      type: "disabled"
+    }
+  | {
+      type: "indexing"
+      progress: number
+      total: number
+    }
+  | {
+      type: "complete"
+    }
+
 export type EventIndexerUpdated = {
   type: "indexer.updated"
-  properties: {
-    [key: string]: unknown
-  }
+  properties: IndexerStatus
 }
 
 export type EventLspClientDiagnostics = {
@@ -2298,19 +2309,6 @@ export type FormatterStatus = {
   extensions: Array<string>
   enabled: boolean
 }
-
-export type IndexerStatus =
-  | {
-      type: "disabled"
-    }
-  | {
-      type: "indexing"
-      progress: number
-      total: number
-    }
-  | {
-      type: "complete"
-    }
 
 export type GlobalHealthData = {
   body?: never

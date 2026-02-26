@@ -26,7 +26,7 @@ export namespace Indexer {
   export type Status = z.infer<typeof Status>
 
   export const Event = {
-    Updated: BusEvent.define("indexer.updated", z.object({})),
+    Updated: BusEvent.define("indexer.updated", Status),
   }
 
   interface State {
@@ -400,7 +400,7 @@ export namespace Indexer {
     const total = allFiles.length
     // Publish total now so UI shows accurate denominator before first batch event.
     s.status = { type: "indexing", progress: 0, total }
-    Bus.publish(Event.Updated, {})
+    Bus.publish(Event.Updated, s.status)
 
     // Build ignore checker once across all files (avoids one subprocess per batch).
     const isIgnored = await buildIgnoreChecker(Instance.worktree, allFiles)
@@ -423,25 +423,25 @@ export namespace Indexer {
 
       done += batch.length
       s.status = { type: "indexing", progress: done, total }
-      Bus.publish(Event.Updated, {})
+      Bus.publish(Event.Updated, s.status)
       return !s.abortController.signal.aborted
     }
 
     for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
       if (s.abortController.signal.aborted) {
         s.status = { type: "disabled" }
-        Bus.publish(Event.Updated, {})
+        Bus.publish(Event.Updated, s.status)
         return
       }
       if (!(await processBatch(allFiles.slice(i, i + BATCH_SIZE)))) {
         s.status = { type: "disabled" }
-        Bus.publish(Event.Updated, {})
+        Bus.publish(Event.Updated, s.status)
         return
       }
     }
 
     s.status = { type: "complete" }
-    Bus.publish(Event.Updated, {})
+    Bus.publish(Event.Updated, s.status)
   }
 
   function watchForChanges() {
@@ -498,13 +498,13 @@ export namespace Indexer {
       try {
         await checkServices()
         s.status = { type: "indexing", progress: 0, total: 0 }
-        Bus.publish(Event.Updated, {})
+        Bus.publish(Event.Updated, s.status)
         await runInitialIndex()
         watchForChanges()
       } catch (e) {
         log.error("indexer failed to start", { error: String(e) })
         s.status = { type: "disabled" }
-        Bus.publish(Event.Updated, {})
+        Bus.publish(Event.Updated, s.status)
       }
     })
   }
