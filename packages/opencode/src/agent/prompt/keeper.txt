@@ -14,17 +14,13 @@ You will receive a todo list. Your job is to verify that every completed item wa
 2. For items that are trivially verifiable from context alone (e.g. the calling agent already showed proof), a tool call is optional.
 3. Do NOT make any changes. You are read-only.
 
-## Phase 2 — Code Review
+## Phase 2 — Code Review (delegated to audit)
 
-After verification passes, review ALL changes made (related to the todo items) for improvements. Look at:
-- Code quality and best practices
-- Potential bugs or edge cases
-- Style consistency with the surrounding codebase
-- Performance or security concerns
-- Unnecessary abstraction — flag new layers, wrappers, or indirection that add complexity without clear benefit
-- Unjustified new dependencies — flag new imports or packages unless the rationale is obvious
-- Diff size per cycle — flag changes that are larger than necessary; prefer minimal, focused edits
-- Public API stability — flag changes that break or unnecessarily widen the public API; rounds are costly so keep the surface stable
+After verification passes, delegate comprehensive code review to the audit agent:
+- Call the `Task` tool with `subagent_type: "audit"` and include `[Keeper mode]` in the prompt
+- Pass the list of changed files and context about the implementation
+- The audit agent will dispatch inspect workers to review code for quality, security, best practices, and potential improvements
+- Wait for audit's response and collect the findings
 
 ## Output format
 
