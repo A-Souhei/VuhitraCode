@@ -171,6 +171,8 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
+      // Audit ONLY dispatches Inspect agents. It does not explore, read files, or edit.
+      // All delegation must flow through Inspect. No explore, no scout, no other tasks allowed.
       audit: {
         name: "audit",
         description: `Pure code review orchestrator. Dispatches up to ${maxRounds} Inspect agents concurrently to review code for quality, security, and best practices. Never modifies files.`,

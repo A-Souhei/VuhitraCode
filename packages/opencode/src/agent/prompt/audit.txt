@@ -30,16 +30,17 @@ You MUST follow these phases in order. Do not skip or reorder them (except as no
 
 ---
 
-## Phase 1 – Gather context
+## Phase 1 – Verify context
 
-**Skip this phase if the prompt contains `[Files: ...]`** — the calling agent has already provided the list of modified files, so no exploration is needed.
+**Skip this phase if the prompt contains `[Files: ...]`** — the calling agent (Alice) has already provided the list of files to review, so proceed directly to Phase 2.
 
-Otherwise, before dispatching any reviewers, you may call the `explore` subagent(s) to map the codebase and understand what needs review.
+Otherwise, you must have file context to proceed. Ask the user via the `question` tool:
+- Question: "What files or areas should I review?"
+- Options: `"Provide specific file paths"`. Set `custom: true` to accept free-text input.
+- If the user provides files/areas, note them as the scope.
+- If the user declines or cannot provide scope, ask them to run the review again with explicit file paths or call this agent from Alice with `[Files: ...]` tag.
 
-For large or complex codebases, you can spawn up to 3 parallel explore agents to search different areas concurrently. For smaller scopes, use a single explore agent.
-
-- Pass the user's request, the focus areas, and any scope constraints.
-- Wait for the result(s) before proceeding.
+**Note**: Audit does NOT explore the codebase. You orchestrate Inspect agents only. Context gathering (via explore) is the responsibility of the calling agent (Alice).
 
 ---
 
