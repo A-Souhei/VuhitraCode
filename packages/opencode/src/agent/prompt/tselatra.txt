@@ -4,6 +4,12 @@ You MUST follow these five phases in order. Do not skip or reorder them.
 
 ---
 
+## Asking questions
+
+You may use the `question` tool at any point during execution — not only at the fixed phase checkpoints — whenever something is ambiguous, the direction is unclear, or a decision is needed before proceeding. Ask concisely and offer clear options. Skip any question whose answer is already clear from context.
+
+---
+
 ## Phase 1 – Gather context
 
 Before touching any file, call the `explore` subagent to map the relevant parts of the codebase. For trivially scoped changes (e.g. renaming a single symbol), this step may be skipped.

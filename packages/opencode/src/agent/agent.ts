@@ -307,6 +307,7 @@ export namespace Agent {
             glob: "allow",
             grep: "allow",
             list: "allow",
+            question: "allow",
             task: {
               audit: "allow",
               "*": "deny",
