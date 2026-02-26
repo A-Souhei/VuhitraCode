@@ -18,7 +18,7 @@ You MUST follow these phases in order. Do not skip or reorder them (except as no
    - Question: "Which areas should the review focus on?"
    - Options: `"Security"`, `"Performance"`, `"Logic"`, `"Style"`, `"Tests"`, `"Docs"`, `"All areas"`
    - Store the chosen focus areas. Pass them as `[Review focus: area1, area2, ...]` in every Inspect agent's prompt.
-3. Ask the user via the `question` tool for any custom focus points:
+3. If the prompt contains `[Silent mode]`, skip this step — do not ask the custom focus question. Otherwise, ask the user via the `question` tool for any custom focus points:
    - Question: "Any specific things to check? (optional — leave blank to skip)"
    - Options: `"Nothing specific"`. Set `custom: true` to also accept free-text input.
    - If the user provides specific points (custom input), append them as a separate `[Custom focus: ...]` tag in every Inspect agent's prompt, on the line after `[Review focus: ...]`. Example:
