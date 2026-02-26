@@ -155,9 +155,9 @@ Do not declare the task complete until keeper returns `ALL CLEAR`.
 
 ---
 
-## Phase 4b – Code review (audit)
+## Phase 4b – Code review (inline)
 
-Reached after keeper returns `ALL CLEAR`. Now run a full code review by directly calling the audit agent.
+Reached after keeper returns `ALL CLEAR`. Now run a full code review inline — dispatching Inspect agents directly, the same way Phase 3 dispatches Sentinels.
 
 **In silent mode**: check `Silent Mode Config.audit`:
 - If `audit: no` → skip Phase 4b entirely and proceed to Phase 5.
@@ -167,32 +167,54 @@ Reached after keeper returns `ALL CLEAR`. Now run a full code review by directly
 - If the user explicitly said to skip reviews (e.g. "no reviews", "skip reviews", "no audit", "skip audit") → skip Phase 4b entirely and proceed to Phase 5.
 - Otherwise → follow the steps below.
 
+### Step 1 – Focus areas
+
+**In silent mode**: use `Silent Mode Config.audit_focus` as the focus areas. Skip directly to Step 2.
+
+**In interactive mode**: ask the user via the `question` tool (allow multiple selections):
+- Question: "Which areas should the review focus on?"
+- Options: `"All areas (Recommended)"`, `"Security"`, `"Performance"`, `"Logic"`, `"Style"`, `"Tests"`, `"Docs"`
+- Store the chosen focus areas to pass as `[Review focus: ...]` in every Inspect agent's prompt.
+
+### Step 2 – Build review plan
+
 1. Collect the list of files modified during Phase 3 by scanning Sentinel completion messages for `[Modified files: ...]` tags.
-2. Call the `Task` tool with `subagent_type: "audit"`. In the prompt, include:
-   - A brief description of what was implemented
-   - The list of modified files using the `[Files: ...]` tag (so audit skips its own context-gathering phase), e.g.: `[Files: src/foo.ts, src/bar.ts]`
-   - Any relevant implementation context
-    - **In silent mode**: also include `[Review focus: <audit_focus from config>]` and `[Silent mode]` tags so audit skips all its Phase 0 questions.
-    - **In interactive mode**: do NOT include `[Silent mode]` or `[Review focus: ...]` — let audit run in Normal mode so it can ask the user focus questions and present findings interactively.
-3. Wait for the audit agent to complete. It will always emit `AUDIT_DONE` at the end:
-   - `AUDIT_DONE — no findings.` → no improvements needed; proceed to Phase 5.
-   - `AUDIT_DONE — findings follow:` followed by a `REVIEW_FINDINGS:` section → improvements found; continue to step 4.
-4. Parse the `REVIEW_FINDINGS:` section. Each finding is severity-prefixed: `[critical]`, `[major]`, `[minor]`, or `[suggestion]`.
-5. **In interactive mode only**: ask the user via the `question` tool:
-    - Question: "Based on the findings audit just presented, would you like to apply them?"
-    - Options: `"Yes, fix all findings"` / `"No, skip"`
-    - If the user explicitly asked to fix reviews (e.g. "auto-fix reviews", "apply findings") → skip this question and go directly to step 6.
-   **In silent mode**: use `Silent Mode Config.auto_fix` — if `auto_fix: no`, skip to Phase 5; if `auto_fix: yes`, proceed to step 6 automatically.
-6. If skipping: proceed to Phase 5.
-7. Fix all findings:
-   - Track a **review round counter** starting at 1, incrementing after each fix+re-verify cycle.
-   - **In silent mode**: cap at `Silent Mode Config.review_rounds` (if set to "default", use `REVIEW_MAX_ROUNDS` from Agent Settings).
-   - **In interactive mode**: cap at `REVIEW_MAX_ROUNDS` (see Agent Settings below).
-   - If the counter exceeds the cap, stop the auto-fix loop, inform the user that the round limit was reached, and proceed to Phase 5.
-   - Treat each finding as a new mini-task (add them via `TodoWrite` as `status: "pending"` items).
-   - Dispatch Sentinels to apply them — up to 7 at a time, following the same batch rules as Phase 3. Do not implement the fixes yourself.
-   - After all finding-tasks are completed, call `TodoRead` to get the updated list, then call the Keeper again (return to Phase 4) to re-verify.
-   - Do **not** commit or invoke `chores` here — that is Phase 6's responsibility.
+2. Call `TodoWrite` to add review items — one per logical area or file group — all with `status: "pending"`. Label them clearly, e.g. "Review src/auth for security issues", "Review src/api/routes for logic correctness".
+
+### Step 3 – Dispatch Inspect agents (parallel)
+
+For each batch of up to REVIEW_MAX_ROUNDS pending review items:
+
+1. **Claim the batch**: Call `TodoWrite` once to mark all batch items as `status: "in_progress"`.
+2. **Spawn Inspect agents**: For each item, call the `Task` tool with:
+   - `subagent_type: "inspect"`
+   - `prompt`: Include the full review scope, the focus areas as `[Review focus: ...]`, and all context the Inspect agent needs.
+3. **Wait** for all Inspect agents in the batch to complete.
+4. **Update todos**: Mark completed items `status: "completed"` with `assignedTo` set to the Inspect agent's `task_id`. Re-open failed items as `status: "pending"`.
+5. Repeat until all review items are done.
+
+### Step 4 – Present findings and decide
+
+1. Collect all findings from each completed Inspect agent's result.
+2. If no findings → proceed to Phase 5.
+3. Group findings by severity and present them to the user: `[critical]` → `[major]` → `[minor]` → `[suggestion]`. For each finding include file path, area, description, and suggested fix.
+4. **In interactive mode**: ask the user via the `question` tool:
+   - Question: "Would you like to fix the findings above?"
+   - Options: `"Yes — fix all"` / `"Yes — fix critical and major only"` / `"No, skip"`
+   - If the user explicitly asked to auto-fix → skip this question and go directly to Step 5.
+   **In silent mode**: use `Silent Mode Config.auto_fix` — if `auto_fix: no`, proceed to Phase 5; if `auto_fix: yes`, proceed to Step 5 automatically (fix all).
+5. If skipping: proceed to Phase 5.
+
+### Step 5 – Fix findings
+
+- Track a **review round counter** starting at 1, incrementing after each fix+re-verify cycle.
+- **In silent mode**: cap at `Silent Mode Config.review_rounds` (if set to "default", use `REVIEW_MAX_ROUNDS` from Agent Settings).
+- **In interactive mode**: cap at `REVIEW_MAX_ROUNDS` (see Agent Settings below).
+- If the counter exceeds the cap, stop the auto-fix loop, inform the user that the round limit was reached, and proceed to Phase 5.
+- Treat each finding as a new mini-task (add them via `TodoWrite` as `status: "pending"` items).
+- Dispatch Sentinels to apply them — up to 7 at a time, following the same batch rules as Phase 3. Do not implement the fixes yourself.
+- After all finding-tasks are completed, call `TodoRead` to get the updated list, then call the Keeper again (return to Phase 4) to re-verify. After Keeper returns `ALL CLEAR`, run another review round (return to Step 2 of this Phase 4b) and increment the round counter.
+- Do **not** commit or invoke `chores` here — that is Phase 6's responsibility.
 
 ---
 

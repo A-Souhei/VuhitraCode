@@ -171,8 +171,7 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
-      // Audit ONLY dispatches Inspect agents. It does not explore, read files, or edit.
-      // All delegation must flow through Inspect. No explore, no scout, no other tasks allowed.
+      // Standalone code review agent. Dispatches Inspect agents and consolidates findings.
       audit: {
         name: "audit",
         description: `Pure code review orchestrator. Dispatches up to ${maxRounds} Inspect agents concurrently to review code for quality, security, and best practices. Never modifies files.`,
@@ -181,15 +180,13 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             question: "allow",
-            task: {
-              inspect: "allow",
-              "*": "deny",
-            },
+            plan_enter: "allow",
+            task: "allow",
           }),
           user,
         ),
         prompt: PROMPT_AUDIT + reviewSettings,
-        mode: "all",
+        mode: "primary",
         native: true,
       },
       sentinel: {
