@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { createMemo, createSignal, For, Show, onMount } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useKeybind } from "../../context/keybind"
@@ -9,7 +9,6 @@ import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../component/border"
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import { useDialog } from "../../ui/dialog"
-import { notify, areNotificationsEnabled } from "../../util/sound"
 
 export function QuestionPrompt(props: { request: QuestionRequest }) {
   const sdk = useSDK()
@@ -30,16 +29,6 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
   })
 
   let textarea: TextareaRenderable | undefined
-
-  // Send notification when question is shown
-  onMount(async () => {
-    const enabled = await areNotificationsEnabled()
-    if (enabled) {
-      notify("questionPrompt").catch(() => {
-        // Silently fail - don't interrupt user experience
-      })
-    }
-  })
 
   const question = createMemo(() => questions()[store.tab])
   const confirm = createMemo(() => !single() && store.tab === questions().length)

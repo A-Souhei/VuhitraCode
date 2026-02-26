@@ -150,7 +150,7 @@ export namespace VuHitraSettings {
   }
 
   export function notificationsEnabled() {
-    return state().notifications_enabled !== false
+    return state().notifications_enabled === true
   }
 
   export async function setNotificationsEnabled(enabled: boolean) {

@@ -29,7 +29,6 @@ import { useArgs } from "./args"
 import { batch, onMount, createEffect } from "solid-js"
 import { Log } from "@/util/log"
 import type { Path } from "@opencode-ai/sdk"
-import { notify, areNotificationsEnabled } from "@tui/util/sound"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -452,27 +451,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     onMount(() => {
       bootstrap()
-
-      // Watch for session status changes and play notification sound when tasks complete
-      createEffect(async () => {
-        const statuses = store.session_status
-        if (!statuses || Object.keys(statuses).length === 0) return
-
-        // Check if notifications are enabled
-        const enabled = await areNotificationsEnabled()
-        if (!enabled) return
-
-        // Check each session status for idle transitions
-        for (const [sessionID, status] of Object.entries(statuses)) {
-          if (status?.type === "idle") {
-            // Send task complete notification
-            notify("taskComplete").catch(() => {
-              // Silently fail - don't interrupt user experience
-            })
-            break // Only notify once per sync event
-          }
-        }
-      })
     })
 
     const fullSyncedSessions = new Set<string>()
