@@ -73,8 +73,7 @@ export namespace Agent {
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
-        "*": "ask",
-        ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+        "*": "deny",
       },
       question: "deny",
       plan_enter: "deny",
@@ -208,6 +207,9 @@ export namespace Agent {
               scout: "allow",
               "*": "deny",
             },
+            external_directory: {
+              "*": "deny",
+            },
           }),
         ),
         prompt: PROMPT_SENTINEL,
@@ -266,8 +268,7 @@ export namespace Agent {
               "*": "deny",
             },
             external_directory: {
-              "*": "ask",
-              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+              "*": "deny",
             },
           }),
         ),
