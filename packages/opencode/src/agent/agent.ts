@@ -15,7 +15,7 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
-import PROMPT_TSELATRA from "./prompt/tselatra.txt"
+import PROMPT_ALICE from "./prompt/alice.txt"
 import PROMPT_AUDIT from "./prompt/audit.txt"
 import PROMPT_INSPECT from "./prompt/inspect.txt"
 import PROMPT_MANAZAVA from "./prompt/manazava.txt"
@@ -159,7 +159,7 @@ export namespace Agent {
       manazava: {
         name: "manazava",
         description:
-          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Tselatra parallel orchestrator.",
+          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Alice parallel orchestrator.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -173,8 +173,8 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
-      tselatra: {
-        name: "tselatra",
+      alice: {
+        name: "alice",
         description:
           "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification and Audit for code review.",
         options: {},
@@ -187,7 +187,7 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_TSELATRA + reviewSettings,
+        prompt: PROMPT_ALICE + reviewSettings,
         mode: "primary",
         native: true,
       },
