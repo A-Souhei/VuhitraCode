@@ -45,6 +45,7 @@ export namespace VuHitraSettings {
       .optional(),
     review_max_rounds: z.number().int().positive().optional(),
     explore_max_instances: z.number().int().positive().optional(),
+    notifications_enabled: z.boolean().optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -146,5 +147,13 @@ export namespace VuHitraSettings {
 
   export async function setExploreMaxInstances(n: number) {
     await writeToDisk({ explore_max_instances: n })
+  }
+
+  export function notificationsEnabled() {
+    return state().notifications_enabled !== false
+  }
+
+  export async function setNotificationsEnabled(enabled: boolean) {
+    await writeToDisk({ notifications_enabled: enabled })
   }
 }
