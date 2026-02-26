@@ -36,6 +36,7 @@ import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
+import { Question } from "@/question"
 import { SessionProcessor } from "./processor"
 import { TaskTool } from "@/tool/task"
 import { Tool } from "@/tool/tool"
@@ -1317,6 +1318,65 @@ export namespace SessionPrompt {
         ]
       }),
     ).then((x) => x.flat().map(assign))
+
+    // Ask for review focus areas if the agent is "review"
+    if (agent.name === "review") {
+      try {
+        const focusAreas = await Question.ask({
+          sessionID: input.sessionID,
+          questions: [
+            {
+              question: "Which areas should the review focus on?",
+              header: "Review focus areas",
+              options: [
+                { label: "Security", description: "Security vulnerabilities and best practices" },
+                { label: "Performance", description: "Performance optimization and efficiency" },
+                { label: "Logic", description: "Logic correctness and edge cases" },
+                { label: "Style", description: "Code style and readability" },
+                { label: "Tests", description: "Test coverage and quality" },
+                { label: "Docs", description: "Documentation and comments" },
+                { label: "All areas", description: "Review all aspects comprehensively" },
+              ],
+              multiple: true,
+            },
+            {
+              question: "Any specific things to check? (optional — leave blank to skip)",
+              header: "Custom focus points",
+              options: [{ label: "Nothing specific", description: "No specific areas to highlight" }],
+              custom: true,
+            },
+          ],
+        })
+
+        // If "All areas" is selected, remove specific areas to avoid contradiction
+        const normalizedFocusAreas = focusAreas[0].includes("All areas")
+          ? ["All areas"]
+          : focusAreas[0].filter((area) => area !== "All areas")
+
+        // Prepend focus areas to the first text part
+        if (focusAreas.length > 0 && focusAreas[0].length > 0) {
+          const textPart = parts.find((p) => p.type === "text" && !p.synthetic)
+          if (textPart && textPart.type === "text") {
+            const focusTag = `[Review focus: ${normalizedFocusAreas.join(", ")}]`
+            const customFocus =
+              focusAreas[1]?.length > 0 && focusAreas[1][0] !== "Nothing specific" ? focusAreas[1][0] : undefined
+
+            if (customFocus) {
+              textPart.text = `${focusTag}\n[Custom focus: ${customFocus}]\n\n${textPart.text}`
+            } else {
+              textPart.text = `${focusTag}\n\n${textPart.text}`
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof Question.RejectedError) {
+          // User dismissed the question, continue without focus areas
+          log.info("review focus question dismissed")
+        } else {
+          log.error("failed to ask review focus questions", { error })
+        }
+      }
+    }
 
     await Plugin.trigger(
       "chat.message",
