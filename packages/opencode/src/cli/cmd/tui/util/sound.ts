@@ -1,97 +1,65 @@
 import { execSync } from "child_process"
-import path from "path"
-import fs from "fs"
-
-const AUDIO_DIR = path.join(__dirname, "../../../../../../../packages/ui/src/assets/audio")
-
-// Sound presets for different occasions
-export const SOUNDS = {
-  taskComplete: "alert-01.aac", // Task completion notification
-  questionPrompt: "bip-bop-01.aac", // Question requires user input
-} as const
-
-type SoundType = keyof typeof SOUNDS
 
 /**
- * Detect the current platform and return appropriate audio playback command
+ * Notification messages for different events
+ */
+export const NOTIFICATIONS = {
+  taskComplete: {
+    title: "Task Complete",
+    message: "Your OpenCode task has finished",
+    urgency: "normal",
+  },
+  questionPrompt: {
+    title: "Question Required",
+    message: "OpenCode is waiting for your input",
+    urgency: "critical",
+  },
+} as const
+
+type NotificationType = keyof typeof NOTIFICATIONS
+
+/**
+ * Detect the current platform
  */
 function getPlatform(): "darwin" | "linux" | "win32" | "unknown" {
   return (process.platform as "darwin" | "linux" | "win32") || "unknown"
 }
 
 /**
- * Build platform-specific command to play audio file
+ * Send notification using platform-specific method
  */
-function getPlayCommand(filePath: string): { cmd: string; args: string[] } | null {
-  const platform = getPlatform()
-
-  if (platform === "darwin") {
-    // macOS: use afplay
-    return { cmd: "afplay", args: [filePath] }
-  }
-
-  if (platform === "linux") {
-    // Linux: try paplay first, then ffplay
-    try {
-      execSync("which paplay", { stdio: "ignore" })
-      return { cmd: "paplay", args: [filePath] }
-    } catch {
-      try {
-        execSync("which ffplay", { stdio: "ignore" })
-        return { cmd: "ffplay", args: ["-nodisp", "-autoexit", filePath] }
-      } catch {
-        // Fallback: try aplay
-        return { cmd: "aplay", args: [filePath] }
-      }
-    }
-  }
-
-  if (platform === "win32") {
-    // Windows: use PowerShell to play audio
-    const escaped = filePath.replace(/\\/g, "\\\\")
-    return {
-      cmd: "powershell",
-      args: ["-Command", `(New-Object System.Media.SoundPlayer '${escaped}').PlaySync()`],
-    }
-  }
-
-  return null
-}
-
-/**
- * Play a sound asynchronously with fallback to ASCII bell
- */
-export async function playSound(type: SoundType = "taskComplete"): Promise<void> {
+export async function notify(type: NotificationType = "taskComplete"): Promise<void> {
   try {
-    const soundFile = SOUNDS[type]
-    const filePath = path.join(AUDIO_DIR, soundFile)
+    const notification = NOTIFICATIONS[type]
+    const platform = getPlatform()
 
-    // Verify file exists
-    if (!fs.existsSync(filePath)) {
-      // Fallback: just emit ASCII bell
-      process.stdout.write("\x07")
-      return
-    }
-
-    const playCmd = getPlayCommand(filePath)
-    if (!playCmd) {
-      // Fallback: just emit ASCII bell
-      process.stdout.write("\x07")
-      return
-    }
-
-    // Use Bun to spawn and wait for completion (with timeout to prevent hanging)
-    const proc = Bun.spawn([playCmd.cmd, ...playCmd.args], {
-      stdio: ["ignore", "ignore", "ignore"],
-    })
-
-    // Wait for completion with 5 second timeout
-    const timeout = setTimeout(() => proc.kill(), 5000)
-
-    try {
-      await proc.exited
-    } finally {
-      clearTimeout(timeout)
+    if (platform === "linux") {
+      // Ubuntu/Linux: use notify-send
+      try {
+        await sendNotifyCommand(notification.title, notification.message, notification.urgency as any)
+        return
+      } catch {
+        // Fallback to bell
+        process.stdout.write("\x07")
+      }
+    } else if (platform === "darwin") {
+      // macOS: use osascript
+      try {
+        await sendMacNotification(notification.title, notification.message)
+        return
+      } catch {
+        // Fallback to bell
+        process.stdout.write("\x07")
+      }
+    } else if (platform === "win32") {
+      // Windows: use PowerShell
+      try {
+        await sendWindowsNotification(notification.title, notification.message)
+        return
+      } catch {
+        // Fallback to bell
+        process.stdout.write("\x07")
+      }
     }
   } catch {
     // Silently fail - don't interrupt the user experience
@@ -101,6 +69,111 @@ export async function playSound(type: SoundType = "taskComplete"): Promise<void>
       // Even bell failed, just continue
     }
   }
+}
+
+/**
+ * Send notification using notify-send on Linux/Ubuntu
+ */
+async function sendNotifyCommand(
+  title: string,
+  message: string,
+  urgency: "low" | "normal" | "critical",
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const proc = Bun.spawn(["notify-send", "-u", urgency, title, message], {
+        stdio: ["ignore", "ignore", "ignore"],
+      })
+
+      const timeout = setTimeout(() => proc.kill(), 5000)
+      proc.exited
+        .then(() => {
+          clearTimeout(timeout)
+          resolve()
+        })
+        .catch((e) => {
+          clearTimeout(timeout)
+          reject(e)
+        })
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+/**
+ * Send notification using osascript on macOS
+ */
+async function sendMacNotification(title: string, message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const script = `display notification "${message.replace(/"/g, '\\"')}" with title "${title.replace(/"/g, '\\"')}"`
+      const proc = Bun.spawn(["osascript", "-e", script], {
+        stdio: ["ignore", "ignore", "ignore"],
+      })
+
+      const timeout = setTimeout(() => proc.kill(), 5000)
+      proc.exited
+        .then(() => {
+          clearTimeout(timeout)
+          resolve()
+        })
+        .catch((e) => {
+          clearTimeout(timeout)
+          reject(e)
+        })
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+/**
+ * Send notification using PowerShell on Windows
+ */
+async function sendWindowsNotification(title: string, message: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const script = `
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null
+
+$APP_ID = 'OpenCode'
+$template = @"
+<toast>
+    <visual>
+        <binding template="ToastText02">
+            <text id="1">${title}</text>
+            <text id="2">${message}</text>
+        </binding>
+    </visual>
+</toast>
+"@
+
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($APP_ID).Show($toast)
+`
+      const proc = Bun.spawn(["powershell", "-NoProfile", "-Command", script], {
+        stdio: ["ignore", "ignore", "ignore"],
+      })
+
+      const timeout = setTimeout(() => proc.kill(), 5000)
+      proc.exited
+        .then(() => {
+          clearTimeout(timeout)
+          resolve()
+        })
+        .catch((e) => {
+          clearTimeout(timeout)
+          reject(e)
+        })
+    } catch (e) {
+      reject(e)
+    }
+  })
 }
 
 /**

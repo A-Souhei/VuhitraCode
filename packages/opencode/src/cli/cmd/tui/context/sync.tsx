@@ -29,7 +29,7 @@ import { useArgs } from "./args"
 import { batch, onMount, createEffect } from "solid-js"
 import { Log } from "@/util/log"
 import type { Path } from "@opencode-ai/sdk"
-import { playSound, areNotificationsEnabled } from "@tui/util/sound"
+import { notify, areNotificationsEnabled } from "@tui/util/sound"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -465,11 +465,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // Check each session status for idle transitions
         for (const [sessionID, status] of Object.entries(statuses)) {
           if (status?.type === "idle") {
-            // Play task complete sound
-            playSound("taskComplete").catch(() => {
+            // Send task complete notification
+            notify("taskComplete").catch(() => {
               // Silently fail - don't interrupt user experience
             })
-            break // Only play once per sync event
+            break // Only notify once per sync event
           }
         }
       })

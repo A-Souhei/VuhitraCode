@@ -9,7 +9,7 @@ import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../component/border"
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import { useDialog } from "../../ui/dialog"
-import { playSound, areNotificationsEnabled } from "../../util/sound"
+import { notify, areNotificationsEnabled } from "../../util/sound"
 
 export function QuestionPrompt(props: { request: QuestionRequest }) {
   const sdk = useSDK()
@@ -31,11 +31,11 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
 
   let textarea: TextareaRenderable | undefined
 
-  // Play notification sound when question is shown
+  // Send notification when question is shown
   onMount(async () => {
     const enabled = await areNotificationsEnabled()
     if (enabled) {
-      playSound("questionPrompt").catch(() => {
+      notify("questionPrompt").catch(() => {
         // Silently fail - don't interrupt user experience
       })
     }
