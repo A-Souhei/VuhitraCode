@@ -90,10 +90,8 @@ export const ReadTool = Tool.define("read", {
         // No model set: apply faking as defense-in-depth
         shouldFake = true
       } else {
-        // Secret agent: apply faking for defense-in-depth (unless OLLAMA_MODEL is set)
-        if (!ollamaModel) {
-          shouldFake = true
-        }
+        // Secret agent: always apply faking for defense-in-depth
+        shouldFake = true
       }
     }
 
