@@ -1,0 +1,120 @@
+---
+title: Audit
+description: Specialized code review agent for detecting issues across security, performance, logic, style, tests, and documentation
+---
+
+import { Card, Columns } from "@mintlify/components"
+
+Audit is a specialized code review agent with read-only access that analyzes code for quality, security, and best practices. It provides detailed findings grouped by severity and integrates seamlessly with Alice for automated review workflows.
+
+## Overview
+
+Audit excels at:
+
+- **Security review** - Detect vulnerabilities and unsafe patterns
+- **Performance analysis** - Identify bottlenecks and inefficiencies
+- **Logic correctness** - Verify business logic and edge cases
+- **Code style** - Enforce consistency and best practices
+- **Test coverage** - Identify untested code paths
+- **Documentation** - Check for missing or incorrect docs
+
+## Review Workflow
+
+Audit is typically invoked by Alice during Phase 4b (Code Review):
+
+1. **Focus areas** - Specify which areas to review (security, performance, logic, style, tests, docs)
+2. **Scope** - Audit receives list of modified files and context
+3. **Analysis** - Audit reviews code and generates findings
+4. **Reporting** - Findings grouped by severity: `[critical]` → `[major]` → `[minor]` → `[suggestion]`
+5. **Integration** - Alice displays findings and optionally auto-fixes via Sentinels
+
+## Findings & Severity
+
+<Columns>
+  <Column>**Critical** - Security vulnerabilities - Data loss risks - Crashes or undefined behavior</Column>
+  <Column>**Major** - Performance regressions - Incorrect logic - Missing error handling</Column>
+  <Column>**Minor** - Code style violations - Suboptimal patterns - Incomplete documentation</Column>
+  <Column>**Suggestion** - Best practice improvements - Refactoring opportunities - Enhancement ideas</Column>
+</Columns>
+
+## Focus Areas
+
+When running a code review, specify which focus areas Audit should prioritize:
+
+- **All areas** (recommended) - Comprehensive review across all dimensions
+- **Security** - Vulnerabilities, auth, data handling
+- **Performance** - Speed, memory, algorithms
+- **Logic** - Correctness, edge cases, business rules
+- **Style** - Consistency, readability, conventions
+- **Tests** - Coverage, edge cases, mocking
+- **Docs** - Comments, docstrings, README
+
+## Using Audit with Alice
+
+Alice automatically invokes Audit during code review phases. Configuration examples:
+
+### Silent Mode Configuration
+
+```json
+{
+  "audit": "yes",
+  "audit_focus": ["Security", "Performance", "Logic"],
+  "auto_fix": "yes",
+  "review_rounds": 3
+}
+```
+
+### Interactive Mode
+
+Alice prompts you for:
+
+- Whether to run code review
+- Which focus areas to prioritize
+- Whether to auto-fix findings
+- Maximum review-and-fix rounds
+
+## Auto-Fix Workflow
+
+When auto-fix is enabled, Alice:
+
+1. **Collects findings** from Audit
+2. **Dispatches Sentinels** to apply fixes (up to 7 in parallel)
+3. **Re-verifies** with Keeper agent
+4. **Re-reviews** with Audit (next round)
+5. **Repeats** until all critical/major findings are fixed or round limit reached
+
+**Review round limit**: Default is 7 rounds (configurable via `REVIEW_MAX_ROUNDS`)
+
+## Example Review Session
+
+<Card>
+  User requests: "Implement user auth module with full review" Alice Phase 4b (Code Review): 1. Asks focus areas → User
+  selects Security, Logic, Tests 2. Dispatches Audit on modified auth files 3. Audit finds: 1 critical (SQL injection
+  risk), 2 major (missing error handling), 3 minor (style) 4. Displays findings to user 5. User confirms auto-fix 6.
+  Alice dispatches Sentinels to fix critical and major issues 7. Alice re-verifies with Keeper 8. Alice re-runs Audit
+  (round 2) 9. No critical/major findings remain → Phase 5 (Testing)
+</Card>
+
+## Best Practices
+
+<Card icon="shield" title="Prioritize Security">
+  Always include Security in focus areas for user-facing code, authentication, or data handling.
+</Card>
+
+<Card icon="zap" title="Focus by Context">
+  For performance-sensitive code, prioritize Performance. For critical business logic, prioritize Logic.
+</Card>
+
+<Card icon="rotate-cw" title="Allow Multiple Rounds">
+  Enable auto-fix with 2-3 rounds to iteratively improve code quality.
+</Card>
+
+<Card icon="eye" title="Review Findings">
+  Even with auto-fix, review findings before final commit to ensure fixes align with intent.
+</Card>
+
+## Configuration Reference
+
+Audit is configured via the Pass Over system. No additional configuration is needed — just enable code review in Alice.
+
+See [Pass Over](/features#pass-over) for advanced configuration options.
