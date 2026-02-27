@@ -42,9 +42,9 @@ Rules:
 After ALL items show `status: "completed"`:
 
 1. Call the `Task` tool with `subagent_type: "keeper"` and include the full todo list in the prompt. Format each item as:
-   `- [item content] (status: STATUS)`
-   e.g.: `- Add unit tests for auth module (status: completed)`
-   The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
+    `- [item content] (status: STATUS)`
+    e.g.: `- Add unit tests for auth module (status: completed)`
+    The keeper has read-only tools (Read, Glob, Grep) and will verify changes in the codebase.
 2. Wait for the keeper's response:
    - If the response starts with `INCOMPLETE`, re-open each listed item (set back to `pending`), fix the issues, and repeat Phase 3 and Phase 4.
    - If the response starts with `ALL CLEAR` and **also** contains a `REVIEW_FINDINGS:` section → proceed to Phase 4b.
@@ -57,6 +57,8 @@ Do not declare the task complete until keeper returns `ALL CLEAR`.
 ## Phase 4b – Review findings (optional)
 
 Reached only when keeper returned `ALL CLEAR` with a `REVIEW_FINDINGS:` section.
+
+**Note:** The Work agent does not use an audit phase. If you are looking for the audit/inspect flow, see the **Alice** agent.
 
 **Check the user's original request first:**
 - If the user explicitly said to skip reviews (e.g. "no reviews", "skip reviews", "no keeper review") → skip Phase 4b entirely and proceed to Phase 5.

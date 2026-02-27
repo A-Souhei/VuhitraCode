@@ -1,0 +1,172 @@
+---
+title: Alice
+description: Primary orchestrator agent for planning, delegating, and verifying work
+---
+
+import { Card, Columns } from "@mintlify/components"
+
+Alice is a pure orchestrator agent that plans, delegates, and verifies work without implementing anything itself. She dispatches up to 7 Sentinel workers to execute independent tasks concurrently and verifies completion before declaring done.
+
+## Overview
+
+Alice excels at:
+
+- **Planning** - Breaking down complex tasks into atomic, independently verifiable items
+- **Delegating** - Spawning up to 7 parallel Sentinel workers to execute tasks
+- **Orchestrating** - Managing dependencies and coordinating work across multiple agents
+- **Verifying** - Using Keeper agents to validate work completion before proceeding
+
+Alice follows a strict 6-phase workflow (with Phase 4b as a sub-phase) ensuring structured execution:
+
+1. **Phase 0** - Silent mode intake (optional preferences)
+2. **Phase 1** - Gather context via explore agents
+3. **Phase 2** - Create TODO list
+4. **Phase 3** - Execute in parallel (up to 7 Sentinels)
+5. **Phase 4** - Keeper verification
+6. **Phase 4b** - Code review (inline with Inspect agents)
+7. **Phase 5** - Testing
+8. **Phase 6** - Commit and push
+
+## Silent Mode
+
+Alice can run in two modes:
+
+<Columns>
+  <Column>
+    **Interactive Mode** (default) - Alice asks at each decision point - User controls workflow preferences - Best for
+    exploratory or custom workflows
+  </Column>
+  <Column>
+    **Silent Mode** - Collect all preferences upfront - Alice runs remaining phases without interruption - Ideal for
+    automated or scripted workflows
+  </Column>
+</Columns>
+
+### Silent Mode Configuration
+
+In silent mode, Alice collects preferences for:
+
+- **Time limit** - Maximum execution time before stopping
+- **Audit** - Whether to run code review
+- **Audit focus areas** - Security, Performance, Logic, Style, Tests, Docs
+- **Auto-fix findings** - Apply audit findings automatically
+- **Review rounds** - Max iterations for fix/re-verify cycles
+- **Tests** - Integrity+Unit, Integrity only, Unit only, or skip
+- **Commit** - No commit, current branch, or new branch
+- **Push** - Whether to push to remote after commit
+
+## Parallel Execution
+
+Alice leverages parallel processing throughout:
+
+- **Up to 3 parallel explores** for codebase mapping
+- **Up to 7 parallel Sentinels** for task execution
+- **Up to 7 parallel Inspect agents** for code review
+- **Up to 3 concurrent test agents** for verification
+
+This enables Alice to handle large, complex projects efficiently.
+
+## Phase-by-Phase Workflow
+
+### Phase 0: Silent Mode Intake
+
+Alice optionally asks if you want to run in silent mode. If yes, she collects all preferences upfront. If no, she proceeds to interactive mode.
+
+### Phase 1: Gather Context
+
+Before touching files, Alice may call explore subagents to map relevant code areas. For trivially scoped changes, this step is skipped.
+
+- Single explore for focused changes
+- Up to 3 explores for broad changes
+
+### Phase 2: Create TODO List
+
+Alice creates a complete, ordered TODO list with atomic items before any implementation begins.
+
+### Phase 3: Execute (Parallel)
+
+Alice spawns up to 7 Sentinels to execute independent TODO items in parallel:
+
+1. Mark batch items as `in_progress`
+2. Spawn Sentinels with full context
+3. Wait for all to complete
+4. Mark completed items
+5. Repeat with next batch
+
+**Critical rule**: Alice never implements tasks herself — every item is delegated to a Sentinel.
+
+### Phase 4: Keeper Verification
+
+After all items complete, Alice calls a Keeper agent to verify the work:
+
+- If incomplete: re-open items and dispatch new Sentinels
+- If `ALL CLEAR`: proceed to Phase 4b
+
+### Phase 4b: Code Review (Inline)
+
+In silent mode: check `audit` config; if `no`, skip to Phase 5; if `yes`, run inline review.
+
+In interactive mode: ask the user about review.
+
+If reviewing:
+
+1. Determine focus areas (security, performance, logic, style, tests, docs)
+2. Build review plan for modified files
+3. Dispatch Inspect agents (up to 7 in parallel)
+4. Collect findings and present to user
+5. If auto-fixing: dispatch Sentinels to apply findings, then re-verify with Keeper
+6. Track review rounds (cap at `REVIEW_MAX_ROUNDS`)
+
+### Phase 5: Testing
+
+Based on preferences, run:
+
+- **Integrity + Unit** - Full verification (recommended)
+- **Integrity only** - Lint, type-check, build
+- **Unit only** - Unit tests only
+- **Skip** - No testing
+
+### Phase 6: Commit and Push
+
+Based on preferences:
+
+- **No commit** - Stop here
+- **Current branch** - Commit all changes on current branch
+- **New branch** - Create new branch and commit
+- After commit: optionally push to remote
+
+## Usage Example
+
+```bash
+# Alice with interactive mode (asks at each step)
+alice "implement user authentication module with tests and code review"
+
+# Alice with silent mode (all preferences collected upfront)
+# After selecting "Yes - collect preferences now", provide all settings
+# Alice runs all phases without interruption
+```
+
+## Best Practices
+
+<Card icon="lightbulb" title="Break Down Complex Work">
+  Alice thrives with large, complex tasks. She'll break them into atomic items, delegate to specialists, verify
+  completion, and track progress.
+</Card>
+
+<Card icon="users" title="Leverage Parallel Execution">
+  Provide independent tasks so Alice can dispatch multiple workers. Dependent tasks will queue automatically.
+</Card>
+
+<Card icon="check" title="Trust Verification">
+  Let Alice run full verification cycles (Keeper + Review + Tests). This ensures high-quality work.
+</Card>
+
+<Card icon="settings" title="Use Silent Mode for Automation">
+  For repeated workflows or CI/CD integration, use silent mode with predefined preferences.
+</Card>
+
+## Configuration
+
+Alice respects the Pass Over configuration system for bidirectional delegation and can work with Audit agents for automated code review.
+
+See [Pass Over](/features#pass-over) for advanced agent coordination workflows.

@@ -14,6 +14,7 @@ import { Collapsible } from "./collapsible"
 import { DiffChanges } from "./diff-changes"
 import { Icon } from "./icon"
 import { TextShimmer } from "./text-shimmer"
+import { Spinner } from "./spinner"
 import { createAutoScroll } from "../hooks"
 import { useI18n } from "../context/i18n"
 
@@ -96,6 +97,25 @@ function partState(part: PartType, showReasoningSummaries: boolean) {
   }
   if (PART_MAPPING[part.type]) return "visible" as const
   return
+}
+
+function getActiveInspectAgents(parts: PartType[]) {
+  return parts
+    .filter((part): part is PartType & { type: "tool"; state: Record<string, unknown> } => {
+      if (part.type !== "tool" || part.tool !== "task") return false
+      if (!record(part.state)) return false
+      if (part.state.status !== "running") return false
+      const input = part.state.input as Record<string, unknown> | undefined
+      return input?.subagent_type === "inspect"
+    })
+    .map((part) => {
+      const input = part.state.input as Record<string, unknown> | undefined
+      return {
+        taskId: part.id,
+        description: typeof input?.description === "string" ? input.description : "",
+        status: part.state.status as string,
+      }
+    })
 }
 
 function clean(value: string) {
@@ -335,6 +355,8 @@ export function SessionTurn(
     return true
   })
 
+  const activeInspectAgents = createMemo(() => getActiveInspectAgents(parts()))
+
   const autoScroll = createAutoScroll({
     working,
     onUserInteracted: props.onUserInteracted,
@@ -379,6 +401,18 @@ export function SessionTurn(
                     <Show when={!showReasoningSummaries() && reasoningHeading()}>
                       {(text) => <span data-slot="session-turn-thinking-heading">{text()}</span>}
                     </Show>
+                  </div>
+                </Show>
+                <Show when={activeInspectAgents().length > 0 && showThinking()}>
+                  <div data-slot="session-turn-inspecting">
+                    <For each={activeInspectAgents()}>
+                      {(agent) => (
+                        <div data-slot="session-turn-inspecting-line">
+                          <Spinner class="inspect-spinner" />
+                          <span data-slot="session-turn-inspecting-text">{agent.description}</span>
+                        </div>
+                      )}
+                    </For>
                   </div>
                 </Show>
                 <Show when={edited() > 0 && !working()}>

@@ -15,15 +15,15 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
 import PROMPT_WORK from "./prompt/work.txt"
-import PROMPT_TSELATRA from "./prompt/tselatra.txt"
-import PROMPT_MANAZAVA from "./prompt/manazava.txt"
+import PROMPT_ALICE from "./prompt/alice.txt"
+import PROMPT_AUDIT from "./prompt/audit.txt"
+import PROMPT_INSPECT from "./prompt/inspect.txt"
 import PROMPT_SENTINEL from "./prompt/sentinel.txt"
 import PROMPT_SCOUT from "./prompt/scout.txt"
 import PROMPT_KEEPER from "./prompt/keeper.txt"
 import PROMPT_TEST from "./prompt/test.txt"
 import PROMPT_INTEGRITY_TEST from "./prompt/integrity-test.txt"
 import PROMPT_UNIT_TEST from "./prompt/unit-test.txt"
-import PROMPT_REVIEW from "./prompt/review.txt"
 import PROMPT_CHORES from "./prompt/chores.txt"
 import PROMPT_QUESTION from "./prompt/question.txt"
 import { PermissionNext } from "@/permission/next"
@@ -67,13 +67,11 @@ export namespace Agent {
     const cfg = await Config.get()
 
     const skillDirs = await Skill.dirs()
-    const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
-        "*": "ask",
-        ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+        "*": "deny",
       },
       question: "deny",
       plan_enter: "deny",
@@ -154,27 +152,10 @@ export namespace Agent {
         mode: "primary",
         native: true,
       },
-      manazava: {
-        name: "manazava",
+      alice: {
+        name: "alice",
         description:
-          "Intake agent. Interviews the user about reviews, testing, commit, push, and PR preferences, then delegates the full task to the Tselatra parallel orchestrator.",
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-            task: "allow",
-          }),
-          user,
-        ),
-        prompt: PROMPT_MANAZAVA,
-        mode: "primary",
-        native: true,
-      },
-      tselatra: {
-        name: "tselatra",
-        description:
-          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification.",
+          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification and Audit for code review.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -185,7 +166,25 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_TSELATRA + reviewSettings,
+        prompt: PROMPT_ALICE + reviewSettings,
+        mode: "primary",
+        native: true,
+      },
+      // Standalone code review agent. Dispatches Inspect agents and consolidates findings.
+      audit: {
+        name: "audit",
+        description: `Pure code review orchestrator. Dispatches up to ${maxRounds} Inspect agents concurrently to review code for quality, security, and best practices. Never modifies files.`,
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            plan_enter: "allow",
+            task: "allow",
+          }),
+          user,
+        ),
+        prompt: PROMPT_AUDIT + reviewSettings,
         mode: "primary",
         native: true,
       },
@@ -203,6 +202,9 @@ export namespace Agent {
             question: "allow",
             task: {
               scout: "allow",
+              "*": "deny",
+            },
+            external_directory: {
               "*": "deny",
             },
           }),
@@ -233,7 +235,6 @@ export namespace Agent {
             codesearch: "ask",
             external_directory: {
               "*": "ask",
-              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
             },
           }),
         ),
@@ -242,10 +243,39 @@ export namespace Agent {
         native: true,
         hidden: true,
       },
+      inspect: {
+        name: "inspect",
+        description:
+          "Read-only code review worker. Reviews an assigned scope and reports findings by severity. Spawned by the audit orchestrator.",
+        options: {},
+        // user overrides are applied before the read-only restriction so a permissive
+        // user config cannot grant inspect agents write or edit access.
+        permission: PermissionNext.merge(
+          defaults,
+          user,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            read: "allow",
+            glob: "allow",
+            grep: "allow",
+            list: "allow",
+            task: {
+              scout: "allow",
+              "*": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+            },
+          }),
+        ),
+        prompt: PROMPT_INSPECT,
+        mode: "subagent",
+        native: true,
+        hidden: true,
+      },
       keeper: {
         name: "keeper",
-        description:
-          "Verifies that all todo items are genuinely completed. Has read-only tools (read, glob, grep) to verify changes. Called automatically by the work agent.",
+        description: "Verifies that all todo items are genuinely completed. Called automatically by the work agent.",
         options: {},
         // user overrides are applied before the read-only restriction so a permissive
         // user config cannot grant keepers write or edit access.
@@ -342,22 +372,6 @@ export namespace Agent {
         ),
         prompt: PROMPT_UNIT_TEST,
         mode: "subagent",
-        native: true,
-      },
-      review: {
-        name: "review",
-        description:
-          "Reviews completed implementation and surfaces findings by severity. Accepts optional focus areas (security, performance, logic, style, tests, docs).",
-        options: {},
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            question: "allow",
-          }),
-          user,
-        ),
-        prompt: PROMPT_REVIEW,
-        mode: "primary",
         native: true,
       },
       general: {
@@ -522,7 +536,6 @@ export namespace Agent {
             read: "allow",
             external_directory: {
               "*": "ask",
-              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
             },
           }),
           user,
@@ -556,7 +569,6 @@ export namespace Agent {
             question: "allow",
             external_directory: {
               "*": "ask",
-              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
             },
           }),
         ),

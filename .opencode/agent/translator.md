@@ -316,9 +316,9 @@ opencode
 opencode [project]
 opencode /path/to/project
 opencode acp
-opencode agent [command]
-opencode agent create
-opencode agent list
+vuhitracode agent [command]
+vuhitracode agent create
+vuhitracode agent list
 opencode attach [url]
 opencode attach http://10.20.30.40:4096
 opencode attach http://localhost:4096

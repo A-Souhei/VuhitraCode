@@ -8,7 +8,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
-import { type ImageAttachmentPart, type Prompt, usePrompt } from "@/context/prompt"
+import { type ImageAttachmentPart, type Prompt, type PassOverPart, usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { Identifier } from "@/utils/id"
@@ -21,7 +21,43 @@ type PendingPrompt = {
   cleanup: VoidFunction
 }
 
+export type PassOverEvent = {
+  type: "pass_over_request"
+  from: string
+  to: string
+  auto_confirm: boolean
+}
+
+export type PassOverConfirmEvent = {
+  type: "confirm_pass_over"
+  messageID: string
+  confirmed: boolean
+}
+
 const pending = new Map<string, PendingPrompt>()
+const passOverListeners: Set<(event: PassOverEvent) => void> = new Set()
+const passOverConfirmListeners: Map<string, (confirmed: boolean) => void> = new Map()
+
+export function emitPassOverRequest(event: PassOverEvent) {
+  for (const listener of passOverListeners) {
+    listener(event)
+  }
+}
+
+export function onPassOverRequest(callback: (event: PassOverEvent) => void) {
+  passOverListeners.add(callback)
+  return () => {
+    passOverListeners.delete(callback)
+  }
+}
+
+export function resolvePassOverConfirm(messageID: string, confirmed: boolean) {
+  const listener = passOverConfirmListeners.get(messageID)
+  if (listener) {
+    listener(confirmed)
+    passOverConfirmListeners.delete(messageID)
+  }
+}
 
 type PromptSubmitInput = {
   info: Accessor<{ id: string } | undefined>
@@ -303,12 +339,82 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       sessionDirectory,
     })
 
+    const passOverParts = currentPrompt.filter((part) => part.type === "pass_over") as PassOverPart[]
+    const targetAgent = passOverParts.length > 0 ? passOverParts[0].agent_name : null
+
+    let agentName = agent
+
+    const handlePassOver = async (targetAgentName: string) => {
+      // Validate target agent name format
+      if (!targetAgentName || typeof targetAgentName !== "string") {
+        showToast({
+          title: language.t("prompt.toast.promptSendFailed.title"),
+          description: "Invalid agent name",
+        })
+        return false
+      }
+
+      // Get fresh agent list to avoid stale cache
+      const agents = sync.data.agent || []
+      const availableAgents = agents.filter((x) => x?.mode !== "subagent" && !x?.hidden)
+
+      // Validate that agent exists
+      const targetAgentData = availableAgents.find((x) => x?.name === targetAgentName)
+      if (!targetAgentData) {
+        showToast({
+          title: language.t("prompt.toast.promptSendFailed.title"),
+          description: `Agent '${targetAgentName}' does not exist or is not available`,
+        })
+        return false
+      }
+
+      // Validate agent has required properties
+      if (!targetAgentData.name || typeof targetAgentData.name !== "string") {
+        showToast({
+          title: language.t("prompt.toast.promptSendFailed.title"),
+          description: `Agent configuration is invalid`,
+        })
+        return false
+      }
+
+      // Verify agent wasn't removed after finding it
+      const verifyCachedAgent = agents.find((x) => x?.name === targetAgentName)
+      if (!verifyCachedAgent) {
+        showToast({
+          title: language.t("prompt.toast.promptSendFailed.title"),
+          description: `Agent '${targetAgentName}' was removed, please try again`,
+        })
+        return false
+      }
+
+      const from = currentAgent.name
+      const to = targetAgentName
+      const auto_confirm = true
+
+      emitPassOverRequest({
+        type: "pass_over_request",
+        from,
+        to,
+        auto_confirm,
+      })
+
+      if (!auto_confirm) {
+        return new Promise<boolean>((resolve) => {
+          passOverConfirmListeners.set(messageID, (confirmed) => {
+            resolve(confirmed)
+          })
+        })
+      }
+
+      return true
+    }
+
     const optimisticMessage: Message = {
       id: messageID,
       sessionID: session.id,
       role: "user",
       time: { created: Date.now() },
-      agent,
+      agent: agentName,
       model,
     }
 
@@ -329,6 +435,22 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     removeCommentItems(commentItems)
     clearInput()
+
+    if (targetAgent) {
+      const confirmed = await handlePassOver(targetAgent)
+      if (!confirmed) {
+        addOptimisticMessage()
+        removeOptimisticMessage()
+        restoreCommentItems(commentItems)
+        restoreInput()
+        return
+      }
+
+      local.agent.set(targetAgent)
+      agentName = targetAgent
+      optimisticMessage.agent = targetAgent
+    }
+
     addOptimisticMessage()
 
     const waitForWorktree = async () => {
@@ -391,7 +513,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       if (!ok) return
       await client.session.promptAsync({
         sessionID: session.id,
-        agent,
+        agent: agentName,
         model,
         messageID,
         parts: requestParts,

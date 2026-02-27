@@ -17,6 +17,19 @@
             "group": "Getting started",
             "pages": ["index", "quickstart", "development", "setup", "privacy"],
             "openapi": "https://opencode.ai/openapi.json"
+          },
+          {
+            "group": "Features",
+            "pages": ["features"]
+          }
+        ]
+      },
+      {
+        "tab": "Agents",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["agents/alice", "agents/sentinel", "agents/audit"]
           }
         ]
       }

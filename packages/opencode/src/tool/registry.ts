@@ -27,6 +27,7 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
+import { PassOverTool } from "./pass-over"
 import { Glob } from "../util/glob"
 
 export namespace ToolRegistry {
@@ -108,6 +109,7 @@ export namespace ToolRegistry {
       EditTool,
       WriteTool,
       TaskTool,
+      PassOverTool,
       WebFetchTool,
       TodoWriteTool,
       // TodoReadTool,

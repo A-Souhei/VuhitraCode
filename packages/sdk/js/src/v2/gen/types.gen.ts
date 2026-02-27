@@ -76,11 +76,22 @@ export type EventFileWatcherUpdated = {
   }
 }
 
+export type IndexerStatus =
+  | {
+      type: "disabled"
+    }
+  | {
+      type: "indexing"
+      progress: number
+      total: number
+    }
+  | {
+      type: "complete"
+    }
+
 export type EventIndexerUpdated = {
   type: "indexer.updated"
-  properties: {
-    [key: string]: unknown
-  }
+  properties: IndexerStatus
 }
 
 export type EventLspClientDiagnostics = {
@@ -2298,19 +2309,6 @@ export type FormatterStatus = {
   extensions: Array<string>
   enabled: boolean
 }
-
-export type IndexerStatus =
-  | {
-      type: "disabled"
-    }
-  | {
-      type: "indexing"
-      progress: number
-      total: number
-    }
-  | {
-      type: "complete"
-    }
 
 export type GlobalHealthData = {
   body?: never
@@ -5194,3 +5192,165 @@ export type EventSubscribeResponses = {
 }
 
 export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscribeResponses]
+
+/**
+ * Represents the output of work completed by an agent
+ */
+export type WorkOutput = {
+  /**
+   * UUID identifier for this work item
+   */
+  work_id: string
+  /**
+   * Name of the agent that created this work
+   */
+  agent_name: string
+  /**
+   * Status of the work: completed, failed, or aborted
+   */
+  status: "completed" | "failed" | "aborted"
+  /**
+   * List of file paths that were modified
+   */
+  files_modified: Array<string>
+  /**
+   * Indices or count of assistant messages produced
+   */
+  messages: Array<number>
+  /**
+   * Array of tool execution results
+   */
+  tool_results: Array<Record<string, any>>
+  /**
+   * Brief summary of work done
+   */
+  summary: string
+  /**
+   * Additional data artifacts
+   */
+  artifacts: Record<string, any>
+}
+
+/**
+ * Metadata tracking pass over execution
+ */
+export type PassOverMetadata = {
+  /**
+   * UUID identifier for this pass over instance
+   */
+  pass_over_id: string
+  /**
+   * Session ID where this pass over occurred
+   */
+  session_id: string
+  /**
+   * ID of the agent that originated the pass over
+   */
+  originating_agent_id: string
+  /**
+   * ID of the subagent receiving the pass over
+   */
+  subagent_id: string
+  /**
+   * Reason for the pass over (e.g., code_review, fix_issues, verify_implementation)
+   */
+  reason: string
+  /**
+   * Whether to auto-confirm the pass over without user confirmation
+   */
+  auto_confirm: boolean
+  /**
+   * Whether to automatically return to originating agent when done
+   */
+  return_to_originator: boolean
+  /**
+   * Timestamp when pass over was created
+   */
+  created_at: number
+  /**
+   * Timestamp when pass over was completed (if applicable)
+   */
+  completed_at?: number
+  /**
+   * Current status of the pass over: pending, completed, or failed
+   */
+  status: "pending" | "completed" | "failed"
+  /**
+   * Number of sequential pass overs in this chain (prevents infinite loops)
+   */
+  chain_depth: number
+  /**
+   * Reference to the previous pass over in the chain (for tracing)
+   */
+  previous_pass_over_id?: string
+}
+
+/**
+ * Context information for a pass over operation
+ */
+export type PassOverContext = {
+  /**
+   * Name of the agent that initiated the pass over
+   */
+  originating_agent: string
+  /**
+   * Name of the agent receiving the work
+   */
+  target_agent: string
+  /**
+   * Reason for passing over (e.g., code_review, fix_issues, verify_implementation)
+   */
+  reason: string
+  /**
+   * Output from the work that is being passed over
+   */
+  work_output: WorkOutput
+  /**
+   * Metadata about the pass over execution
+   */
+  metadata: PassOverMetadata
+  /**
+   * Timestamp when the pass over context was created
+   */
+  created_at: number
+}
+
+/**
+ * User preferences for pass over behavior
+ */
+export type PassOverPreferences = {
+  /**
+   * Auto-accept pass over without requiring user confirmation
+   */
+  auto_confirm: boolean
+  /**
+   * Maximum time in milliseconds for pass over to complete
+   */
+  timeout_ms: number
+  /**
+   * Automatically return to originating agent when pass over is done
+   */
+  return_to_originator: boolean
+  /**
+   * Maximum chain depth to prevent infinite pass over loops
+   */
+  max_chain_depth: number
+  /**
+   * Globally enable or disable pass overs
+   */
+  enabled: boolean
+}
+
+/**
+ * Configuration for pass over feature
+ */
+export type PassOverConfig = {
+  /**
+   * Global pass over settings
+   */
+  global_settings: PassOverPreferences
+  /**
+   * Agent-pair specific settings (e.g., agent_pair_settings["alice"]["audit"] = {...})
+   */
+  agent_pair_settings: Record<string, Record<string, PassOverPreferences>>
+}

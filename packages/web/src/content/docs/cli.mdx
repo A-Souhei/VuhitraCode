@@ -53,7 +53,7 @@ The OpenCode CLI also has the following commands.
 Manage agents for OpenCode.
 
 ```bash
-opencode agent [command]
+vuhitracode agent [command]
 ```
 
 ---
@@ -90,7 +90,7 @@ opencode attach http://10.20.30.40:4096
 Create a new agent with custom configuration.
 
 ```bash
-opencode agent create
+vuhitracode agent create
 ```
 
 This command will guide you through creating a new agent with a custom system prompt and tool configuration.
@@ -102,7 +102,87 @@ This command will guide you through creating a new agent with a custom system pr
 List all available agents.
 
 ```bash
-opencode agent list
+vuhitracode agent list
+```
+
+---
+
+#### pass-over
+
+Manage automatic agent handoff workflows. Configure how agents can pass work to each other for specialized handling.
+
+```bash
+vuhitracode agent pass-over [command]
+```
+
+##### config
+
+Display current pass-over configuration.
+
+```bash
+vuhitracode agent pass-over config
+```
+
+##### set-global
+
+Configure global pass-over defaults that apply to all agent pairs.
+
+```bash
+vuhitracode agent pass-over set-global [options]
+```
+
+**Options:**
+
+| Option                   | Type    | Default | Description                                  |
+| ------------------------ | ------- | ------- | -------------------------------------------- |
+| `--auto-confirm`         | boolean | false   | Automatically confirm pass-over requests     |
+| `--timeout-ms`           | number  | 30000   | Timeout in milliseconds                      |
+| `--return-to-originator` | boolean | true    | Automatically return to originating agent    |
+| `--max-chain-depth`      | number  | 3       | Maximum number of agents in delegation chain |
+
+**Example:**
+
+```bash
+vuhitracode agent pass-over set-global --auto-confirm true --timeout-ms 60000
+```
+
+##### set-pair
+
+Configure pass-over settings for a specific agent pair.
+
+```bash
+vuhitracode agent pass-over set-pair <from-agent> <to-agent> [options]
+```
+
+**Parameters:**
+
+| Parameter  | Description                |
+| ---------- | -------------------------- |
+| from-agent | Source agent (e.g., alice) |
+| to-agent   | Target agent (e.g., audit) |
+
+**Options:** Same as `set-global`
+
+**Example:**
+
+```bash
+vuhitracode agent pass-over set-pair alice audit --auto-confirm true
+```
+
+##### list
+
+List all configured agent pairs and their settings.
+
+```bash
+vuhitracode agent pass-over list
+```
+
+##### reset
+
+Reset pass-over configuration to defaults.
+
+```bash
+vuhitracode agent pass-over reset
 ```
 
 ---

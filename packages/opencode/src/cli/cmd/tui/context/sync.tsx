@@ -26,7 +26,7 @@ import { createSimpleContext } from "./helper"
 import type { Snapshot } from "@/snapshot"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
-import { batch, onMount } from "solid-js"
+import { batch, onMount, createEffect } from "solid-js"
 import { Log } from "@/util/log"
 import type { Path } from "@opencode-ai/sdk"
 
@@ -345,11 +345,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "indexer.updated": {
-          void sdk.client.indexer
-            .status()
-            .then((x) => {
-              if (x.data) setStore("indexer_status", x.data)
-            })
+          setStore("indexer_status", event.properties)
           break
         }
       }
@@ -424,16 +420,24 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.provider.auth().then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get().then((x) => setStore("vcs", reconcile(x.data))),
             sdk.client.path.get().then((x) => setStore("path", reconcile(x.data!))),
-            sdk.client.indexer.status().then((x) => {
-              setStore("indexer_status", x.data ?? { type: "disabled" })
-            }).catch(() => {
-              setStore("indexer_status", { type: "disabled" })
-            }),
-          ]).then(() => {
-            setStore("status", "complete")
-          }).catch(() => {
-            setStore("status", "complete")
-          })
+            sdk.client.indexer
+              .status()
+              .then((x) => {
+                setStore("indexer_status", x.data ?? { type: "disabled" })
+              })
+              .catch((e) => {
+                Log.Default.error("failed to fetch indexer status", {
+                  error: e instanceof Error ? e.message : String(e),
+                })
+                setStore("indexer_status", { type: "disabled" })
+              }),
+          ])
+            .then(() => {
+              setStore("status", "complete")
+            })
+            .catch(() => {
+              setStore("status", "complete")
+            })
         })
         .catch(async (e) => {
           Log.Default.error("tui bootstrap failed", {

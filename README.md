@@ -18,6 +18,7 @@
 - **Command Execution** — Run shell commands with granular permission controls
 - **Context Awareness** — Understands your codebase via LSP and file analysis
 - **Agent Modes** — Build (full access) and Plan (read-only suggestions) modes
+- **Pass Over** — Automatic agent handoff workflows (e.g., alice → audit for review → alice for fixes)
 - **Custom Agents** — Define specialized AI personas via `.opencode/agent/` markdown files
 - **Custom Commands** — Reusable prompt templates in `.opencode/command/` with dynamic arguments
 - **Custom Tools** — Extend the LLM toolset with `.ts` files in `.opencode/tools/`
@@ -98,11 +99,53 @@ Example `opencode.json`:
     "bash": {
       "git *": "allow",
       "rm -rf *": "deny",
-      "git push": "ask"
-    }
+      "git push": "ask",
+    },
   },
-  "mcp": {}
+  "mcp": {},
 }
 ```
 
 Run `/connect` inside the TUI to add API keys for providers interactively.
+
+### Pass Over Configuration
+
+Configure automatic agent handoff workflows via `.opencode/pass-over.json`:
+
+```jsonc
+{
+  "global_settings": {
+    "auto_confirm": false, // Auto-accept pass overs
+    "timeout_ms": 30000, // Timeout in milliseconds
+    "return_to_originator": true, // Auto-return after work completes
+    "max_chain_depth": 3, // Maximum agent chain depth
+    "enabled": true, // Enable/disable pass over feature
+  },
+  "agent_pair_settings": {
+    "alice": {
+      "audit": {
+        "auto_confirm": true, // Override global for alice→audit
+      },
+    },
+  },
+}
+```
+
+Or configure via CLI:
+
+```bash
+# Set global defaults
+vuhitracode agent pass-over set-global --auto-confirm true
+
+# Configure specific agent pair
+vuhitracode agent pass-over set-pair alice audit --auto-confirm true --timeout-ms 60000
+
+# View current configuration
+vuhitracode agent pass-over config
+
+# List all configured pairs
+vuhitracode agent pass-over list
+
+# Reset to defaults
+vuhitracode agent pass-over reset
+```

@@ -1,0 +1,132 @@
+---
+title: Sentinel
+description: Parallel worker agent for executing independent tasks concurrently
+---
+
+import { Card } from "@mintlify/components"
+
+Sentinel is a parallel worker agent that executes independent tasks concurrently under Alice's orchestration. Up to 7 Sentinels can run simultaneously, enabling large-scale parallel execution.
+
+## Overview
+
+Sentinels excel at:
+
+- **Task execution** - Implement features, fix bugs, refactor code
+- **Parallel work** - Run up to 7 tasks concurrently
+- **File operations** - Create, modify, delete files
+- **Testing** - Run tests and verify implementations
+- **Git operations** - Manage commits and branches (delegated to Chores agent)
+
+## How Sentinels Work
+
+Alice delegates work to Sentinels in batches:
+
+1. **Alice** marks TODO items as `in_progress`
+2. **Alice** spawns Sentinels (up to 7 per batch)
+3. **Each Sentinel** receives full task context and executes independently
+4. **Sentinels** complete work and report results
+5. **Alice** marks completed items and spawns next batch
+
+### Execution Model
+
+- **Independent tasks** execute in parallel
+- **Dependent tasks** automatically queue until dependencies complete
+- **Results** are reported back to Alice with status and context
+- **Failed tasks** are re-opened by Alice for retry
+
+## Task Delegation
+
+When Alice delegates a task to a Sentinel, it includes:
+
+- Full task description and requirements
+- Context from previous phases (gather context, TODO list)
+- Modified files and relevant code snippets
+- Testing requirements
+- Any special instructions
+
+Example task delegated to Sentinel:
+
+```
+You are a Sentinel worker. Alice has delegated this task to you:
+
+TASK: Implement user authentication module
+REQUIREMENTS:
+- Add JWT-based authentication
+- Include password hashing with bcrypt
+- Add login/logout endpoints
+- Include comprehensive tests
+
+CONTEXT:
+- Project uses Express.js
+- Database is PostgreSQL
+- Style guide: [see context]
+
+MODIFIED FILES (from Phase 1 context):
+- src/auth/index.ts
+- src/auth/jwt.ts
+- src/db/schema.ts
+
+Please implement this task. Report your results with:
+- Which files you created/modified
+- Summary of changes
+- Test results
+- Any blocking issues
+```
+
+## Parallel Execution Best Practices
+
+<Card icon="zap" title="Independent Tasks">
+  Break work into independent pieces so Alice can dispatch multiple Sentinels simultaneously. Dependent tasks will
+  automatically queue.
+</Card>
+
+<Card icon="layers" title="Up to 7 in Parallel">
+  Alice batches work in groups of up to 7 Sentinels. Larger projects benefit from this parallelism.
+</Card>
+
+<Card icon="check-circle" title="Alice Owns Verification">
+  Sentinels report results, but Alice verifies completion via Keeper and Review agents before proceeding.
+</Card>
+
+## Integration with Other Agents
+
+- **Alice** → Dispatches tasks to Sentinels (planning & orchestration)
+- **Keeper** → Verifies Sentinel work after completion (verification)
+- **Audit** → Reviews code produced by Sentinels (quality assurance)
+- **Chores** → Handles Git/VCS operations for Sentinels (version control delegation)
+
+## Typical Workflow
+
+```
+Alice Phase 3 (Execute):
+1. TODO: Implement authentication module
+   → Dispatch Sentinel #1
+2. TODO: Add database schema
+   → Dispatch Sentinel #2
+3. TODO: Write integration tests
+   → Dispatch Sentinel #3
+
+[All 3 Sentinels run in parallel]
+
+→ Sentinel #1 completes auth module
+→ Sentinel #2 completes schema
+→ Sentinel #3 completes tests
+
+Alice Phase 4 (Verify):
+→ Keeper verifies all changes
+→ Reports: ALL CLEAR
+
+Alice Phase 4b (Review):
+→ Audit reviews code from all Sentinels
+→ Reports findings
+
+[If findings] → Alice dispatches Sentinels to fix
+[After fixes] → Keeper re-verifies, Audit re-reviews
+```
+
+## Best Practices
+
+- **Batch independent work** for maximum parallelism
+- **Trust Alice's orchestration** — she manages dependencies automatically
+- **Report clearly** — include file lists, test results, and any blocking issues
+- **Handle failures gracefully** — Alice will re-open failed tasks for retry

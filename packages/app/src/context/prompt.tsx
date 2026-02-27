@@ -27,6 +27,11 @@ export interface AgentPart extends PartBase {
   name: string
 }
 
+export interface PassOverPart extends PartBase {
+  type: "pass_over"
+  agent_name: string
+}
+
 export interface ImageAttachmentPart {
   type: "image"
   id: string
@@ -35,7 +40,7 @@ export interface ImageAttachmentPart {
   dataUrl: string
 }
 
-export type ContentPart = TextPart | FileAttachmentPart | AgentPart | ImageAttachmentPart
+export type ContentPart = TextPart | FileAttachmentPart | AgentPart | PassOverPart | ImageAttachmentPart
 export type Prompt = ContentPart[]
 
 export type FileContextItem = {
@@ -68,6 +73,8 @@ function isPartEqual(partA: ContentPart, partB: ContentPart) {
       return partB.type === "file" && partA.path === partB.path && isSelectionEqual(partA.selection, partB.selection)
     case "agent":
       return partB.type === "agent" && partA.name === partB.name
+    case "pass_over":
+      return partB.type === "pass_over" && partA.agent_name === partB.agent_name
     case "image":
       return partB.type === "image" && partA.id === partB.id
   }
@@ -90,6 +97,7 @@ function clonePart(part: ContentPart): ContentPart {
   if (part.type === "text") return { ...part }
   if (part.type === "image") return { ...part }
   if (part.type === "agent") return { ...part }
+  if (part.type === "pass_over") return { ...part }
   return {
     ...part,
     selection: cloneSelection(part.selection),
@@ -98,6 +106,48 @@ function clonePart(part: ContentPart): ContentPart {
 
 function clonePrompt(prompt: Prompt): Prompt {
   return prompt.map(clonePart)
+}
+
+export function parsePassOverTags(text: string): { text: string; parts: PassOverPart[] } {
+  const parts: PassOverPart[] = []
+  const regex = /\[pass_over:\s*([-\w]+)\s*\]/g
+  let match
+  let lastIndex = 0
+  let cleanText = ""
+
+  while ((match = regex.exec(text)) !== null) {
+    cleanText += text.slice(lastIndex, match.index)
+    const agentName = match[1]
+    if (agentName) {
+      const start = cleanText.length
+      const content = `[pass_over: ${agentName}]`
+      const end = start + content.length
+      parts.push({
+        type: "pass_over",
+        agent_name: agentName,
+        content,
+        start,
+        end,
+      })
+    }
+    lastIndex = regex.lastIndex
+  }
+
+  cleanText += text.slice(lastIndex)
+  return { text: cleanText, parts }
+}
+
+export function parsePrompt(text: string): Prompt {
+  const { text: cleanText, parts: passOverParts } = parsePassOverTags(text)
+  const parts: ContentPart[] = [
+    {
+      type: "text",
+      content: cleanText,
+      start: 0,
+      end: cleanText.length,
+    },
+  ]
+  return [...parts, ...passOverParts]
 }
 
 function contextItemKey(item: ContextItem) {

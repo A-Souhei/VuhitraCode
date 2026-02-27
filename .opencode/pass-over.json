@@ -1,0 +1,20 @@
+{
+  "global_settings": {
+    "auto_confirm": false,
+    "timeout_ms": 30000,
+    "return_to_originator": true,
+    "max_chain_depth": 3,
+    "enabled": true
+  },
+  "agent_pair_settings": {
+    "alice": {
+      "audit": {
+        "auto_confirm": true,
+        "timeout_ms": 30000,
+        "return_to_originator": true,
+        "max_chain_depth": 3,
+        "enabled": true
+      }
+    }
+  }
+}

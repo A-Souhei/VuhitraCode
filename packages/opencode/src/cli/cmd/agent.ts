@@ -4,6 +4,13 @@ import { UI } from "../ui"
 import { Global } from "../../global"
 import { Agent } from "../../agent/agent"
 import { Provider } from "../../provider/provider"
+import {
+  loadPassOverConfig,
+  savePassOverConfig,
+  DEFAULT_CONFIG,
+  PassOverConfig,
+  type PassOverPreferences,
+} from "../../config/pass-over"
 import path from "path"
 import fs from "fs/promises"
 import { Filesystem } from "../../util/filesystem"
@@ -249,9 +256,250 @@ const AgentListCommand = cmd({
   },
 })
 
+const parseBoolean = (val: string): boolean => {
+  if (val === "true") return true
+  if (val === "false") return false
+  throw new Error(`Expected "true" or "false", got "${val}"`)
+}
+
+const formatPrefs = (prefs: PassOverPreferences): string => {
+  return [
+    `  auto_confirm: ${prefs.auto_confirm}`,
+    `  timeout_ms: ${prefs.timeout_ms}`,
+    `  return_to_originator: ${prefs.return_to_originator}`,
+    `  max_chain_depth: ${prefs.max_chain_depth}`,
+    `  enabled: ${prefs.enabled}`,
+  ].join(EOL)
+}
+
+const PassOverConfigCommand = cmd({
+  command: "config",
+  describe: "show current pass-over configuration",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const config = await loadPassOverConfig(Instance.worktree)
+        UI.empty()
+        process.stdout.write(UI.Style.TEXT_INFO_BOLD + "Global Settings:" + UI.Style.TEXT_NORMAL + EOL)
+        process.stdout.write(formatPrefs(config.global_settings) + EOL)
+
+        if (Object.keys(config.agent_pair_settings).length > 0) {
+          process.stdout.write(EOL + UI.Style.TEXT_INFO_BOLD + "Agent Pair Settings:" + UI.Style.TEXT_NORMAL + EOL)
+          for (const [from, pairs] of Object.entries(config.agent_pair_settings)) {
+            for (const [to, prefs] of Object.entries(pairs)) {
+              process.stdout.write(EOL + `${from} → ${to}:` + EOL)
+              process.stdout.write(formatPrefs(prefs) + EOL)
+            }
+          }
+        }
+      },
+    })
+  },
+})
+
+const PassOverSetGlobalCommand = cmd({
+  command: "set-global",
+  describe: "set global pass-over configuration",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("auto-confirm", {
+        type: "string",
+        describe: "auto accept pass overs (true/false)",
+      })
+      .option("timeout-ms", {
+        type: "number",
+        describe: "timeout in milliseconds",
+      })
+      .option("return-to-originator", {
+        type: "string",
+        describe: "auto return after work done (true/false)",
+      })
+      .option("max-chain-depth", {
+        type: "number",
+        describe: "max delegation depth",
+      }),
+  async handler(args) {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const config = await loadPassOverConfig(Instance.worktree)
+        const updates: Partial<PassOverPreferences> = {}
+
+        if (args["auto-confirm"] !== undefined) {
+          updates.auto_confirm = parseBoolean(args["auto-confirm"])
+        }
+        if (args["timeout-ms"] !== undefined) {
+          if (args["timeout-ms"] < 0) throw new Error("timeout-ms must be non-negative")
+          updates.timeout_ms = args["timeout-ms"]
+        }
+        if (args["return-to-originator"] !== undefined) {
+          updates.return_to_originator = parseBoolean(args["return-to-originator"])
+        }
+        if (args["max-chain-depth"] !== undefined) {
+          if (args["max-chain-depth"] < 0) throw new Error("max-chain-depth must be non-negative")
+          updates.max_chain_depth = args["max-chain-depth"]
+        }
+
+        config.global_settings = { ...config.global_settings, ...updates }
+        await savePassOverConfig(Instance.worktree, config)
+
+        UI.empty()
+        process.stdout.write(UI.Style.TEXT_SUCCESS_BOLD + "✓ Global settings updated:" + UI.Style.TEXT_NORMAL + EOL)
+        process.stdout.write(formatPrefs(config.global_settings) + EOL)
+      },
+    })
+  },
+})
+
+const PassOverSetPairCommand = cmd({
+  command: "set-pair <from-agent> <to-agent>",
+  describe: "set pass-over configuration for an agent pair",
+  builder: (yargs: Argv) =>
+    yargs
+      .positional("from-agent", {
+        type: "string",
+        describe: "source agent name",
+        demandOption: true,
+      })
+      .positional("to-agent", {
+        type: "string",
+        describe: "target agent name",
+        demandOption: true,
+      })
+      .option("auto-confirm", {
+        type: "string",
+        describe: "auto accept pass overs (true/false)",
+      })
+      .option("timeout-ms", {
+        type: "number",
+        describe: "timeout in milliseconds",
+      })
+      .option("return-to-originator", {
+        type: "string",
+        describe: "auto return after work done (true/false)",
+      })
+      .option("max-chain-depth", {
+        type: "number",
+        describe: "max delegation depth",
+      }),
+  async handler(args) {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const config = await loadPassOverConfig(Instance.worktree)
+        const from = args["from-agent"]
+        const to = args["to-agent"]
+        const updates: Partial<PassOverPreferences> = {}
+
+        if (args["auto-confirm"] !== undefined) {
+          updates.auto_confirm = parseBoolean(args["auto-confirm"])
+        }
+        if (args["timeout-ms"] !== undefined) {
+          if (args["timeout-ms"] < 0) throw new Error("timeout-ms must be non-negative")
+          updates.timeout_ms = args["timeout-ms"]
+        }
+        if (args["return-to-originator"] !== undefined) {
+          updates.return_to_originator = parseBoolean(args["return-to-originator"])
+        }
+        if (args["max-chain-depth"] !== undefined) {
+          if (args["max-chain-depth"] < 0) throw new Error("max-chain-depth must be non-negative")
+          updates.max_chain_depth = args["max-chain-depth"]
+        }
+
+        if (!config.agent_pair_settings[from]) {
+          config.agent_pair_settings[from] = {}
+        }
+        const current = config.agent_pair_settings[from][to] || config.global_settings
+        config.agent_pair_settings[from][to] = { ...current, ...updates }
+        await savePassOverConfig(Instance.worktree, config)
+
+        UI.empty()
+        process.stdout.write(
+          UI.Style.TEXT_SUCCESS_BOLD + `✓ Settings updated for ${from} → ${to}:` + UI.Style.TEXT_NORMAL + EOL,
+        )
+        process.stdout.write(formatPrefs(config.agent_pair_settings[from][to]) + EOL)
+      },
+    })
+  },
+})
+
+const PassOverListCommand = cmd({
+  command: "list",
+  describe: "list all configured agent pairs and their settings",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const config = await loadPassOverConfig(Instance.worktree)
+        UI.empty()
+        process.stdout.write(UI.Style.TEXT_INFO_BOLD + "Global Defaults:" + UI.Style.TEXT_NORMAL + EOL)
+        process.stdout.write(formatPrefs(config.global_settings) + EOL)
+
+        if (Object.keys(config.agent_pair_settings).length === 0) {
+          process.stdout.write(
+            EOL + UI.Style.TEXT_DIM + "No agent-specific settings configured" + UI.Style.TEXT_NORMAL + EOL,
+          )
+        } else {
+          process.stdout.write(EOL + UI.Style.TEXT_INFO_BOLD + "Agent Pair Overrides:" + UI.Style.TEXT_NORMAL + EOL)
+          for (const [from, pairs] of Object.entries(config.agent_pair_settings)) {
+            for (const [to, prefs] of Object.entries(pairs)) {
+              process.stdout.write(EOL + `${from} → ${to}:` + EOL)
+              process.stdout.write(formatPrefs(prefs) + EOL)
+            }
+          }
+        }
+      },
+    })
+  },
+})
+
+const PassOverResetCommand = cmd({
+  command: "reset",
+  describe: "reset pass-over configuration to defaults",
+  async handler() {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        const confirmed = await prompts.confirm({
+          message: "Reset all pass-over configuration to defaults?",
+          initialValue: false,
+        })
+
+        if (!confirmed) {
+          prompts.log.info("Reset cancelled")
+          return
+        }
+
+        await savePassOverConfig(Instance.worktree, DEFAULT_CONFIG)
+        UI.empty()
+        process.stdout.write(
+          UI.Style.TEXT_SUCCESS_BOLD + "✓ Configuration reset to defaults:" + UI.Style.TEXT_NORMAL + EOL,
+        )
+        process.stdout.write(formatPrefs(DEFAULT_CONFIG.global_settings) + EOL)
+      },
+    })
+  },
+})
+
+const PassOverCommand = cmd({
+  command: "pass-over",
+  describe: "manage pass-over configuration",
+  builder: (yargs) =>
+    yargs
+      .command(PassOverConfigCommand)
+      .command(PassOverSetGlobalCommand)
+      .command(PassOverSetPairCommand)
+      .command(PassOverListCommand)
+      .command(PassOverResetCommand)
+      .demandCommand(),
+  handler() {},
+})
+
 export const AgentCommand = cmd({
   command: "agent",
   describe: "manage agents",
-  builder: (yargs) => yargs.command(AgentCreateCommand).command(AgentListCommand).demandCommand(),
+  builder: (yargs) =>
+    yargs.command(AgentCreateCommand).command(AgentListCommand).command(PassOverCommand).demandCommand(),
   async handler() {},
 })

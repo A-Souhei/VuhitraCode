@@ -1,0 +1,584 @@
+---
+title: Pass Over
+description: Automatic agent handoff workflows for specialized handling
+---
+
+Pass Over enables seamless, bidirectional delegation between agents with automatic context preservation and intelligent loop prevention. It allows agents to hand off specialized tasks to other agents and receive results back in their original context.
+
+:::tip
+Use Pass Over to create sophisticated multi-agent workflows that maintain context while preventing infinite loops.
+:::
+
+---
+
+## Overview
+
+Pass Over is a powerful feature for creating agent handoff workflows. Instead of manually switching contexts, agents can automatically delegate work to specialized agents and receive results back.
+
+### Key benefits
+
+- **Automatic context preservation**: Full conversation context is preserved during handoffs
+- **Loop prevention**: Built-in mechanisms prevent infinite agent cycles
+- **UI integration**: Visual indicators show agent transitions in real-time
+- **Bidirectional delegation**: Agents can hand off to others and receive results
+
+### Common workflows
+
+**Code review workflow**: Alice → Audit → Alice
+
+- Alice delegates code review to Audit agent
+- Audit reviews the code
+- Results flow back to Alice
+
+**Architecture review**: Build → Plan → Build
+
+- Build agent needs architectural guidance
+- Hands off to Plan for analysis
+- Receives recommendations and continues implementation
+
+**Discovery workflow**: Scout → Alice
+
+- Scout explores the codebase
+- Finds relevant information
+- Alice uses results for implementation
+
+---
+
+## How it works
+
+### Trigger mechanisms
+
+Pass Over can be triggered in two ways:
+
+**Tag-based triggering** in messages:
+
+```txt
+[pass_over: agent_name]
+Message content here
+```
+
+**Tool-based invocation** via the PassOver tool with explicit parameters.
+
+When a Pass Over is triggered, the system:
+
+1. Extracts and validates the target agent
+2. Preserves the current context
+3. Initiates the handoff to the target agent
+4. Monitors for completion
+5. Returns results to the originating agent
+
+### Context preservation
+
+The system automatically captures:
+
+- Full conversation history
+- Current file states
+- Session metadata
+- User preferences
+- Configuration settings
+
+This ensures the receiving agent has complete context for the task.
+
+### Return loop management
+
+Pass Over includes built-in loop prevention:
+
+1. **Depth tracking**: Monitors handoff depth to prevent infinite cycles
+2. **Agent history**: Tracks which agents have been involved
+3. **Timeout handling**: Sets reasonable limits on task duration
+4. **State recovery**: Gracefully handles failed handoffs
+
+When a loop is detected, the system:
+
+- Halts the handoff
+- Reports the issue
+- Suggests alternative workflows
+- Logs the event for debugging
+
+### Visual UI indicators
+
+During transitions, the UI shows:
+
+- Current agent highlight
+- Target agent incoming indicator
+- Progress indicator during handoff
+- Context transfer status
+- Loop prevention warnings
+
+---
+
+## Configuration
+
+### Global and agent-pair settings
+
+Configure Pass Over behavior in `.opencode/pass-over.json`:
+
+```json title=".opencode/pass-over.json"
+{
+  "global": {
+    "maxDepth": 3,
+    "timeout": 300000,
+    "preserveContext": true,
+    "loopDetection": true
+  },
+  "pairs": {
+    "alice→audit": {
+      "timeout": 180000,
+      "preserveContext": true,
+      "returnBehavior": "auto"
+    },
+    "build→plan": {
+      "maxDepth": 2,
+      "preserveContext": true
+    },
+    "scout→alice": {
+      "timeout": 60000,
+      "returnBehavior": "always"
+    }
+  }
+}
+```
+
+### CLI commands
+
+**Set global configuration:**
+
+```bash
+opencode pass-over set-global --max-depth 3 --timeout 300000
+```
+
+**Configure agent pair:**
+
+```bash
+opencode pass-over set-pair alice audit --timeout 180000 --preserve-context
+```
+
+**List configurations:**
+
+```bash
+opencode pass-over list
+```
+
+**Reset to defaults:**
+
+```bash
+opencode pass-over reset
+```
+
+**View current config:**
+
+```bash
+opencode pass-over config
+```
+
+### Three-tier preference hierarchy
+
+Pass Over uses a three-tier preference system:
+
+1. **Agent-pair settings** (highest priority): Specific handoff configuration
+2. **Agent-specific settings** (medium priority): Default behavior for that agent
+3. **Global settings** (lowest priority): Fallback defaults
+
+Settings are evaluated in order, with higher tiers overriding lower ones.
+
+---
+
+## Usage
+
+### Tag-based triggering
+
+Use the `[pass_over: agent_name]` tag at the start of your message:
+
+```txt
+[pass_over: audit]
+Please review this authentication implementation for security issues
+```
+
+The tag tells the current agent to delegate the task. The message content becomes the task description for the target agent.
+
+:::note
+Tag-based triggering works only from human messages, not from agent responses.
+:::
+
+### Tool-based invocation
+
+Agents can use the PassOver tool directly:
+
+```typescript
+await PassOver({
+  target: "audit",
+  task: "Review this code for vulnerabilities",
+  context: "full",
+  timeout: 180000,
+})
+```
+
+### Practical examples
+
+**Code review example:**
+
+```txt
+[pass_over: audit]
+Review the authentication module in packages/auth/src
+Check for: SQL injection, XSS, CSRF, and access control issues
+```
+
+**Architecture review:**
+
+```txt
+[pass_over: plan]
+Analyze this database schema design
+Suggest optimizations for performance and scalability
+```
+
+**Discovery workflow:**
+
+```txt
+[pass_over: scout]
+Find all test files that test the payment module
+Return file paths and brief summaries
+```
+
+---
+
+## Built-in workflows
+
+### Code review workflow
+
+The code review workflow demonstrates Pass Over in action:
+
+1. **Initiation**: Alice receives a code review request with `[pass_over: audit]`
+2. **Handoff**: Alice transfers context to Audit agent
+3. **Review**: Audit analyzes the code
+4. **Return**: Results flow back to Alice
+5. **Action**: Alice can implement suggestions or iterate
+
+This workflow is useful for:
+
+- Security reviews
+- Code quality assessment
+- Best practices validation
+- Performance analysis
+
+### Architecture review
+
+The architecture review workflow:
+
+1. Build agent encounters a design decision
+2. Delegates to Plan agent via `[pass_over: plan]`
+3. Plan analyzes architectural implications
+4. Returns recommendations
+5. Build incorporates feedback into implementation
+
+### Discovery workflow
+
+The discovery workflow:
+
+1. Alice needs to explore the codebase
+2. Delegates to Scout via `[pass_over: scout]`
+3. Scout quickly finds relevant files
+4. Returns structured results
+5. Alice uses findings for implementation
+
+### Multi-agent collaboration
+
+Complex workflows can chain multiple handoffs:
+
+```
+Alice → Plan (architecture) → Alice
+  ↓
+Build (implementation)
+  ↓
+Audit (security review)
+  ↓
+Alice (final integration)
+```
+
+Each handoff preserves context and prevents loops.
+
+---
+
+## API Reference
+
+### PassOver tool parameters
+
+```typescript
+interface PassOverOptions {
+  // Target agent name (required)
+  target: string
+
+  // Task description or instruction (required)
+  task: string
+
+  // Context to include: "full" | "minimal" | "none" (default: "full")
+  context?: "full" | "minimal" | "none"
+
+  // Maximum execution time in milliseconds
+  timeout?: number
+
+  // Return behavior: "auto" | "always" | "on-error" (default: "auto")
+  returnBehavior?: "auto" | "always" | "on-error"
+
+  // Custom metadata to pass to target agent
+  metadata?: Record<string, unknown>
+
+  // Whether to show UI indicators during handoff
+  showIndicators?: boolean
+}
+```
+
+### Configuration APIs
+
+**Get current configuration:**
+
+```typescript
+const config = await PassOver.getConfig("alice→audit")
+```
+
+**Update configuration:**
+
+```typescript
+await PassOver.setConfig("alice→audit", {
+  timeout: 180000,
+  maxDepth: 2,
+})
+```
+
+**List all pairs:**
+
+```typescript
+const pairs = await PassOver.listPairs()
+```
+
+### ReturnController
+
+The `ReturnController` manages the return flow from a handoff:
+
+```typescript
+interface ReturnController {
+  // Signal completion and return to origin
+  resolve(result: unknown): Promise<void>
+
+  // Signal error during task
+  reject(error: Error): Promise<void>
+
+  // Send intermediate progress
+  progress(message: string): void
+
+  // Check if task was cancelled
+  isCancelled(): boolean
+}
+```
+
+---
+
+## Troubleshooting
+
+### Common issues and solutions
+
+**Loop detected**
+
+```
+Error: Loop detected in agent handoffs (depth > 3)
+```
+
+**Solution**:
+
+- Reduce `maxDepth` in `.opencode/pass-over.json`
+- Check your workflow for unnecessary cycles
+- Verify agent configurations don't create circular dependencies
+
+**Timeout exceeded**
+
+```
+Error: Pass Over operation timed out after 300000ms
+```
+
+**Solution**:
+
+- Increase `timeout` for agent-pair
+- Break complex tasks into smaller handoffs
+- Check network connectivity
+
+**Context loss**
+
+```
+Warning: Some context could not be preserved during handoff
+```
+
+**Solution**:
+
+- Ensure `preserveContext: true` in configuration
+- Check file permissions
+- Verify sufficient disk space
+
+**Invalid agent target**
+
+```
+Error: Target agent "review" not found
+```
+
+**Solution**:
+
+- Verify agent name spelling
+- Check agent is not disabled
+- Ensure agent exists in configuration
+
+### Error codes reference
+
+| Code  | Meaning                     | Solution                                   |
+| ----- | --------------------------- | ------------------------------------------ |
+| PO001 | Invalid target agent        | Check agent name and availability          |
+| PO002 | Loop detected               | Review workflow, reduce maxDepth           |
+| PO003 | Timeout exceeded            | Increase timeout or simplify task          |
+| PO004 | Context preservation failed | Check file access permissions              |
+| PO005 | Handoff rejected            | Verify agent permissions and configuration |
+| PO006 | Return communication lost   | Check network, retry handoff               |
+
+### Best practices
+
+:::tip
+Keep handoff chains shallow — aim for 2-3 levels maximum for better performance.
+:::
+
+:::tip
+Use agent-specific settings for frequently used pairs to optimize timeout and depth settings.
+:::
+
+:::caution
+Avoid creating workflows where agent A hands off to B, and B hands off back to A without clear termination conditions.
+:::
+
+:::note
+Monitor loop detection warnings — they indicate potential workflow inefficiencies.
+:::
+
+---
+
+## Examples
+
+### Complete workflow example
+
+**Multi-agent code improvement**:
+
+```typescript
+// User initiates the workflow
+[pass_over: plan]
+Analyze this React component for performance issues
+
+// Plan agent reviews and returns recommendations to Alice
+// Alice then passes refined code to Audit
+[pass_over: audit]
+Review this optimized React component for security
+
+// Audit returns findings to Alice
+// Alice implements final version with all suggestions
+```
+
+### Configuration example
+
+**Optimized for rapid iteration**:
+
+```json title=".opencode/pass-over.json"
+{
+  "global": {
+    "maxDepth": 2,
+    "timeout": 60000,
+    "loopDetection": true
+  },
+  "pairs": {
+    "alice→plan": {
+      "timeout": 45000,
+      "preserveContext": true
+    },
+    "alice→audit": {
+      "timeout": 90000,
+      "preserveContext": true
+    },
+    "build→plan": {
+      "timeout": 30000,
+      "maxDepth": 1
+    }
+  }
+}
+```
+
+### Use cases
+
+**Security-first development**:
+
+1. Build implements feature
+2. Build → Audit for security review
+3. Audit returns recommendations
+4. Build incorporates feedback
+
+**Rapid prototyping**:
+
+1. Alice explores with Scout
+2. Alice → Scout for investigation
+3. Scout returns findings
+4. Alice uses results for prototyping
+
+**Architecture decisions**:
+
+1. Build needs design input
+2. Build → Plan for analysis
+3. Plan reviews and recommends
+4. Build implements approved design
+
+**Quality assurance workflow**:
+
+1. Build completes implementation
+2. Build → Audit (security)
+3. Audit results back to Build
+4. Build → Plan (architecture review)
+5. Plan results back to Build
+6. Build finalizes implementation
+
+---
+
+## Advanced
+
+### Creating custom workflows
+
+Define reusable workflows in configuration:
+
+```json title=".opencode/pass-over.json"
+{
+  "workflows": {
+    "code-review": [
+      { "agent": "plan", "task": "Analyze architecture" },
+      { "agent": "audit", "task": "Review security" }
+    ],
+    "rapid-build": [
+      { "agent": "scout", "task": "Find relevant code" },
+      { "agent": "build", "task": "Implement feature" }
+    ]
+  }
+}
+```
+
+Invoke with:
+
+```bash
+opencode pass-over run workflow code-review
+```
+
+### Monitoring handoffs
+
+Enable detailed logging:
+
+```json title=".opencode/pass-over.json"
+{
+  "global": {
+    "logging": "detailed",
+    "logFile": ".opencode/pass-over.log"
+  }
+}
+```
+
+View logs:
+
+```bash
+tail -f .opencode/pass-over.log
+```

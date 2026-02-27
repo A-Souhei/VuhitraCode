@@ -6,7 +6,6 @@ import { useDialog } from "@tui/ui/dialog"
 import { useLocal } from "@tui/context/local"
 import { useSDK } from "@tui/context/sdk"
 import { useToast } from "../ui/toast"
-import { DialogReviewFocus } from "./dialog-review-focus"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { Spinner } from "./spinner"
 
@@ -15,11 +14,6 @@ const OPTIONS = [
     id: "test",
     label: "Run tests",
     description: "create and run tests for the completed work",
-  },
-  {
-    id: "review",
-    label: "Review",
-    description: "review the completed implementation",
   },
   {
     id: "custom",
@@ -52,7 +46,7 @@ export function DialogWorkComplete(props: {
 
   /**
    * Compact the session history before handing off to a new agent so the
-   * review/test agent starts from a clean, focused summary of what was built
+   * test agent starts from a clean, focused summary of what was built
    * rather than the full verbose work-agent transcript.
    */
   async function summarize() {
@@ -77,12 +71,6 @@ export function DialogWorkComplete(props: {
       setLoading(false)
       local.agent.set("test")
       dialog.clear()
-    } else if (id === "review") {
-      setLoading(true)
-      await summarize()
-      setLoading(false)
-      local.agent.set("review")
-      dialog.replace(() => <DialogReviewFocus />)
     } else if (id === "custom") {
       DialogPrompt.show(dialog, "What would you like to do next?", {
         placeholder: "Describe your follow-up task...",
@@ -138,10 +126,7 @@ export function DialogWorkComplete(props: {
           </Show>
         </box>
         <box paddingTop={1}>
-          <Show
-            when={loading()}
-            fallback={<text fg={theme.textMuted}>What would you like to do next?</text>}
-          >
+          <Show when={loading()} fallback={<text fg={theme.textMuted}>What would you like to do next?</text>}>
             <Spinner>Compacting session…</Spinner>
           </Show>
         </box>
