@@ -1,0 +1,407 @@
+---
+title: "New Features"
+description: "Latest features and improvements to the OpenCode SDK"
+---
+
+## Pass Over: Automatic Agent Handoff Workflows
+
+Pass Over enables seamless delegation between agents with automatic context preservation and controlled returns. This allows you to create sophisticated multi-agent workflows where specialized agents handle specific tasks before returning control to the primary agent.
+
+### Overview
+
+Pass Over is a bidirectional agent delegation system that implements the following workflow patterns:
+
+- **Design → Review → Fix**: Alice (design) → Audit (review) → Alice (apply fixes)
+- **Exploration → Processing**: Scout (explore) → Alice (process findings) → Alice (continue)
+- **Architecture Review**: Build (construct) → Plan (review architecture) → Build (adjust)
+
+### How It Works
+
+#### Trigger Mechanisms
+
+**Tag-based** (Recommended for agent use):
+
+```
+[pass_over: audit]
+Please review this implementation for quality issues.
+```
+
+**Tool-based** (Programmatic):
+
+```typescript
+await passOverTool.execute({
+  subagent: "audit",
+  reason: "code_review",
+  work_output: {
+    files_modified: ["src/auth.ts", "src/routes.ts"],
+    summary: "Implemented authentication module",
+    messages: 5,
+  },
+})
+```
+
+#### Context Preservation
+
+When passing over work, the complete context is preserved:
+
+- Modified files with content
+- Conversation history within the session
+- Tool execution results
+- Session state (objectives, errors, todos)
+
+#### Return Mechanism
+
+After completing specialized work, agents can return control to the originating agent:
+
+```
+[return_to: alice]
+Completed code review. Found 3 issues to fix:
+1. Missing error handling in auth module
+2. Unvalidated user input in routes
+3. Missing type definitions
+```
+
+#### Loop Prevention
+
+Pass Over includes safety mechanisms:
+
+- **Max Chain Depth**: Prevents chains longer than 3 agents (configurable)
+- **Cycle Detection**: Detects and prevents the same agent appearing twice consecutively
+- **Timeout Handling**: Configurable timeouts per agent pair (default: 30 seconds)
+- **Ping-Pong Detection**: Prevents agents from endlessly delegating back and forth
+
+### Configuration
+
+Configure Pass Over behavior via `.opencode/pass-over.json`:
+
+```json
+{
+  "global_settings": {
+    "auto_confirm": false, // Require user confirmation for pass overs
+    "timeout_ms": 30000, // Max time for subagent to complete work
+    "return_to_originator": true, // Auto-return after work completes
+    "max_chain_depth": 3, // Maximum delegation depth
+    "enabled": true // Enable/disable feature
+  },
+  "agent_pair_settings": {
+    "alice": {
+      "audit": {
+        "auto_confirm": true, // Auto-accept alice→audit transitions
+        "timeout_ms": 60000 // Allow more time for reviews
+      }
+    },
+    "build": {
+      "plan": {
+        "auto_confirm": false
+      }
+    }
+  }
+}
+```
+
+### CLI Commands
+
+Manage Pass Over configuration:
+
+```bash
+# View current configuration
+vuhitracode agent pass-over config
+
+# Set global defaults
+vuhitracode agent pass-over set-global \
+  --auto-confirm true \
+  --timeout-ms 60000 \
+  --return-to-originator true \
+  --max-chain-depth 3
+
+# Configure specific agent pair
+vuhitracode agent pass-over set-pair alice audit \
+  --auto-confirm true \
+  --timeout-ms 60000
+
+# List all configured pairs
+vuhitracode agent pass-over list
+
+# Reset to default configuration
+vuhitracode agent pass-over reset
+```
+
+### API Reference
+
+#### PassOver Tool Parameters
+
+```typescript
+interface PassOverRequest {
+  subagent: string // Target agent name (required)
+  reason: string // Why delegating (required)
+  work_output: {
+    // What was accomplished (required)
+    files_modified: string[] // List of modified file paths
+    summary: string // Brief summary of work
+    messages?: number // Count of messages produced
+    tool_results?: any[] // Tool execution results
+  }
+  auto_confirm?: boolean // Override user config
+  timeout_ms?: number // Override default timeout
+}
+```
+
+#### Configuration APIs
+
+```typescript
+// Load configuration from directory
+const config = await loadPassOverConfig(directory)
+
+// Save configuration
+await savePassOverConfig(directory, config)
+
+// Get merged preferences for agent pair
+const prefs = getPreferences(config, "alice", "audit")
+// Returns: { auto_confirm: true, timeout_ms: 60000, ... }
+```
+
+#### ReturnController
+
+```typescript
+// Track delegation chain
+const controller = new ReturnController("alice", 3)
+
+// Add agents to chain
+controller.addToChain("audit", "code_review")
+
+// Check if return is allowed
+if (controller.canReturn()) {
+  const returnTarget = controller.getReturnTarget() // "alice"
+}
+
+// Detect cycles
+if (controller.detectCycle()) {
+  throw new Error("Cycle detected!")
+}
+```
+
+### Workflow Examples
+
+#### Code Review Workflow
+
+```
+User: Let's build a new authentication module
+→ alice (design): Creates auth implementation
+  [pass_over: audit]
+  → audit (review): Reviews for security/quality
+    [return_to: alice]
+    Findings: 3 issues found
+→ alice (fix): Applies fixes based on feedback
+```
+
+#### Discovery and Processing
+
+```
+User: Explore the codebase and find performance issues
+→ scout (explore): Searches codebase, finds hot spots
+  [pass_over: alice]
+  → alice (process): Analyzes findings, creates plan
+    [pass_over: build]
+    → build (implement): Makes optimizations
+```
+
+### Error Handling
+
+Pass Over includes 31 error codes with recovery strategies:
+
+| Code | Issue                 | Recovery                           |
+| ---- | --------------------- | ---------------------------------- |
+| E001 | Agent not found       | Verify agent name exists           |
+| E010 | Pass over timeout     | Increase timeout_ms or check agent |
+| E020 | Return chain broken   | Restart workflow from beginning    |
+| E030 | Invalid configuration | Fix .opencode/pass-over.json       |
+
+See error handling documentation for complete list and recovery strategies.
+
+### Best Practices
+
+1. **Use tags in agent messages**: Agents should emit `[pass_over: agent_name]` naturally as they work
+2. **Configure agent pairs**: Override global settings for frequently used pairs
+3. **Monitor timeouts**: Increase timeouts for expensive operations (reviews, analysis)
+4. **Limit chain depth**: Keep chains to 2-3 agents for clarity and debugging
+5. **Test workflows**: Verify your multi-agent workflows complete successfully
+
+### Advanced: Custom Workflows
+
+Create custom multi-agent workflows by combining Pass Over with agent configuration:
+
+```json
+{
+  "agent": {
+    "review-specialist": {
+      "description": "Specialized code reviewer",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5"
+    },
+    "security-auditor": {
+      "description": "Security-focused reviewer",
+      "mode": "subagent",
+      "model": "anthropic/claude-opus-4-1"
+    }
+  },
+  "pass_over": {
+    "agent_pair_settings": {
+      "alice": {
+        "review-specialist": { "auto_confirm": true },
+        "security-auditor": { "auto_confirm": true }
+      }
+    }
+  }
+}
+```
+
+## Audit Agent
+
+The new **Audit** agent provides specialized code review capabilities focused on quality, security, and best practices.
+
+### Overview
+
+The Audit agent is a specialized reviewer that:
+
+- Performs comprehensive code reviews
+- Identifies potential bugs and vulnerabilities
+- Checks for performance issues
+- Verifies best practices compliance
+- Suggests architectural improvements
+
+### Mode
+
+- **Type**: Subagent
+- **Access**: Read-only (cannot modify files)
+- **Tools**: Analysis, documentation reading, code inspection
+- **Default Model**: Claude Sonnet 4.5 (optimized for analysis)
+
+### Usage
+
+Use Audit in workflows to review code before merging:
+
+```
+[pass_over: audit]
+Please review this authentication module for:
+- Security vulnerabilities
+- Error handling completeness
+- Type safety
+- Performance issues
+```
+
+Audit returns findings grouped by severity:
+
+- **Critical**: Security risks, data loss
+- **Major**: Logic errors, performance issues
+- **Minor**: Code style, clarity improvements
+
+### Configuration
+
+Configure the Audit agent in your opencode.json:
+
+```json
+{
+  "agent": {
+    "audit": {
+      "description": "Code review specialist",
+      "model": "anthropic/claude-sonnet-4-5",
+      "temperature": 0.1,
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    }
+  }
+}
+```
+
+### Workflows
+
+#### Pre-commit Review
+
+```
+alice → audit → (fixes if needed) → commit
+```
+
+#### Architecture Review
+
+```
+build → audit (architecture review) → plan (evaluation) → build (adjustments)
+```
+
+#### Security Audit
+
+```
+alice → audit (security focus) → implement (fixes)
+```
+
+### Advanced: Custom Reviewers
+
+Create specialized reviewers for different domains:
+
+```json
+{
+  "agent": {
+    "security-reviewer": {
+      "description": "Security-focused code review",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/security-review.txt}"
+    },
+    "performance-reviewer": {
+      "description": "Performance optimization review",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/perf-review.txt}"
+    }
+  }
+}
+```
+
+## Integration with Existing Features
+
+### Pass Over + Custom Agents
+
+Combine Pass Over with custom agent definitions for powerful workflows:
+
+```json
+{
+  "agent": {
+    "architect": {
+      "description": "System architecture specialist",
+      "mode": "subagent"
+    },
+    "tester": {
+      "description": "QA and testing specialist",
+      "mode": "subagent"
+    }
+  },
+  "pass_over": {
+    "agent_pair_settings": {
+      "build": {
+        "architect": { "auto_confirm": true },
+        "tester": { "auto_confirm": true }
+      }
+    }
+  }
+}
+```
+
+### Pass Over + MCP Servers
+
+Combine with MCP servers for enhanced capabilities:
+
+```bash
+# With filesystem MCP
+[pass_over: audit]
+Review all files in /src directory
+
+# With git MCP
+[pass_over: audit]
+Review changes in the current commit
+```
+
+## Next Steps
+
+- Learn about [agent configuration](/setup)
+- Explore [custom tools](/essentials/code)
+- Set up [MCP integrations](/quickstart)

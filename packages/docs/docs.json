@@ -15,8 +15,11 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": ["index", "quickstart", "development", "setup", "privacy"],
-            "openapi": "https://opencode.ai/openapi.json"
+            "pages": ["index", "quickstart", "development", "setup", "privacy"]
+          },
+          {
+            "group": "Features",
+            "pages": ["features"]
           }
         ]
       }
