@@ -75,9 +75,23 @@ export namespace Faker {
     if (ext === ".toml") return fakeToml(content)
     if (
       [
-        ".r", ".py", ".js", ".ts", ".jsx", ".tsx",
-        ".rb", ".go", ".php", ".java", ".cs", ".swift",
-        ".kt", ".sh", ".bash", ".zsh", ".fish",
+        ".r",
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".rb",
+        ".go",
+        ".php",
+        ".java",
+        ".cs",
+        ".swift",
+        ".kt",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
       ].includes(ext)
     )
       return fakeSourceCode(content)
@@ -98,8 +112,7 @@ export namespace Faker {
       // Fake if the key matches known sensitive patterns OR indicates an infrastructure endpoint/model,
       // OR if the value itself is a URL/connection string (may expose private network details).
       const isKeySensitive =
-        SENSITIVE_KEY.test(key) ||
-        /(?:_|^)(?:url|uri|host|endpoint|model|server|addr(?:ess)?)(?:_|$)/i.test(key)
+        SENSITIVE_KEY.test(key) || /(?:_|^)(?:url|uri|host|endpoint|model|server|addr(?:ess)?)(?:_|$)/i.test(key)
       const isValueSensitive = /^[a-z][a-z0-9+\-.]*:\/\//i.test(val)
       if (!isKeySensitive && !isValueSensitive) return _match
       const quote = rawVal.trim().startsWith('"') ? '"' : rawVal.trim().startsWith("'") ? "'" : ""
@@ -153,24 +166,82 @@ export namespace Faker {
     // The entire file is gitignored → treat all string literals as sensitive.
     // Replace every quoted string value with a type-aware fake, preserving
     // code structure, variable names, keywords, and comments.
+    // Also preserve interpolation markers (f-strings, template literals, shell expansions).
 
     // Handle Python/R/shell triple-quoted strings first ("""...""" and '''...''')
     let result = content
       .replace(/"""([\s\S]*?)"""/g, (_m, val) => `"""${fakeValue(val.trim()) || "redacted"}"""`)
       .replace(/'''([\s\S]*?)'''/g, (_m, val) => `'''${fakeValue(val.trim()) || "redacted"}'''`)
 
-    // Replace all remaining double-quoted string literals
-    result = result.replace(/"((?:[^"\\]|\\.)*)"/g, (_m, val) => {
+    // Handle Python f-strings: f"..." or f'...'
+    // Preserve {...} markers inside, replace the content around and within them
+    result = result.replace(/f(["'])((?:[^\\]|\\.)*?)\1/g, (_m, quote, val) => {
+      // Split on {...} patterns to preserve them
+      const parts = val.split(/(\{[^}]*\})/g)
+      const faked = parts
+        .map((part: string) => {
+          if (!part) return part
+          if (part.startsWith("{") && part.endsWith("}")) return part // preserve interpolation
+          // For text outside braces, apply faking
+          if (!part || /^[{}%<>]/.test(part) || part === "*" || part === "?" || part === ".") return part
+          return fakeValue(part) || "example_value"
+        })
+        .join("")
+      return `f${quote}${faked}${quote}`
+    })
+
+    // Handle JavaScript template literals: `...` (preserve ${...} markers)
+    result = result.replace(/`((?:[^\\`]|\\.)*?)`/g, (_m, val) => {
+      const parts = val.split(/(\$\{[^}]*\})/g)
+      const faked = parts
+        .map((part: string) => {
+          if (!part) return part
+          if (part.startsWith("${") && part.endsWith("}")) return part // preserve interpolation
+          if (!part || /^[{}%<>]/.test(part) || part === "*" || part === "?" || part === ".") return part
+          return fakeValue(part) || "example_value"
+        })
+        .join("")
+      return `\`${faked}\``
+    })
+
+    // Replace all remaining double-quoted string literals (skip f-strings, handled above)
+    result = result.replace(/(?<!f)"((?:[^"\\]|\\.)*?)"(?!})/g, (_m, val) => {
       // Skip empty strings and strings that look like format placeholders / regex / HTML tags
       if (!val || /^[{}%<>]/.test(val) || val === "*" || val === "?" || val === ".") return _m
+      // Preserve shell expansions $(...)
+      if (val.includes("$(")) {
+        const parts = val.split(/(\$\([^)]*\))/g)
+        const faked = parts
+          .map((part: string) => {
+            if (!part) return part
+            if (part.startsWith("$(") && part.endsWith(")")) return part // preserve shell expansion
+            if (!part || /^[{}%<>]/.test(part) || part === "*" || part === "?" || part === ".") return part
+            return fakeValue(part) || "example_value"
+          })
+          .join("")
+        return `"${faked}"`
+      }
       return `"${fakeValue(val) || "example_value"}"`
     })
 
-    // Replace all remaining single-quoted string literals
+    // Replace all remaining single-quoted string literals (skip f-strings, handled above)
     // Skip single-char literals (common in C-family languages for char type)
-    result = result.replace(/'((?:[^'\\]|\\.)*)'/g, (_m, val) => {
+    result = result.replace(/(?<!f)'((?:[^'\\]|\\.)*?)'(?!})/g, (_m, val) => {
       if (!val || val.length === 1) return _m
       if (/^[{}%<>]/.test(val) || val === "*" || val === "?" || val === ".") return _m
+      // Preserve shell expansions in single quotes (though less common)
+      if (val.includes("$(")) {
+        const parts = val.split(/(\$\([^)]*\))/g)
+        const faked = parts
+          .map((part: string) => {
+            if (!part) return part
+            if (part.startsWith("$(") && part.endsWith(")")) return part // preserve shell expansion
+            if (!part || /^[{}%<>]/.test(part) || part === "*" || part === "?" || part === ".") return part
+            return fakeValue(part) || "example_value"
+          })
+          .join("")
+        return `'${faked}'`
+      }
       return `'${fakeValue(val) || "example_value"}'`
     })
 

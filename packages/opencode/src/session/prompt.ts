@@ -49,6 +49,7 @@ import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
 import { isGitignored } from "@/util/gitignore"
 import { Env } from "@/env"
+import { Faker } from "@/util/faker"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1246,19 +1247,73 @@ export namespace SessionPrompt {
               }
 
               if (await isGitignored(filepath)) {
-                const rel = path.relative(Instance.worktree, filepath)
-                const guidance = Env.get("OLLAMA_MODEL")
-                  ? `Use the @secret agent (task tool with subagent_type="secret") to analyze it privately.`
-                  : `This file is gitignored and contains binary content that cannot be faked. Remove it from the context.`
-                return [
-                  {
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                    type: "text",
-                    synthetic: true,
-                    text: `Attachment blocked: "${rel}" is gitignored (private). Binary content cannot be included in context. ${guidance}`,
-                  },
-                ]
+                // Secret agent bypasses gitignore checks entirely
+                if (input.agent !== "secret") {
+                  const rel = path.relative(Instance.worktree, filepath)
+                  const stat = await fs.stat(filepath)
+                  const binary = await isBinaryFile(filepath, Number(stat.size))
+
+                  if (binary) {
+                    const guidance = Env.get("OLLAMA_MODEL")
+                      ? `Use the @secret agent (task tool with subagent_type="secret") to analyze it privately.`
+                      : `Remove it from the context.`
+                    return [
+                      {
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                        type: "text",
+                        synthetic: true,
+                        text: `Attachment blocked: "${rel}" is gitignored (private). Binary gitignored file cannot be included in context. ${guidance}`,
+                      },
+                    ]
+                  }
+
+                  // Text file: check if we can fake it
+                  const ollamaModel = Env.get("OLLAMA_MODEL")
+                  const ollamaToolCall = Env.get("OLLAMA_TOOLCALL") !== "false"
+                  if (ollamaModel && ollamaToolCall) {
+                    return [
+                      {
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                        type: "text",
+                        synthetic: true,
+                        text: `Access denied: "${rel}" is gitignored (private).\nThis file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\nCall the task tool with subagent_type="secret" and describe what you need from this file.`,
+                      },
+                    ]
+                  }
+
+                  // Fake the content for regular agents or when OLLAMA is not fully configured
+                  const raw = await Filesystem.readText(filepath)
+                  const faked = await Faker.fakeContent(raw, filepath)
+                  FileTime.read(input.sessionID, filepath)
+                  return [
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `Called the Read tool with the following input: {"filePath":"${filepath}"}`,
+                    },
+                    {
+                      id: part.id,
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "file",
+                      url: `data:${part.mime};base64,${Buffer.from(faked).toString("base64")}`,
+                      mime: part.mime,
+                      filename: part.filename!,
+                      source: part.source,
+                    },
+                    {
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      synthetic: true,
+                      text: `<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`,
+                    },
+                  ]
+                }
               }
 
               FileTime.read(input.sessionID, filepath)
@@ -1981,6 +2036,66 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
       const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
       return Session.setTitle({ sessionID: input.session.id, title })
+    }
+  }
+
+  async function isBinaryFile(filepath: string, fileSize: number): Promise<boolean> {
+    const ext = path.extname(filepath).toLowerCase()
+    // binary check for common non-text extensions
+    switch (ext) {
+      case ".zip":
+      case ".tar":
+      case ".gz":
+      case ".exe":
+      case ".dll":
+      case ".so":
+      case ".class":
+      case ".jar":
+      case ".war":
+      case ".7z":
+      case ".doc":
+      case ".docx":
+      case ".xls":
+      case ".xlsx":
+      case ".ppt":
+      case ".pptx":
+      case ".odt":
+      case ".ods":
+      case ".odp":
+      case ".bin":
+      case ".dat":
+      case ".obj":
+      case ".o":
+      case ".a":
+      case ".lib":
+      case ".wasm":
+      case ".pyc":
+      case ".pyo":
+        return true
+      default:
+        break
+    }
+
+    if (fileSize === 0) return false
+
+    const fh = await fs.open(filepath, "r")
+    try {
+      const sampleSize = Math.min(4096, fileSize)
+      const bytes = Buffer.alloc(sampleSize)
+      const result = await fh.read(bytes, 0, sampleSize, 0)
+      if (result.bytesRead === 0) return false
+
+      let nonPrintableCount = 0
+      for (let i = 0; i < result.bytesRead; i++) {
+        if (bytes[i] === 0) return true
+        if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 32)) {
+          nonPrintableCount++
+        }
+      }
+      // If >30% non-printable characters, consider it binary
+      return nonPrintableCount / result.bytesRead > 0.3
+    } finally {
+      await fh.close()
     }
   }
 }

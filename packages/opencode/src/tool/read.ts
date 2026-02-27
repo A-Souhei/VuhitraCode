@@ -115,6 +115,15 @@ export const ReadTool = Tool.define("read", {
     }
 
     if (stat.isDirectory()) {
+      if (ctx.agent !== "secret") {
+        const gitignored = await isGitignored(resolvedFilepath)
+        if (gitignored) {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
+          )
+        }
+      }
+
       const dirents = await fs.readdir(filepath, { withFileTypes: true })
       const entries = await Promise.all(
         dirents.map(async (dirent) => {
@@ -174,6 +183,14 @@ export const ReadTool = Tool.define("read", {
     const isImage = mime.startsWith("image/") && mime !== "image/svg+xml" && mime !== "image/vnd.fastbidsheet"
     const isPdf = mime === "application/pdf"
     if (isImage || isPdf) {
+      if (ctx.agent !== "secret") {
+        const gitignored = await isGitignored(resolvedFilepath)
+        if (gitignored) {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
+          )
+        }
+      }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {
         title,

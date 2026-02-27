@@ -617,4 +617,335 @@ describe("tool.read privacy — gitignore interception", () => {
       },
     })
   })
+
+  test("gitignored image throws error for non-secret agent", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.png\n")
+        // 1x1 red PNG
+        const png = Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+          "base64",
+        )
+        await Bun.write(path.join(dir, "secret.png"), png)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        await expect(
+          read.execute({ filePath: path.join(tmp.path, "secret.png") }, { ...ctx, agent: "build" }),
+        ).rejects.toThrow('Access denied: "secret.png" is gitignored (private).')
+      },
+    })
+  })
+
+  test("gitignored PDF throws error for non-secret agent", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.pdf\n")
+        // Minimal valid PDF structure
+        const pdf = Buffer.from("%PDF-1.4\n%dummy PDF content\n", "utf8")
+        await Bun.write(path.join(dir, "secret.pdf"), pdf)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        await expect(
+          read.execute({ filePath: path.join(tmp.path, "secret.pdf") }, { ...ctx, agent: "build" }),
+        ).rejects.toThrow('Access denied: "secret.pdf" is gitignored (private).')
+      },
+    })
+  })
+
+  test("secret agent can read gitignored image", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.png\n")
+        // 1x1 red PNG
+        const png = Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+          "base64",
+        )
+        await Bun.write(path.join(dir, "secret.png"), png)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "secret.png") }, { ...ctx, agent: "secret" })
+        expect(result.attachments).toBeDefined()
+        expect(result.attachments?.length).toBe(1)
+        expect(result.attachments?.[0].type).toBe("file")
+      },
+    })
+  })
+
+  test("secret agent can read gitignored PDF", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.pdf\n")
+        const pdf = Buffer.from("%PDF-1.4\n%dummy PDF content\n", "utf8")
+        await Bun.write(path.join(dir, "secret.pdf"), pdf)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "secret.pdf") }, { ...ctx, agent: "secret" })
+        expect(result.attachments).toBeDefined()
+        expect(result.attachments?.length).toBe(1)
+        expect(result.attachments?.[0].type).toBe("file")
+      },
+    })
+  })
+
+  test("non-gitignored image reads normally for all agents", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "other.png\n")
+        // 1x1 red PNG
+        const png = Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+          "base64",
+        )
+        await Bun.write(path.join(dir, "public.png"), png)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "public.png") }, { ...ctx, agent: "build" })
+        expect(result.attachments).toBeDefined()
+        expect(result.attachments?.length).toBe(1)
+        expect(result.attachments?.[0].type).toBe("file")
+      },
+    })
+  })
+})
+
+describe("tool.read integration — faker end-to-end", () => {
+  test("gitignored symlink: faked consistently for non-secret agent", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secrets/*\n")
+        await Bun.write(path.join(dir, "secrets", ".env"), "API_KEY=sk-secret123\nDATABASE_PASSWORD=prod_password_real")
+        // Create symlink from public area to gitignored file
+        await Bun.spawn(["ln", "-s", path.join(dir, "secrets", ".env"), path.join(dir, "public-env-link")]).exited
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.remove("OLLAMA_MODEL")
+        const read = await ReadTool.init()
+        const result = await read.execute(
+          { filePath: path.join(tmp.path, "public-env-link") },
+          { ...ctx, agent: "build" },
+        )
+        // Sensitive values must not appear
+        expect(result.output).not.toContain("sk-secret123")
+        expect(result.output).not.toContain("prod_password_real")
+        // Keys are visible
+        expect(result.output).toContain("API_KEY=")
+        expect(result.output).toContain("DATABASE_PASSWORD=")
+        // Privacy notice indicates faking
+        expect(result.output).toContain("privacy-notice")
+      },
+    })
+  })
+
+  test("gitignored directory: throws error for non-secret agent", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "private/\n")
+        await Bun.write(path.join(dir, "private", "config.env"), "DB_URL=postgres://secret")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        await expect(
+          read.execute({ filePath: path.join(tmp.path, "private") }, { ...ctx, agent: "build" }),
+        ).rejects.toThrow("is a gitignored directory")
+      },
+    })
+  })
+
+  test("gitignored nested path: fakes values in nested .env file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), ".config/.env\n")
+        await Bun.write(
+          path.join(dir, ".config", ".env"),
+          "DATABASE_URL=postgres://admin:s3cr3t@db.example.com/mydb\nJWT_SECRET=super_secret_key_12345",
+        )
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.remove("OLLAMA_MODEL")
+        const read = await ReadTool.init()
+        const result = await read.execute(
+          { filePath: path.join(tmp.path, ".config", ".env") },
+          { ...ctx, agent: "build" },
+        )
+        // Real credentials must not appear
+        expect(result.output).not.toContain("s3cr3t")
+        expect(result.output).not.toContain("super_secret_key_12345")
+        expect(result.output).not.toContain("admin")
+        expect(result.output).not.toContain("db.example.com")
+        // Structure is preserved
+        expect(result.output).toContain("DATABASE_URL=")
+        expect(result.output).toContain("JWT_SECRET=")
+        // Privacy notice present
+        expect(result.output).toContain("privacy-notice")
+      },
+    })
+  })
+
+  test("gitignored JSON config: fakes nested secrets", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secrets.json\n")
+        await Bun.write(
+          path.join(dir, "secrets.json"),
+          JSON.stringify({
+            api_key: "sk-proj-abc123def456",
+            password: "MyS3cur3P@ssw0rd",
+            oauth_token: "ghp_abc123def456ghi789",
+            nested: {
+              db_connection_string: "mongodb+srv://admin:secret@cluster.mongodb.net/mydb",
+            },
+          }),
+        )
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.remove("OLLAMA_MODEL")
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "secrets.json") }, { ...ctx, agent: "build" })
+        // Real secrets must not appear
+        expect(result.output).not.toContain("sk-proj-abc123def456")
+        expect(result.output).not.toContain("MyS3cur3P@ssw0rd")
+        expect(result.output).not.toContain("ghp_abc123def456ghi789")
+        expect(result.output).not.toContain("secret@cluster")
+        // Keys are visible
+        expect(result.output).toContain("api_key")
+        expect(result.output).toContain("password")
+        expect(result.output).toContain("nested")
+        // Privacy notice
+        expect(result.output).toContain("privacy-notice")
+      },
+    })
+  })
+
+  test("gitignored source code: fakes string literals", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "config.ts\n")
+        await Bun.write(
+          path.join(dir, "config.ts"),
+          `export const CONFIG = {
+  api_key: "sk-real-api-key-123",
+  secret_token: "real_secret_token_xyz",
+  db_password_url: "postgres://admin:realpassword@prod.db/mydb"
+}`,
+        )
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.remove("OLLAMA_MODEL")
+        const read = await ReadTool.init()
+        const result = await read.execute({ filePath: path.join(tmp.path, "config.ts") }, { ...ctx, agent: "build" })
+        // Real values must not appear
+        expect(result.output).not.toContain("sk-real-api-key-123")
+        expect(result.output).not.toContain("real_secret_token_xyz")
+        expect(result.output).not.toContain("realpassword")
+        // Structure is visible
+        expect(result.output).toContain("api_key")
+        expect(result.output).toContain("secret_token")
+        expect(result.output).toContain("db_password_url")
+        expect(result.output).toContain("export const CONFIG")
+        // Privacy notice
+        expect(result.output).toContain("privacy-notice")
+      },
+    })
+  })
+
+  test("non-gitignored file: not faked even with sensitive names", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "ignored.env\n")
+        await Bun.write(path.join(dir, "config.env"), "DB_HOST=localhost\nAPI_KEY=public_info")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          const result = await read.execute({ filePath: path.join(tmp.path, "config.env") }, { ...ctx, agent: "build" })
+          // Real values appear
+          expect(result.output).toContain("localhost")
+          expect(result.output).toContain("public_info")
+          // No privacy notice for non-gitignored
+          expect(result.output).not.toContain("privacy-notice")
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
+      },
+    })
+  })
+
+  test("secret agent bypasses faking for gitignored files", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), ".env\n")
+        await Bun.write(path.join(dir, ".env"), "API_SECRET=real_secret_value_12345\nDB_KEY=genuine_key_99999")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "secret" })
+          // Real values appear for secret agent
+          expect(result.output).toContain("real_secret_value_12345")
+          expect(result.output).toContain("genuine_key_99999")
+          // No privacy notice
+          expect(result.output).not.toContain("privacy-notice")
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
+      },
+    })
+  })
 })
