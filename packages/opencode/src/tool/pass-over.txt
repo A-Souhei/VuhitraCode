@@ -1,0 +1,29 @@
+Pass work output to another agent for specialized handling.
+
+Use this tool to delegate work to another agent when you need specialized review, verification, or handling that goes beyond your current agent's capabilities. For example, you might pass work from alice to audit for code review, or from sentinel to audit for verification.
+
+When you use the pass_over tool, you must specify:
+- subagent: The target agent name (e.g., "audit", "sentinel", "alice")
+- reason: Why you're passing over (e.g., "code_review", "verify_implementation", "fix_issues")
+- work_output: The work you've completed including:
+  - files_modified: List of files you modified or created
+  - summary: Brief description of what you did
+  - messages: (Optional) Previous tool results or messages
+  - tool_results: (Optional) Structured tool execution results
+- auto_confirm: (Optional) Set to true to automatically pass to the agent without user confirmation
+- timeout_ms: (Optional) Override the default timeout
+
+When you don't set auto_confirm (defaults to false), the system will emit a [pass_over_request: agent_name] tag and wait for user confirmation before switching agents.
+
+When auto_confirm is true, the work is immediately passed to the target agent.
+
+The pass_over tool prevents infinite loops by:
+- Limiting the chain depth to 3 passes maximum
+- Preventing the same agent from being passed to twice in succession
+- Tracking the pass-over chain history
+
+Usage notes:
+1. Pass over work when you've completed a significant task and need specialized handling
+2. Be clear about the reason for passing over
+3. Include all relevant files and a clear summary of the work
+4. The target agent will receive the full context of what you've accomplished

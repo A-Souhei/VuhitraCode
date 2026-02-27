@@ -45,7 +45,7 @@ import {
   prependHistoryEntry,
   promptLength,
 } from "./prompt-input/history"
-import { createPromptSubmit } from "./prompt-input/submit"
+import { createPromptSubmit, onPassOverRequest, type PassOverEvent } from "./prompt-input/submit"
 import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
@@ -404,12 +404,48 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const [composing, setComposing] = createSignal(false)
+  const [isPassingOver, setIsPassingOver] = createSignal(false)
+  const [passOverTarget, setPassOverTarget] = createSignal<string | null>(null)
+  const [passOverFrom, setPassOverFrom] = createSignal<string | null>(null)
+  let passOverTimer: ReturnType<typeof setTimeout> | null = null
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
 
   const handleBlur = () => {
     closePopover()
     setComposing(false)
   }
+
+  const clearPassOverState = () => {
+    if (passOverTimer !== null) {
+      clearTimeout(passOverTimer)
+      passOverTimer = null
+    }
+    setIsPassingOver(false)
+    setPassOverTarget(null)
+    setPassOverFrom(null)
+  }
+
+  createEffect(() => {
+    const unsubscribe = onPassOverRequest((event: PassOverEvent) => {
+      if (event.type === "pass_over_request") {
+        // Clear any previous timeout before starting new pass over
+        clearPassOverState()
+
+        setPassOverFrom(event.from)
+        setPassOverTarget(event.to)
+        setIsPassingOver(true)
+
+        // Set new timeout
+        passOverTimer = setTimeout(() => {
+          clearPassOverState()
+        }, 3000)
+      }
+    })
+    onCleanup(() => {
+      unsubscribe()
+      clearPassOverState()
+    })
+  })
 
   const agentList = createMemo(() =>
     sync.data.agent
@@ -1278,19 +1314,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <TooltipKeybind
                   placement="top"
                   gutter={4}
-                  title={language.t("command.agent.cycle")}
+                  title={
+                    isPassingOver() ? `Passing to ${passOverTarget() ?? "..."}` : language.t("command.agent.cycle")
+                  }
                   keybind={command.keybind("agent.cycle")}
                 >
-                  <Select
-                    size="normal"
-                    options={agentNames()}
-                    current={local.agent.current()?.name ?? ""}
-                    onSelect={local.agent.set}
-                    class="capitalize max-w-[160px]"
-                    valueClass="truncate text-13-regular"
-                    triggerStyle={{ height: "28px" }}
-                    variant="ghost"
-                  />
+                  <div
+                    class="relative flex items-center transition-all duration-300"
+                    classList={{
+                      "opacity-100": !isPassingOver(),
+                      "opacity-60 animate-pulse": isPassingOver(),
+                    }}
+                  >
+                    <Select
+                      size="normal"
+                      options={agentNames()}
+                      current={local.agent.current()?.name ?? ""}
+                      onSelect={local.agent.set}
+                      class="capitalize max-w-[160px]"
+                      valueClass="truncate text-13-regular"
+                      triggerStyle={{ height: "28px" }}
+                      variant="ghost"
+                      disabled={isPassingOver()}
+                    />
+                    <Show when={isPassingOver()}>
+                      <div class="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
+                        <span class="text-13-regular text-text-strong truncate">{passOverFrom()}</span>
+                        <Icon name="arrow-right" size="small" class="text-icon-base shrink-0 mx-1" />
+                        <span class="text-13-regular text-text-strong truncate">{passOverTarget()}</span>
+                      </div>
+                    </Show>
+                  </div>
                 </TooltipKeybind>
                 <Show
                   when={providers.paid().length > 0}
