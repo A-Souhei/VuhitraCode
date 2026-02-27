@@ -14,6 +14,6 @@ export async function isGitignored(filepath: string): Promise<boolean> {
     await proc.exited
     return proc.exitCode === 0
   } catch {
-    return false
+    return true
   }
 }

@@ -14,6 +14,7 @@ import { Filesystem } from "../util/filesystem"
 import { Env } from "../env"
 import { Faker } from "../util/faker"
 import { isGitignored } from "../util/gitignore"
+import { validateSecretAgentOutput } from "../util/secret-output-validator"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -74,18 +75,22 @@ export const ReadTool = Tool.define("read", {
     })
 
     let shouldFake = false
-    if (ctx.agent !== "secret") {
-      const gitignored = await isGitignored(resolvedFilepath)
-      if (gitignored) {
-        const ollamaModel = Env.get("OLLAMA_MODEL")
-        const ollamaToolCall = Env.get("OLLAMA_TOOLCALL") !== "false"
-        if (ollamaModel && ollamaToolCall) {
+    const gitignored = await isGitignored(resolvedFilepath)
+    if (gitignored) {
+      const ollamaModel = Env.get("OLLAMA_MODEL")
+      if (ctx.agent !== "secret") {
+        // Regular agents: redirect to secret agent if model is set (they have credentials)
+        if (ollamaModel) {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
               `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
               `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
           )
         }
+        // No model set: apply faking as defense-in-depth
+        shouldFake = true
+      } else {
+        // Secret agent: always apply faking for defense-in-depth
         shouldFake = true
       }
     }
@@ -115,6 +120,16 @@ export const ReadTool = Tool.define("read", {
     }
 
     if (stat.isDirectory()) {
+      const gitignored = await isGitignored(resolvedFilepath)
+      if (gitignored) {
+        if (ctx.agent !== "secret") {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
+          )
+        }
+        // Secret agent can read gitignored directories (no faking for directories, but access is allowed)
+      }
+
       const dirents = await fs.readdir(filepath, { withFileTypes: true })
       const entries = await Promise.all(
         dirents.map(async (dirent) => {
@@ -174,6 +189,15 @@ export const ReadTool = Tool.define("read", {
     const isImage = mime.startsWith("image/") && mime !== "image/svg+xml" && mime !== "image/vnd.fastbidsheet"
     const isPdf = mime === "application/pdf"
     if (isImage || isPdf) {
+      const gitignored = await isGitignored(resolvedFilepath)
+      if (gitignored) {
+        if (ctx.agent !== "secret") {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
+          )
+        }
+        // Secret agent can read gitignored images/PDFs
+      }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {
         title,
@@ -247,6 +271,17 @@ export const ReadTool = Tool.define("read", {
       const fakedLines = faked.split("\n")
       raw.length = 0
       raw.push(...fakedLines)
+
+      // Defense-in-depth: validate faked output to catch faker gaps.
+      // Even though faker should have replaced sensitive values, we scan
+      // the output to warn operators of any potential leaks before returning.
+      const validation = validateSecretAgentOutput(faked, filepath)
+      if (!validation.isSafe) {
+        // Log warnings to stderr for operator visibility
+        for (const warning of validation.warnings) {
+          console.warn(`[SECRET AGENT VALIDATION] ${warning}`)
+        }
+      }
     }
 
     const content = raw.map((line, index) => {

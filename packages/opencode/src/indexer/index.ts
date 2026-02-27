@@ -284,6 +284,9 @@ export namespace Indexer {
       const chunks = chunkFile(content, filePath)
       if (chunks.length === 0) return
 
+      // Redact file path for gitignored files to prevent leaking directory structure
+      const indexedPath = ignored ? "[gitignored]" : filePath
+
       // Embed all chunks in parallel (using concurrency limit of 10)
       const results = await mapParallel(
         chunks,
@@ -295,10 +298,11 @@ export namespace Indexer {
               id: chunk.id,
               vector,
               payload: {
-                file_path: filePath,
+                file_path: indexedPath,
                 text: chunk.text,
                 start_line: chunk.startLine,
                 mtime: stat.mtimeMs,
+                is_gitignored: ignored,
               },
             }
           } catch (e) {
