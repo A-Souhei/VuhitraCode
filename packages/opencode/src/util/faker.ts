@@ -314,6 +314,59 @@ export namespace Faker {
   // Value-type detection and faking
   // ---------------------------------------------------------------------------
 
+  function redactUrlCredentials(url: string): string {
+    // Parse and redact credentials from URLs while preserving structure
+    const urlObj = (() => {
+      try {
+        return new URL(url)
+      } catch {
+        return null
+      }
+    })()
+
+    if (urlObj) {
+      // Redact username and password in the URL
+      if (urlObj.password) {
+        // Has password: username is a real user
+        urlObj.username = "user"
+        urlObj.password = "fakepassword"
+      } else if (urlObj.username) {
+        // No password but has username: check if it looks like a token
+        const tokenPatterns = /^(?:ghp_|glpat_|xoxb_|sk_|pk_|Bearer|Basic|token_|api_key_)/i
+        if (tokenPatterns.test(urlObj.username)) {
+          urlObj.username = "fake_token"
+        } else {
+          urlObj.username = "user"
+        }
+      }
+      let result = urlObj.toString()
+
+      // Also redact common query parameter patterns for API keys/tokens
+      result = result.replace(
+        /([?&])(api_?key|token|access_?token|authorization|auth|secret|apikey)=([^&\s]+)/gi,
+        "$1$2=fake_token",
+      )
+      return result
+    }
+
+    // Fallback for malformed URLs: regex-based redaction
+    let result = url
+
+    // Pattern: protocol://user:password@host - replace password
+    result = result.replace(/^([a-z][a-z0-9+\-.]*:\/\/[^:@/?#]*):([^@/?#]+)(@.*)$/i, "$1:fakepassword$3")
+
+    // Pattern: protocol://token@host - replace token
+    result = result.replace(/^([a-z][a-z0-9+\-.]*:\/\/)([^:/@?#]+@)([^/?#])([/?#]|$)/i, "$1fake_token@$3$4")
+
+    // Query parameters: ?api_key=xxx&token=yyy
+    result = result.replace(
+      /([?&])(api_?key|token|access_?token|authorization|auth|secret|apikey)=([^&\s]+)/gi,
+      "$1$2=fake_token",
+    )
+
+    return result
+  }
+
   function fakeValue(value: string): string {
     if (!value || value === '""' || value === "''") return value
 
@@ -330,7 +383,8 @@ export namespace Faker {
     // Database / service URLs with embedded credentials
     const dbUrl = value.match(/^([a-z][a-z0-9+\-.]*):\/\/([^:@/?#]*)(:([^@/?#]*))?@(.+)$/i)
     if (dbUrl) {
-      return `${dbUrl[1]}://user:fakepassword@localhost${dbUrl[5].replace(/^[^/?#]*/, "")}`
+      // Use the new URL redaction function for better handling
+      return redactUrlCredentials(value)
     }
 
     // Known vendor key prefixes
@@ -355,8 +409,17 @@ export namespace Faker {
       return "user@example.com"
     }
 
-    // URL (no credentials)
-    if (/^https?:\/\/\S+/.test(value)) {
+    // URL: check for embedded credentials or sensitive query params
+    if (/^[a-z][a-z0-9+\-.]*:\/\/\S+/i.test(value)) {
+      // Check if URL has credentials or sensitive query params
+      const hasCredentials = /@/.test(value)
+      const hasSensitiveParams = /([?&])(api_?key|token|access_?token|authorization|auth|secret|apikey)=/i.test(value)
+
+      if (hasCredentials || hasSensitiveParams) {
+        // Redact credentials while preserving URL structure
+        return redactUrlCredentials(value)
+      }
+      // No credentials/sensitive params: replace entire URL
       return "https://example.com"
     }
 

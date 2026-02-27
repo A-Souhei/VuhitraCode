@@ -755,6 +755,356 @@ normal = "another_secret_here"`
 })
 
 // ---------------------------------------------------------------------------
+// URL credential redaction
+// ---------------------------------------------------------------------------
+
+describe("Faker.fakeContent — URL credentials", () => {
+  test("redacts HTTP Basic Auth credentials while preserving structure", async () => {
+    const content = `DATABASE_URL=postgres://admin:realpass@prod.host:5432/mydb`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("realpass")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("prod.host")
+    expect(result).toContain("5432")
+    expect(result).toContain("mydb")
+  })
+
+  test("redacts PostgreSQL connection strings", async () => {
+    const content = `DB_URL=postgresql://dbuser:secretpass@prod-db.local:5432/production`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("secretpass")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("prod-db.local")
+    expect(result).toContain("5432")
+  })
+
+  test("redacts MySQL connection strings", async () => {
+    const content = `MYSQL_URL=mysql://admin:complexpass123!@db.host.com:3306/mydb`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("complexpass123!")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("db.host.com")
+  })
+
+  test("redacts MongoDB connection strings", async () => {
+    const content = `MONGO_URL=mongodb://user:password123@mongo.example.com:27017/admin`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("password123")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("mongo.example.com")
+  })
+
+  test("redacts MongoDB+SRV connection strings", async () => {
+    const content = `MONGO_SRV=mongodb+srv://user:realpassword@cluster0.mongodb.net/database`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("realpassword")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("cluster0.mongodb.net")
+  })
+
+  test("redacts Redis connection strings", async () => {
+    const content = `REDIS_URL=redis://admin:redispass456@redis.example.com:6379/0`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("redispass456")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("redis.example.com")
+  })
+
+  test("redacts AMQP connection strings", async () => {
+    const content = `AMQP_URL=amqp://rabbitmq_user:rabbit_secret@rabbitmq.example.com:5672`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("rabbit_secret")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("rabbitmq.example.com")
+  })
+
+  test("redacts query parameters with API keys", async () => {
+    const content = `ENDPOINT=https://api.example.com/endpoint?api_key=sk_live_12345&token=xyz789`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).not.toContain("sk_live_12345")
+    expect(result).not.toContain("xyz789")
+    expect(result).toContain("api_key=fake_token")
+    expect(result).toContain("token=fake_token")
+  })
+
+  test("redacts URL credentials in JSON values", async () => {
+    const obj = {
+      database_url: "postgres://admin:pass123@db.local:5432/app",
+      connection_string: "https://user:secretpass@api.service.com/v1",
+    }
+    const result = await Faker.fakeContent(JSON.stringify(obj), "config.json")
+    const parsed = JSON.parse(result)
+    expect(parsed.database_url).not.toContain("pass123")
+    expect(parsed.database_url).toContain("fakepassword")
+    expect(parsed.connection_string).not.toContain("secretpass")
+    expect(parsed.connection_string).toContain("fakepassword")
+  })
+
+  test("redacts URL credentials in YAML values", async () => {
+    const content = `
+database_url: mysql://admin:mysecret@db.prod:3306/store
+connection_string: https://mytoken123@api.example.com/v2
+`.trim()
+    const result = await Faker.fakeContent(content, "config.yaml")
+    expect(result).not.toContain("mysecret")
+    expect(result).not.toContain("mytoken123")
+    expect(result).toContain("fakepassword")
+    expect(result).toContain("db.prod")
+    expect(result).toContain("api.example.com")
+  })
+
+  test("redacts URL credentials in source code strings", async () => {
+    const content = `
+const dbUrl = "mongodb://user:pass123@mongo.cluster:27017/data"
+const apiUrl = "https://mytoken@api.example.com"
+`.trim()
+    const result = await Faker.fakeContent(content, "config.js")
+    expect(result).not.toContain("pass123")
+    expect(result).not.toContain("mytoken@api.example.com")
+    expect(result).toContain("fakepassword")
+  })
+
+  test("preserves URL structure while redacting credentials", async () => {
+    const content = `DB=postgresql://user:mypass@host.example.com:5432/dbname?sslmode=require`
+    const result = await Faker.fakeContent(content, ".env")
+    expect(result).toContain("postgresql://")
+    expect(result).toContain(":5432")
+    expect(result).toContain("/dbname")
+    expect(result).toContain("sslmode=require")
+    expect(result).not.toContain("mypass")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Comprehensive URL credential faking tests
+// ---------------------------------------------------------------------------
+
+describe("Faker.fakeContent — comprehensive URL credentials", () => {
+  describe("Database URLs - multiple protocols", () => {
+    test("fakes PostgreSQL with various password formats", async () => {
+      const cases = ["postgresql://user:pass@host:5432/db", "postgres://admin:complex%40pass@db.local:5432/mydb"]
+      for (const url of cases) {
+        const result = await Faker.fakeContent(`DB_URL=${url}`, ".env")
+        expect(result).toContain("fakepassword")
+        if (url.includes("complex")) expect(result).not.toContain("complex%40pass")
+      }
+    })
+
+    test("fakes MongoDB variants", async () => {
+      const cases = [
+        "mongodb://user:pass@mongo.com:27017/admin",
+        "mongodb+srv://user:password@cluster.mongodb.net/database",
+      ]
+      for (const url of cases) {
+        const result = await Faker.fakeContent(`MONGO=${url}`, ".env")
+        expect(result).toContain("fakepassword")
+      }
+    })
+
+    test("preserves database names and ports", async () => {
+      const result = await Faker.fakeContent("DB=mysql://user:secret@host:3306/myapp?charset=utf8", ".env")
+      expect(result).toContain("3306")
+      expect(result).toContain("myapp")
+      expect(result).not.toContain("secret")
+    })
+  })
+
+  describe("URL query parameters", () => {
+    test("fakes multiple query parameters", async () => {
+      const content = "URL=https://api.example.com?token=abc123&api_key=xyz789&org=acme"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("abc123")
+      expect(result).not.toContain("xyz789")
+      expect(result).toContain("token=fake_token")
+      expect(result).toContain("api_key=fake_token")
+      expect(result).toContain("org=acme")
+    })
+
+    test("preserves non-sensitive query parameters", async () => {
+      const content = "URL=https://api.example.com/v1?page=1&limit=10&api_key=real_key"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).toContain("page=1")
+      expect(result).toContain("limit=10")
+      expect(result).not.toContain("real_key")
+      expect(result).toContain("api_key=fake_token")
+    })
+
+    test("handles fragment identifiers", async () => {
+      const content = "URL=https://example.com/page?code=auth123#section"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("auth123")
+    })
+  })
+
+  describe("URLs with special characters", () => {
+    test("handles URL-encoded credentials", async () => {
+      const content = "DB=mysql://user:p%40ss%23word@host/db"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("p%40ss%23word")
+      expect(result).toContain("fakepassword")
+    })
+
+    test("handles hyphens and dots in hostname", async () => {
+      const content = "DB=postgresql://user:testpass@prod-db-01.us-east-1.rds.amazonaws.com:5432/app"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("testpass")
+      expect(result).toContain("fakepassword")
+    })
+
+    test("handles special chars in username", async () => {
+      const content = "DB=postgresql://admin+user:pass@host/db"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("admin+user:pass")
+      expect(result).toContain("fakepassword")
+    })
+  })
+
+  describe("URLs in different file formats", () => {
+    test("fakes in .env files", async () => {
+      const content = [
+        "DB_URL=postgresql://user:mysecret@db.example.com:5432/prod",
+        "REDIS_URL=redis://user:myredispass@cache.example.com:6379/0",
+      ].join("\n")
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("mysecret")
+      expect(result).not.toContain("myredispass")
+      expect(result.split("fakepassword").length).toBeGreaterThan(2)
+    })
+
+    test("fakes in .env.local files", async () => {
+      const content = "DATABASE_URL=postgres://admin:realpass@db.local:5432/test"
+      const result = await Faker.fakeContent(content, ".env.local")
+      expect(result).not.toContain("realpass")
+      expect(result).toContain("fakepassword")
+    })
+
+    test("fakes in JSON files", async () => {
+      const obj = {
+        database_url: "mysql://user:dbsecret@localhost:3306/db",
+        connection_string: "redis://default:redispass@redis.local:6379",
+      }
+      const result = await Faker.fakeContent(JSON.stringify(obj), "config.json")
+      const parsed = JSON.parse(result)
+      expect(parsed.database_url).not.toContain("dbsecret")
+      expect(parsed.connection_string).not.toContain("redispass")
+    })
+
+    test("fakes in YAML files", async () => {
+      const content = `
+database_url: mysql://admin:secret123@db.prod:3306/myapp
+connection_string: postgresql://user:mypassword@postgres.local:5432/test
+`.trim()
+      const result = await Faker.fakeContent(content, "config.yaml")
+      expect(result).not.toContain("secret123")
+      expect(result).not.toContain("mypassword")
+    })
+
+    test("fakes in source code (.py)", async () => {
+      const content = `
+db_conn = "mongodb://user:password123@mongo.prod:27017/app"
+api_url = "https://token123@api.example.com/v1"
+`.trim()
+      const result = await Faker.fakeContent(content, "config.py")
+      expect(result).not.toContain("password123")
+      expect(result).not.toContain("token123@api.example.com")
+    })
+
+    test("fakes in source code (.js)", async () => {
+      const content = `
+const dbUrl = "postgres://admin:secret@db.prod:5432/app";
+const apiUrl = "https://api.example.com?token=sk_live_abc";
+`.trim()
+      const result = await Faker.fakeContent(content, "config.js")
+      expect(result).not.toContain("admin:secret")
+      expect(result).not.toContain("sk_live_abc")
+    })
+  })
+
+  describe("Multiple URLs in same content", () => {
+    test("fakes multiple database URLs", async () => {
+      const content = `
+PRIMARY_DB=postgresql://user:secret123@db1.example.com:5432/prod
+REPLICA_DB=postgresql://user:secret456@db2.example.com:5432/prod
+BACKUP_DB=mysql://admin:mybackuppass@backup.example.com:3306/data
+`.trim()
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("secret123")
+      expect(result).not.toContain("secret456")
+      expect(result).not.toContain("mybackuppass")
+      const fakeCount = (result.match(/fakepassword/g) || []).length
+      expect(fakeCount).toBeGreaterThanOrEqual(3)
+    })
+
+    test("fakes mixed protocols in JSON", async () => {
+      const obj = {
+        database_url: "postgresql://user:mypass@db.local:5432/app",
+        connection_string: "mongodb://user:mypass@mongo.local:27017/db",
+      }
+      const result = await Faker.fakeContent(JSON.stringify(obj), "config.json")
+      const parsed = JSON.parse(result)
+      expect(parsed.database_url).not.toContain("mypass")
+      expect(parsed.connection_string).not.toContain("mypass")
+    })
+  })
+
+  describe("URL structure preservation", () => {
+    test("preserves protocol", async () => {
+      const protocols = ["postgresql://", "mysql://", "mongodb://", "mongodb+srv://", "redis://", "amqp://", "https://"]
+      for (const proto of protocols) {
+        const url = proto + "user:pass@host/db"
+        const result = await Faker.fakeContent(`URL=${url}`, ".env")
+        expect(result).toContain(proto)
+      }
+    })
+
+    test("preserves path after credentials", async () => {
+      const content = "DB=mysql://user:secret@host:3306/mydb/schema/table"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).toContain("/mydb")
+      expect(result).not.toContain("secret")
+    })
+
+    test("preserves query string structure", async () => {
+      const content = "URL=https://api.example.com/v1?token=abc&org=acme&version=2"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).toContain("?")
+      expect(result).toContain("&")
+      expect(result).toContain("org=acme")
+      expect(result).toContain("version=2")
+    })
+  })
+
+  describe("Edge cases", () => {
+    test("handles URL without port", async () => {
+      const content = "DB=postgresql://user:secret@db.local/mydb"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("secret")
+      expect(result).toContain("fakepassword")
+    })
+
+    test("handles URL with only username (no password)", async () => {
+      const content = "URL=https://apiuser@api.example.com/endpoint"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("apiuser@api.example.com")
+    })
+
+    test("handles very long credentials", async () => {
+      const longPass = "a".repeat(100)
+      const content = `DB=postgresql://user:${longPass}@host/db`
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("aaaa")
+      expect(result).toContain("fakepassword")
+    })
+
+    test("handles credentials with newlines escaped (should not occur in practice)", async () => {
+      const content = "API_KEY=https://user:pass@host?token=abc123"
+      const result = await Faker.fakeContent(content, ".env")
+      expect(result).not.toContain("abc123")
+      expect(result).not.toContain("pass@host")
+    })
+  })
+})
+
 // Integration tests with Instance and read.ts workflow
 // ---------------------------------------------------------------------------
 
