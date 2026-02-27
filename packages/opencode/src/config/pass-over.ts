@@ -69,6 +69,10 @@ export async function savePassOverConfig(directory: string, config: PassOverConf
   const dir = path.join(directory, ".opencode")
   const filePath = path.join(dir, "pass-over.json")
 
+  // Ensure directory exists before writing
+  const fs = await import("fs/promises")
+  await fs.mkdir(dir, { recursive: true })
+
   await Bun.write(filePath, JSON.stringify(parsed.data, null, 2))
 }
 

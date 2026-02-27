@@ -110,7 +110,7 @@ function clonePrompt(prompt: Prompt): Prompt {
 
 export function parsePassOverTags(text: string): { text: string; parts: PassOverPart[] } {
   const parts: PassOverPart[] = []
-  const regex = /\[pass_over:\s*(\w+)\s*\]/g
+  const regex = /\[pass_over:\s*([-\w]+)\s*\]/g
   let match
   let lastIndex = 0
   let cleanText = ""
