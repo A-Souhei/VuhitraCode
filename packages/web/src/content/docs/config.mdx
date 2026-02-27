@@ -685,3 +685,80 @@ These are useful for:
 - Keeping sensitive data like API keys in separate files.
 - Including large instruction files without cluttering your config.
 - Sharing common configuration snippets across multiple config files.
+
+---
+
+## Pass Over
+
+Configure automatic agent handoff workflows using `.opencode/pass-over.json`. This enables agents to delegate work to specialized subagents and automatically return for processing.
+
+### Global settings
+
+Configure defaults that apply to all agent pairs:
+
+```json title=".opencode/pass-over.json"
+{
+  "global_settings": {
+    "auto_confirm": false, // Auto-accept pass overs
+    "timeout_ms": 30000, // Timeout in milliseconds
+    "return_to_originator": true, // Auto-return after work completes
+    "max_chain_depth": 3, // Maximum agent chain depth
+    "enabled": true // Enable/disable feature
+  }
+}
+```
+
+### Agent pair settings
+
+Override defaults for specific agent pairs:
+
+```json title=".opencode/pass-over.json"
+{
+  "global_settings": {
+    "auto_confirm": false,
+    "timeout_ms": 30000
+  },
+  "agent_pair_settings": {
+    "alice": {
+      "audit": {
+        "auto_confirm": true, // Override for alice→audit
+        "timeout_ms": 60000
+      }
+    },
+    "build": {
+      "plan": {
+        "auto_confirm": false
+      }
+    }
+  }
+}
+```
+
+### CLI commands
+
+Manage pass-over configuration via CLI:
+
+```bash
+# Show current configuration
+vuhitracode agent pass-over config
+
+# Set global defaults
+vuhitracode agent pass-over set-global --auto-confirm true --timeout-ms 60000
+
+# Configure specific agent pair
+vuhitracode agent pass-over set-pair alice audit --auto-confirm true
+
+# List all configured pairs
+vuhitracode agent pass-over list
+
+# Reset to defaults
+vuhitracode agent pass-over reset
+```
+
+:::tip
+Visit the [Pass Over documentation](/docs/pass-over) for complete workflow examples and use cases.
+:::
+
+---
+
+## File references
