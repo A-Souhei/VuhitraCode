@@ -16,10 +16,17 @@ export const IndexerRoutes = lazy(() =>
         204: {
           description: "Index data successfully deleted",
         },
+        400: {
+          description: "Confirmation header missing",
+        },
         ...errors(500),
       },
     }),
     async (c) => {
+      const confirmHeader = c.req.header("X-Confirm-Deletion")
+      if (confirmHeader !== "true") {
+        return c.json({ error: "Requires X-Confirm-Deletion: true header" }, 400)
+      }
       await Indexer.deleteCollection()
       return c.body(null, 204)
     },

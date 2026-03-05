@@ -521,10 +521,20 @@ export namespace Indexer {
       headers: qdrantHeaders(),
       signal: AbortSignal.timeout(30_000),
     })
+
+    // Handle 404 (already deleted) idempotently - treat as success
+    if (response.status === 404) {
+      const newStatus: Status = { type: "disabled" }
+      state().status = newStatus
+      await Bus.publish(Event.Updated, newStatus)
+      return
+    }
+
     if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
 
     // Reset status after deletion
-    state().status = { type: "disabled" }
-    await Bus.publish(Event.Updated, state().status)
+    const newStatus: Status = { type: "disabled" }
+    state().status = newStatus
+    await Bus.publish(Event.Updated, newStatus)
   }
 }

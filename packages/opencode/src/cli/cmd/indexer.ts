@@ -2,6 +2,7 @@ import type { Argv } from "yargs"
 import { cmd } from "./cmd"
 import { bootstrap } from "../bootstrap"
 import { Indexer } from "../../indexer"
+import { Env } from "../../env"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 
@@ -40,7 +41,12 @@ const IndexDeleteCommand = cmd({
         console.log("\nThe indexer will automatically regenerate the index on next use.")
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        prompts.log.error(`Failed to delete index: ${message}`)
+        if (message.includes("Failed to delete collection")) {
+          const qdrantUrl = Env.get("QDRANT_URL") || "http://localhost:6333"
+          prompts.log.error(`Failed to delete index: ${message}\n\nCheck your Qdrant connection: ${qdrantUrl}`)
+        } else {
+          prompts.log.error(`Failed to delete index: ${message}`)
+        }
         process.exit(1)
       }
     })
