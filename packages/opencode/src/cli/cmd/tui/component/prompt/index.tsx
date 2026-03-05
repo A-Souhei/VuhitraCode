@@ -36,6 +36,7 @@ import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
+import { Pty } from "@/pty"
 
 export type PromptProps = {
   sessionID?: string
@@ -231,18 +232,30 @@ export function Prompt(props: PromptProps) {
           }
           if (!props.sessionID) return
 
-          setStore("interrupt", store.interrupt + 1)
-
-          setTimeout(() => {
-            setStore("interrupt", 0)
-          }, 5000)
-
-          if (store.interrupt >= 2) {
+          // First ESC: try to send Ctrl+C to PTY
+          if (store.interrupt === 0) {
+            // Try to find an active PTY and send Ctrl+C
+            const ptyList = Pty.list()
+            for (const pty of ptyList) {
+              if (pty.status === "running") {
+                Pty.interrupt(pty.id)
+                break
+              }
+            }
+            setStore("interrupt", 1)
+            // Reset after 5 seconds
+            setTimeout(() => {
+              setStore("interrupt", 0)
+            }, 5000)
+          }
+          // Second ESC within 5s: abort session
+          else if (store.interrupt >= 1) {
             sdk.client.session.abort({
               sessionID: props.sessionID,
             })
             setStore("interrupt", 0)
           }
+
           dialog.clear()
         },
       },

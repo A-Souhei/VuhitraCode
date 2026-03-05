@@ -317,6 +317,25 @@ export namespace Pty {
     }
   }
 
+  export function signal(id: string, sig: NodeJS.Signals) {
+    const session = state().get(id)
+    if (session && session.info.status === "running") {
+      try {
+        session.process.kill(sig)
+      } catch (e) {
+        log.warn("failed to send signal", { id, signal: sig, error: e instanceof Error ? e.message : String(e) })
+      }
+    }
+  }
+
+  export function interrupt(id: string) {
+    const session = state().get(id)
+    if (session && session.info.status === "running") {
+      // Send Ctrl+C (0x03) which is more graceful than SIGINT
+      session.process.write("\x03")
+    }
+  }
+
   export function connect(id: string, ws: Socket, cursor?: number) {
     const session = state().get(id)
     if (!session) {
