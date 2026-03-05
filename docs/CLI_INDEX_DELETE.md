@@ -28,7 +28,9 @@ The `opencode index delete` command permanently removes all vector embeddings an
 - **Reduce storage usage** by clearing cached embeddings you no longer need
 - **Reset your project's search capabilities** for a fresh start
 
-The deletion is **permanent and immediate**—once deleted, the old index data cannot be recovered. However, the indexer will automatically regenerate the index on your next use of the system.
+The deletion is **permanent** (within OpenCode) and **immediate**—the vector index data cannot be recovered through OpenCode after deletion. However, the indexer will automatically regenerate the index on your next use of the system.
+
+⚠️ **Important Note on Backups:** If your Qdrant instance has snapshots or backups configured, those may still retain the deleted data. Consult your [Qdrant deployment documentation](https://qdrant.tech/documentation/guides/backup/) for information about data retention policies and backup management.
 
 ---
 
@@ -237,7 +239,7 @@ The `X-Confirm-Deletion` header is required and acts as explicit confirmation fo
 ### Example Request
 
 ```bash
-curl -X DELETE http://localhost:3000/indexer/data \
+curl -X DELETE http://localhost:4096/indexer/data \
   -H "X-Confirm-Deletion: true"
 ```
 
@@ -252,7 +254,7 @@ curl -X DELETE http://localhost:3000/indexer/data \
 ### Example Success Response
 
 ```bash
-$ curl -X DELETE http://localhost:3000/indexer/data \
+$ curl -X DELETE http://localhost:4096/indexer/data \
   -H "X-Confirm-Deletion: true" \
   -w "\nStatus: %{http_code}\n"
 
@@ -262,7 +264,7 @@ Status: 204
 ### Example Failure (Missing Header)
 
 ```bash
-$ curl -X DELETE http://localhost:3000/indexer/data
+$ curl -X DELETE http://localhost:4096/indexer/data
 
 {"error":"Requires X-Confirm-Deletion: true header"}
 Status: 400
@@ -359,10 +361,10 @@ opencode index delete --force
 
 ```bash
 # Wrong - missing header
-curl -X DELETE http://localhost:3000/indexer/data
+curl -X DELETE http://localhost:4096/indexer/data
 
 # Correct - include header
-curl -X DELETE http://localhost:3000/indexer/data \
+curl -X DELETE http://localhost:4096/indexer/data \
   -H "X-Confirm-Deletion: true"
 ```
 
@@ -432,7 +434,7 @@ echo "Indexing will resume automatically on next user action."
 #!/bin/bash
 # api-delete-index.sh
 
-OPENCODE_API="http://localhost:3000"
+OPENCODE_API="http://localhost:4096"
 
 echo "Deleting index via API..."
 

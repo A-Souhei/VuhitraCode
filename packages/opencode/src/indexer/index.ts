@@ -513,28 +513,58 @@ export namespace Indexer {
     })
   }
 
+  let deleting = false
+
   export async function deleteCollection(): Promise<void> {
-    const name = collectionName()
-    const url = qdrantUrl()
-    const response = await fetch(`${url}/collections/${name}`, {
-      method: "DELETE",
-      headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
-    })
+    if (deleting) throw new Error("Deletion already in progress")
+    deleting = true
+    try {
+      const s = state()
 
-    // Handle 404 (already deleted) idempotently - treat as success
-    if (response.status === 404) {
+      // 1. Abort in-flight work (so nothing can recreate the collection)
+      s.abortController.abort()
+      s.abortController = new AbortController()
+
+      // 2. Attempt the deletion
+      const name = collectionName()
+      const url = qdrantUrl()
+      try {
+        new URL(url)
+      } catch {
+        throw new Error("Invalid QDRANT_URL configuration")
+      }
+      const response = await fetch(`${url}/collections/${name}`, {
+        method: "DELETE",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+      })
+
+      // Handle 404 (already deleted) idempotently
+      if (response.status === 404) {
+        const newStatus: Status = { type: "disabled" }
+        s.status = newStatus
+        await Bus.publish(Event.Updated, newStatus)
+        return
+      }
+
+      if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
+
+      // Verify deletion
+      const verify = await fetch(`${url}/collections/${name}`, {
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      }).catch((e) => {
+        log.warn("failed to verify collection deletion", { name, error: String(e) })
+        return null
+      })
+      if (verify?.ok) throw new Error(`Collection ${name} still exists after deletion`)
+
+      // 3. ONLY update status AFTER successful deletion
       const newStatus: Status = { type: "disabled" }
-      state().status = newStatus
+      s.status = newStatus
       await Bus.publish(Event.Updated, newStatus)
-      return
+    } finally {
+      deleting = false
     }
-
-    if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
-
-    // Reset status after deletion
-    const newStatus: Status = { type: "disabled" }
-    state().status = newStatus
-    await Bus.publish(Event.Updated, newStatus)
   }
 }
