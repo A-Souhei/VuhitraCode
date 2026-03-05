@@ -232,14 +232,20 @@ export const McpAuthCommand = cmd({
           const spinner = prompts.spinner()
           spinner.start("Requesting device code from GitHub...")
           try {
-            const { userCode, verificationUri, done } = await MCP.authenticateWithDeviceFlow(serverName)
+            const { userCode, verificationUri, verificationUriComplete, done } =
+              await MCP.authenticateWithDeviceFlow(serverName)
             spinner.stop("Device code ready")
-            prompts.log.info(`Go to: ${verificationUri}`)
+            prompts.log.info(`Go to: ${verificationUriComplete ?? verificationUri}`)
             prompts.log.info(`Enter code: ${userCode}`)
             const waitSpinner = prompts.spinner()
             waitSpinner.start("Waiting for you to authorize on GitHub...")
-            await done
-            waitSpinner.stop("Authorization complete!")
+            try {
+              await done
+              waitSpinner.stop("Authorization complete!")
+            } catch (err) {
+              waitSpinner.stop("Authorization failed", 1)
+              prompts.log.error(err instanceof Error ? err.message : String(err))
+            }
           } catch (error) {
             spinner.stop("Authentication failed", 1)
             prompts.log.error(error instanceof Error ? error.message : String(error))
@@ -328,7 +334,7 @@ export const McpAuthListCommand = cmd({
           const icon = getAuthStatusIcon(authStatus)
           const statusText = getAuthStatusText(authStatus)
           const url = serverConfig.url
-          const hint = isGitHubCopilotMcp(url) ? " (browser OAuth)" : ""
+          const hint = isGitHubCopilotMcp(url) ? " (device flow)" : ""
 
           prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}${hint}\n    ${UI.Style.TEXT_DIM}${url}`)
         }

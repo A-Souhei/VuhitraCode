@@ -867,6 +867,7 @@ export namespace MCP {
   export async function authenticateWithDeviceFlow(mcpName: string): Promise<{
     userCode: string
     verificationUri: string
+    verificationUriComplete?: string
     done: Promise<void>
   }> {
     const cfg = await Config.get()
@@ -874,10 +875,18 @@ export namespace MCP {
     if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
     if (!isMcpConfigured(mcpConfig)) throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
     if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
+    if (!isGitHubCopilotMcp(mcpConfig.url))
+      throw new Error(`Device flow is only supported for GitHub Copilot MCP servers`)
+    if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
 
     const flow = await startGHDeviceFlow()
-    const done = pollGHDeviceFlow(mcpName, flow.deviceCode, flow.interval, mcpConfig.url)
-    return { userCode: flow.userCode, verificationUri: flow.verificationUri, done }
+    const done = pollGHDeviceFlow(mcpName, flow.deviceCode, flow.interval, flow.expiresIn, mcpConfig.url)
+    return {
+      userCode: flow.userCode,
+      verificationUri: flow.verificationUri,
+      verificationUriComplete: (flow as any).verificationUriComplete,
+      done,
+    }
   }
 
   /**
