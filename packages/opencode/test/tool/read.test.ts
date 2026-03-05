@@ -568,7 +568,7 @@ describe("tool.read privacy — gitignore interception", () => {
     })
   })
 
-  test("secret agent bypasses gitignore — reads real content", async () => {
+  test("secret agent with gitignored file: still gets faked content even with OLLAMA_MODEL", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -583,9 +583,17 @@ describe("tool.read privacy — gitignore interception", () => {
         try {
           const read = await ReadTool.init()
           const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "secret" })
-          expect(result.output).toContain("s3cr3t")
-          expect(result.output).toContain("sk-realkey123456")
-          expect(result.output).not.toContain("privacy-notice")
+          // Faker is always enforced for defense-in-depth, even for the secret agent with OLLAMA_MODEL
+          expect(result.output).not.toContain("s3cr3t")
+          expect(result.output).not.toContain("sk-realkey123456")
+          // Structure (field names) is preserved
+          expect(result.output).toContain("APP_NAME=")
+          expect(result.output).toContain("DATABASE_URL=")
+          expect(result.output).toContain("API_KEY=")
+          // Privacy notice should be present (faked content)
+          expect(result.output).toContain("privacy-notice")
+          // Faked values should appear (sk-xxxxxxx pattern)
+          expect(result.output).toMatch(/sk-x+|fakepassword/)
         } finally {
           Env.remove("OLLAMA_MODEL")
         }
@@ -923,12 +931,15 @@ describe("tool.read integration — faker end-to-end", () => {
     })
   })
 
-  test("secret agent bypasses faking for gitignored files", async () => {
+  test("secret agent with Ollama: still receives faked content for defense-in-depth", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
         await Bun.write(path.join(dir, ".gitignore"), ".env\n")
-        await Bun.write(path.join(dir, ".env"), "API_SECRET=real_secret_value_12345\nDB_KEY=genuine_key_99999")
+        await Bun.write(
+          path.join(dir, ".env"),
+          "API_SECRET=sk-real_secret_value_12345\nDB_PASSWORD=real_database_password",
+        )
       },
     })
     await Instance.provide({
@@ -938,11 +949,14 @@ describe("tool.read integration — faker end-to-end", () => {
         try {
           const read = await ReadTool.init()
           const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "secret" })
-          // Real values appear for secret agent
-          expect(result.output).toContain("real_secret_value_12345")
-          expect(result.output).toContain("genuine_key_99999")
-          // No privacy notice
-          expect(result.output).not.toContain("privacy-notice")
+          // Faker is unconditionally enforced for defense-in-depth
+          expect(result.output).not.toContain("sk-real_secret_value_12345")
+          expect(result.output).not.toContain("real_database_password")
+          // Keys (API_SECRET=, DB_PASSWORD=) are present
+          expect(result.output).toContain("API_SECRET=")
+          expect(result.output).toContain("DB_PASSWORD=")
+          // Privacy notice is present
+          expect(result.output).toContain("privacy-notice")
         } finally {
           Env.remove("OLLAMA_MODEL")
         }
@@ -956,7 +970,7 @@ describe("tool.read integration — faker end-to-end", () => {
 // ---------------------------------------------------------------------------
 
 describe("tool.read comprehensive secret agent redaction", () => {
-  test("secret agent with OLLAMA_MODEL set: receives real content, not faked", async () => {
+  test("secret agent with OLLAMA_MODEL set: still gets faked content for defense-in-depth", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -971,10 +985,15 @@ describe("tool.read comprehensive secret agent redaction", () => {
         try {
           const read = await ReadTool.init()
           const result = await read.execute({ filePath: path.join(tmp.path, ".env") }, { ...ctx, agent: "secret" })
-          // Secret agent gets real content even with OLLAMA_MODEL set
-          expect(result.output).toContain("sk-realkey123456")
-          expect(result.output).toContain("prod_s3cr3t_pass")
-          expect(result.output).not.toContain("privacy-notice")
+          // Even with OLLAMA_MODEL set, faker is always enforced for defense-in-depth.
+          // The secret agent still receives pre-faked content so its output validation layer can catch any potential leaks.
+          expect(result.output).not.toContain("sk-realkey123456")
+          expect(result.output).not.toContain("prod_s3cr3t_pass")
+          expect(result.output).toContain("API_KEY=")
+          expect(result.output).toContain("DATABASE_PASSWORD=")
+          expect(result.output).toContain("privacy-notice")
+          // Verify faked values appear (sk- prefix with x's or example_value fallback)
+          expect(result.output).toMatch(/sk-x+|example_value/)
         } finally {
           Env.remove("OLLAMA_MODEL")
         }
@@ -1286,7 +1305,7 @@ describe("tool.read comprehensive secret agent redaction", () => {
     })
   })
 
-  test("secret agent with OLLAMA_MODEL: bypasses faking and gets all real data", async () => {
+  test("secret agent with OLLAMA_MODEL: still gets faked content (enforced defense-in-depth)", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -1305,11 +1324,16 @@ describe("tool.read comprehensive secret agent redaction", () => {
             { filePath: path.join(tmp.path, ".env.secret") },
             { ...ctx, agent: "secret" },
           )
-          // Secret agent gets real data with OLLAMA_MODEL set
-          expect(result.output).toContain("sk-real-prod-key-xyz")
-          expect(result.output).toContain("real_prod_password_secure_123")
-          // No privacy notice (secret agent gets real content)
-          expect(result.output).not.toContain("privacy-notice")
+          // Even with OLLAMA_MODEL set, faker is always enforced. The secret agent receives pre-faked content for its output validation layer to catch potential leaks.
+          expect(result.output).not.toContain("sk-real-prod-key-xyz")
+          expect(result.output).not.toContain("real_prod_password_secure_123")
+          // Structure preserved (PROD_API_KEY=, PROD_PASSWORD=)
+          expect(result.output).toContain("PROD_API_KEY=")
+          expect(result.output).toContain("PROD_PASSWORD=")
+          // Privacy notice present
+          expect(result.output).toContain("privacy-notice")
+          // Faked patterns should appear (like sk-xxx patterns)
+          expect(result.output).toMatch(/sk-x+|example_value|fake_/)
         } finally {
           Env.remove("OLLAMA_MODEL")
         }
