@@ -17,7 +17,13 @@ import { Instance } from "../project/instance"
 import { Installation } from "../installation"
 import { withTimeout } from "@/util/timeout"
 import { McpOAuthProvider } from "./oauth-provider"
-import { GitHubMcpOAuthProvider, isGitHubCopilotMcp } from "./github-oauth"
+import {
+  GitHubMcpOAuthProvider,
+  isGitHubCopilotMcp,
+  startDeviceFlow as startGHDeviceFlow,
+  pollDeviceFlow as pollGHDeviceFlow,
+  type DeviceFlowStart,
+} from "./github-oauth"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import { BusEvent } from "../bus/bus-event"
@@ -851,6 +857,27 @@ export namespace MCP {
 
     // Finish auth
     return finishAuth(mcpName, code)
+  }
+
+  /**
+   * Authenticate a GitHub MCP server using device code flow (RFC 8628).
+   * Returns device code info so the caller can display it to the user,
+   * and a promise that resolves when the user completes authorization.
+   */
+  export async function authenticateWithDeviceFlow(mcpName: string): Promise<{
+    userCode: string
+    verificationUri: string
+    done: Promise<void>
+  }> {
+    const cfg = await Config.get()
+    const mcpConfig = cfg.mcp?.[mcpName]
+    if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
+    if (!isMcpConfigured(mcpConfig)) throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
+    if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
+
+    const flow = await startGHDeviceFlow()
+    const done = pollGHDeviceFlow(mcpName, flow.deviceCode, flow.interval, mcpConfig.url)
+    return { userCode: flow.userCode, verificationUri: flow.verificationUri, done }
   }
 
   /**

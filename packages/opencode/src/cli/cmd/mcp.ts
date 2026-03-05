@@ -228,31 +228,46 @@ export const McpAuthCommand = cmd({
         }
 
         if (isGitHubCopilotMcp(serverConfig.url)) {
-          prompts.log.info("A browser window will open for GitHub authorization. Approve the OAuth app to continue.")
-        }
-        const spinner = prompts.spinner()
-        spinner.start("Starting OAuth flow...")
-
-        // Subscribe to browser open failure events to show URL for manual opening
-        const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
-          if (evt.properties.mcpName === serverName) {
-            spinner.stop("Could not open browser automatically")
-            prompts.log.warn("Please open this URL in your browser to authenticate:")
-            prompts.log.info(evt.properties.url)
-            spinner.start("Waiting for authorization...")
-          }
-        })
-
-        try {
-          const status = await MCP.authenticate(serverName)
-
-          if (status.status === "connected") {
-            spinner.stop("Authentication successful!")
-          } else if (status.status === "needs_client_registration") {
+          // Device code flow — no browser redirect needed
+          const spinner = prompts.spinner()
+          spinner.start("Requesting device code from GitHub...")
+          try {
+            const { userCode, verificationUri, done } = await MCP.authenticateWithDeviceFlow(serverName)
+            spinner.stop("Device code ready")
+            prompts.log.info(`Go to: ${verificationUri}`)
+            prompts.log.info(`Enter code: ${userCode}`)
+            const waitSpinner = prompts.spinner()
+            waitSpinner.start("Waiting for you to authorize on GitHub...")
+            await done
+            waitSpinner.stop("Authorization complete!")
+          } catch (error) {
             spinner.stop("Authentication failed", 1)
-            prompts.log.error(status.error)
-            prompts.log.info("Add clientId to your MCP server config:")
-            prompts.log.info(`
+            prompts.log.error(error instanceof Error ? error.message : String(error))
+          }
+        } else {
+          const spinner = prompts.spinner()
+          spinner.start("Starting OAuth flow...")
+
+          // Subscribe to browser open failure events to show URL for manual opening
+          const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
+            if (evt.properties.mcpName === serverName) {
+              spinner.stop("Could not open browser automatically")
+              prompts.log.warn("Please open this URL in your browser to authenticate:")
+              prompts.log.info(evt.properties.url)
+              spinner.start("Waiting for authorization...")
+            }
+          })
+
+          try {
+            const status = await MCP.authenticate(serverName)
+
+            if (status.status === "connected") {
+              spinner.stop("Authentication successful!")
+            } else if (status.status === "needs_client_registration") {
+              spinner.stop("Authentication failed", 1)
+              prompts.log.error(status.error)
+              prompts.log.info("Add clientId to your MCP server config:")
+              prompts.log.info(`
   "mcp": {
     "${serverName}": {
       "type": "remote",
@@ -263,17 +278,18 @@ export const McpAuthCommand = cmd({
       }
     }
   }`)
-          } else if (status.status === "failed") {
+            } else if (status.status === "failed") {
+              spinner.stop("Authentication failed", 1)
+              prompts.log.error(status.error)
+            } else {
+              spinner.stop("Unexpected status: " + status.status, 1)
+            }
+          } catch (error) {
             spinner.stop("Authentication failed", 1)
-            prompts.log.error(status.error)
-          } else {
-            spinner.stop("Unexpected status: " + status.status, 1)
+            prompts.log.error(error instanceof Error ? error.message : String(error))
+          } finally {
+            unsubscribe()
           }
-        } catch (error) {
-          spinner.stop("Authentication failed", 1)
-          prompts.log.error(error instanceof Error ? error.message : String(error))
-        } finally {
-          unsubscribe()
         }
 
         prompts.outro("Done")
