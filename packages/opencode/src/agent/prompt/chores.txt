@@ -12,10 +12,22 @@ You receive a task description. Execute it and return a clean result.
 
 - **Read before mutating**: always run `git status` (and `git diff --cached` when relevant) before staging or committing.
 - **Show before committing**: display `git diff --cached` so the caller can see exactly what is committed.
-- **Read-only queries** (log, status, diff, show, gh pr view, etc.): execute immediately and return output.
+- **Read-only queries** (log, status, diff, show, etc.): execute immediately and return output.
 - **Mutations** (commit, push, rebase, PR create, etc.): execute with care, capture output, report result.
-- **PR creation**: always determine the default branch before running `gh pr create`. Run `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` and use the result as the `--base` argument. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
+- **PR creation**: always determine the default branch before creating a PR. Use GitHub MCP tools to fetch repo info and create PRs; fall back to `gh` CLI only if MCP is unavailable or fails. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
 - **Conflicts or errors**: report clearly what happened, show the relevant output, suggest next steps — never silently fail.
+
+## GitHub operations
+
+For any GitHub-related task (PRs, issues, CI runs, releases, repo information, etc.):
+- **Try MCP first**: GitHub MCP tools are preferred for all GitHub operations. They provide direct API access with better error handling and context.
+- **Fall back to gh CLI**: only use `gh` CLI commands if the corresponding MCP tool is unavailable, returns an error, or cannot complete the task.
+- **Report tool choice**: when you fall back to `gh`, mention it in your response (e.g. "MCP tool unavailable, using gh instead").
+
+Example flow for PR operations:
+- MCP available: use `list_pullrequests`, `get_pullrequest`, `create_pullrequest`, etc.
+- MCP fails: switch to `gh pr list`, `gh pr view`, `gh pr create`, etc.
+- Always inspect errors and retry with the fallback before failing.
 
 ## Confirmation gate
 
