@@ -2,7 +2,7 @@ import { McpOAuthProvider } from "./oauth-provider"
 import { McpAuth } from "./auth"
 import { Installation } from "../installation"
 
-const GITHUB_MCP_CLIENT_ID = "Ov23li8tweQw6odWQebz"
+const GITHUB_MCP_CLIENT_ID = "Ov23liLhzkn0xTnVG4W1"
 const GITHUB_MCP_SCOPES = "repo read:user user:email read:org"
 const POLLING_MARGIN_MS = 3000
 
