@@ -512,4 +512,19 @@ export namespace Indexer {
       }
     })
   }
+
+  export async function deleteCollection(): Promise<void> {
+    const name = collectionName()
+    const url = qdrantUrl()
+    const response = await fetch(`${url}/collections/${name}`, {
+      method: "DELETE",
+      headers: qdrantHeaders(),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
+
+    // Reset status after deletion
+    state().status = { type: "disabled" }
+    await Bus.publish(Event.Updated, state().status)
+  }
 }
