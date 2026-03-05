@@ -17,6 +17,7 @@ import { Instance } from "../project/instance"
 import { Installation } from "../installation"
 import { withTimeout } from "@/util/timeout"
 import { McpOAuthProvider } from "./oauth-provider"
+import { GitHubMcpOAuthProvider, isGitHubCopilotMcp } from "./github-oauth"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import { BusEvent } from "../bus/bus-event"
@@ -308,21 +309,22 @@ export namespace MCP {
       let authProvider: McpOAuthProvider | undefined
 
       if (!oauthDisabled) {
-        authProvider = new McpOAuthProvider(
-          key,
-          mcp.url,
-          {
-            clientId: oauthConfig?.clientId,
-            clientSecret: oauthConfig?.clientSecret,
-            scope: oauthConfig?.scope,
-          },
-          {
-            onRedirect: async (url) => {
-              log.info("oauth redirect requested", { key, url: url.toString() })
-              // Store the URL - actual browser opening is handled by startAuth
-            },
-          },
-        )
+        const onRedirect = async (url: URL) => {
+          log.info("oauth redirect requested", { key, url: url.toString() })
+          // Store the URL - actual browser opening is handled by startAuth
+        }
+        authProvider = isGitHubCopilotMcp(mcp.url)
+          ? new GitHubMcpOAuthProvider(key, mcp.url, onRedirect)
+          : new McpOAuthProvider(
+              key,
+              mcp.url,
+              {
+                clientId: oauthConfig?.clientId,
+                clientSecret: oauthConfig?.clientSecret,
+                scope: oauthConfig?.scope,
+              },
+              { onRedirect },
+            )
       }
 
       const transports: Array<{ name: string; transport: TransportWithAuth }> = [
@@ -740,20 +742,21 @@ export namespace MCP {
     // OAuth config is optional - if not provided, we'll use auto-discovery
     const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
     let capturedUrl: URL | undefined
-    const authProvider = new McpOAuthProvider(
-      mcpName,
-      mcpConfig.url,
-      {
-        clientId: oauthConfig?.clientId,
-        clientSecret: oauthConfig?.clientSecret,
-        scope: oauthConfig?.scope,
-      },
-      {
-        onRedirect: async (url) => {
-          capturedUrl = url
-        },
-      },
-    )
+    const onRedirect = async (url: URL) => {
+      capturedUrl = url
+    }
+    const authProvider = isGitHubCopilotMcp(mcpConfig.url)
+      ? new GitHubMcpOAuthProvider(mcpName, mcpConfig.url, onRedirect)
+      : new McpOAuthProvider(
+          mcpName,
+          mcpConfig.url,
+          {
+            clientId: oauthConfig?.clientId,
+            clientSecret: oauthConfig?.clientSecret,
+            scope: oauthConfig?.scope,
+          },
+          { onRedirect },
+        )
 
     // Create transport with auth provider
     const transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url), {
@@ -775,6 +778,7 @@ export namespace MCP {
         pendingOAuthTransports.set(mcpName, transport)
         return { authorizationUrl: capturedUrl.toString() }
       }
+      await McpAuth.clearOAuthState(mcpName)
       throw error
     }
   }
@@ -885,6 +889,7 @@ export namespace MCP {
       const statusRecord = result.status as Record<string, Status>
       return statusRecord[mcpName] ?? { status: "failed", error: "Unknown error after auth" }
     } catch (error) {
+      await McpAuth.clearCodeVerifier(mcpName)
       log.error("failed to finish oauth", { mcpName, error })
       return {
         status: "failed",
@@ -897,10 +902,10 @@ export namespace MCP {
    * Remove OAuth credentials for an MCP server.
    */
   export async function removeAuth(mcpName: string): Promise<void> {
+    const oauthState = await McpAuth.getOAuthState(mcpName)
     await McpAuth.remove(mcpName)
-    McpOAuthCallback.cancelPending(mcpName)
+    if (oauthState) McpOAuthCallback.cancelPending(oauthState)
     pendingOAuthTransports.delete(mcpName)
-    await McpAuth.clearOAuthState(mcpName)
     log.info("removed oauth credentials", { mcpName })
   }
 

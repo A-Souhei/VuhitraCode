@@ -149,11 +149,11 @@ export namespace McpOAuthCallback {
     })
   }
 
-  export function cancelPending(mcpName: string): void {
-    const pending = pendingAuths.get(mcpName)
+  export function cancelPending(state: string): void {
+    const pending = pendingAuths.get(state)
     if (pending) {
       clearTimeout(pending.timeout)
-      pendingAuths.delete(mcpName)
+      pendingAuths.delete(state)
       pending.reject(new Error("Authorization cancelled"))
     }
   }

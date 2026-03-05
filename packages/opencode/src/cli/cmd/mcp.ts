@@ -7,6 +7,7 @@ import { UI } from "../ui"
 import { MCP } from "../../mcp"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
+import { isGitHubCopilotMcp } from "../../mcp/github-oauth"
 import { Config } from "../../config/config"
 import { Instance } from "../../project/instance"
 import { Installation } from "../../installation"
@@ -226,6 +227,9 @@ export const McpAuthCommand = cmd({
           prompts.log.warn(`${serverName} has expired credentials. Re-authenticating...`)
         }
 
+        if (isGitHubCopilotMcp(serverConfig.url)) {
+          prompts.log.info("A browser window will open for GitHub authorization. Approve the OAuth app to continue.")
+        }
         const spinner = prompts.spinner()
         spinner.start("Starting OAuth flow...")
 
@@ -308,8 +312,9 @@ export const McpAuthListCommand = cmd({
           const icon = getAuthStatusIcon(authStatus)
           const statusText = getAuthStatusText(authStatus)
           const url = serverConfig.url
+          const hint = isGitHubCopilotMcp(url) ? " (browser OAuth)" : ""
 
-          prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}\n    ${UI.Style.TEXT_DIM}${url}`)
+          prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}${hint}\n    ${UI.Style.TEXT_DIM}${url}`)
         }
 
         prompts.outro(`${oauthServers.length} OAuth-capable server(s)`)
