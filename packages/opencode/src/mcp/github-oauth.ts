@@ -116,7 +116,8 @@ async function pollDeviceFlow(
       return
     }
     if (data.error === "slow_down") {
-      base = (data.interval ? data.interval * 1000 : base + 5000) + POLLING_MARGIN_MS
+      const server_ms = (data.interval ? data.interval * 1000 : base + 5000) + POLLING_MARGIN_MS
+      base = Math.max(base, server_ms)
       wait = base
       continue
     }
