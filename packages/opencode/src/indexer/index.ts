@@ -12,6 +12,7 @@ import { Log } from "@/util/log"
 import ignore from "ignore"
 import path from "path"
 import fs from "fs"
+import Redis from "ioredis"
 
 export namespace Indexer {
   const log = Log.create({ service: "indexer" })
@@ -19,8 +20,22 @@ export namespace Indexer {
   export const Status = z
     .discriminatedUnion("type", [
       z.object({ type: z.literal("disabled") }),
-      z.object({ type: z.literal("indexing"), progress: z.number(), total: z.number() }),
-      z.object({ type: z.literal("complete") }),
+      z.object({
+        type: z.literal("indexing"),
+        progress: z.number(),
+        total: z.number(),
+        backend: z.enum(["qdrant", "redis"]),
+        embedding_url: z.string().optional(),
+        embedding_model: z.string().optional(),
+        backend_url: z.string().optional(),
+      }),
+      z.object({
+        type: z.literal("complete"),
+        backend: z.enum(["qdrant", "redis"]),
+        embedding_url: z.string().optional(),
+        embedding_model: z.string().optional(),
+        backend_url: z.string().optional(),
+      }),
     ])
     .meta({ ref: "IndexerStatus" })
   export type Status = z.infer<typeof Status>
@@ -32,46 +47,184 @@ export namespace Indexer {
   interface State {
     status: Status
     abortController: AbortController
+    deleting: boolean
+    redisClient: Redis | null
+    mtimeCache: Map<string, number> | null
+    mtimeCacheDirty: boolean
+    mtimeCacheFlushTimer: ReturnType<typeof setTimeout> | null
   }
 
   const state = Instance.state<State>(
-    () => ({ status: { type: "disabled" }, abortController: new AbortController() }),
+    () => ({
+      status: { type: "disabled" },
+      abortController: new AbortController(),
+      deleting: false,
+      redisClient: null,
+      mtimeCache: null,
+      mtimeCacheDirty: false,
+      mtimeCacheFlushTimer: null,
+    }),
     async (s) => {
       s.abortController.abort()
+      if (s.mtimeCacheFlushTimer !== null) {
+        clearTimeout(s.mtimeCacheFlushTimer)
+        s.mtimeCacheFlushTimer = null
+        if (s.mtimeCache && s.mtimeCacheDirty) saveMtimeCacheToDisk(s.mtimeCache)
+      }
+      if (s.redisClient) {
+        await s.redisClient.quit().catch(() => {})
+        s.redisClient = null
+      }
     },
   )
 
+  // ─── Config helpers ──────────────────────────────────────────────────────────
+
+  // PERF-1: Memoized collectionName
+  let _collectionName: string | undefined
   function collectionName() {
-    return "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_")
+    return (_collectionName ??= "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
   }
 
+  let _qdrantUrl: string | undefined
   function qdrantUrl() {
-    return Env.get("QDRANT_URL") || "http://localhost:6333"
+    return (_qdrantUrl ??= Env.get("QDRANT_URL") || "http://localhost:6333")
   }
 
+  let _embeddingUrl: string | undefined
   function embeddingUrl() {
-    return Env.get("EMBEDDING_URL") || "http://localhost:11434"
+    return (_embeddingUrl ??= Env.get("EMBEDDING_URL") || "http://localhost:11434")
   }
 
+  let _embeddingModel: string | undefined
   function embeddingModel() {
-    return Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest"
+    return (_embeddingModel ??= Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest")
   }
 
-  function maxFileSizeBytes(): number {
+  // PERF-7: Memoized maxFileSizeBytes
+  let _maxFileSizeBytes: number | undefined
+  function maxFileSizeBytes() {
+    if (_maxFileSizeBytes !== undefined) return _maxFileSizeBytes
     const val = Env.get("INDEXER_MAX_FILE_SIZE")
     if (val) {
       const parsed = parseInt(val, 10)
-      if (!isNaN(parsed) && parsed > 0 && parsed <= 100 * 1024 * 1024) return parsed
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 100 * 1024 * 1024) return (_maxFileSizeBytes = parsed)
     }
-    return 1024 * 1024 // 1MB default
+    return (_maxFileSizeBytes = 1024 * 1024)
   }
 
-  function qdrantHeaders(): Record<string, string> {
-    const key = Env.get("QDRANT_API_KEY")
+  // PERF-4: Memoized qdrantHeaders
+  let _qdrantHeaders: Record<string, string> | undefined
+  function qdrantHeaders() {
+    if (_qdrantHeaders) return _qdrantHeaders
     const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const key = Env.get("QDRANT_API_KEY")
     if (key) headers["api-key"] = key
-    return headers
+    return (_qdrantHeaders = headers)
   }
+
+  // PERF-3: Memoized useRedis
+  let _useRedis: boolean | undefined
+  function useRedis() {
+    return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
+  }
+
+  let _redisUrl: string | undefined
+  function redisUrl() {
+    return (_redisUrl ??=
+      Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`)
+  }
+
+  function getRedisClient(): Redis {
+    const s = state()
+    if (!s.redisClient) {
+      const url = Env.get("REDIS_URL")
+      if (url) {
+        s.redisClient = new Redis(url, { lazyConnect: true, enableReadyCheck: false })
+      } else {
+        const host = Env.get("REDIS_HOST") || "localhost"
+        const port = parseInt(Env.get("REDIS_PORT") || "6379", 10)
+        const password = Env.get("REDIS_PASSWORD")
+        s.redisClient = new Redis({ host, port, password, lazyConnect: true, enableReadyCheck: false })
+      }
+    }
+    return s.redisClient
+  }
+
+  function activeBackend(): "qdrant" | "redis" {
+    return useRedis() ? "redis" : "qdrant"
+  }
+
+  // ─── Mtime cache (in-memory + debounced disk persistence) ────────────────────
+
+  function mtimeCachePath() {
+    return path.join(Instance.directory, ".vuhitra", "indexer-cache.json")
+  }
+
+  function loadMtimeCacheFromDisk(): Map<string, number> | null {
+    try {
+      const raw = fs.readFileSync(mtimeCachePath(), "utf-8")
+      const obj = JSON.parse(raw) as Record<string, number>
+      return new Map(Object.entries(obj))
+    } catch {
+      return null
+    }
+  }
+
+  function saveMtimeCacheToDisk(mtimes: Map<string, number>) {
+    try {
+      const dir = path.join(Instance.directory, ".vuhitra")
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      const obj: Record<string, number> = {}
+      for (const [k, v] of mtimes) obj[k] = v
+      fs.writeFileSync(mtimeCachePath(), JSON.stringify(obj), "utf-8")
+    } catch (e) {
+      log.warn("failed to save mtime cache", { error: String(e) })
+    }
+  }
+
+  function deleteMtimeCache() {
+    const s = state()
+    s.mtimeCache = null
+    s.mtimeCacheDirty = false
+    if (s.mtimeCacheFlushTimer !== null) {
+      clearTimeout(s.mtimeCacheFlushTimer)
+      s.mtimeCacheFlushTimer = null
+    }
+    try {
+      fs.rmSync(mtimeCachePath(), { force: true })
+    } catch {}
+  }
+
+  // PERF-9: Trailing-edge debounce for mtime cache flush
+  /** Mark the in-memory cache dirty and schedule a debounced flush to disk. */
+  function scheduleFlushMtimeCache() {
+    const s = state()
+    s.mtimeCacheDirty = true
+    if (s.mtimeCacheFlushTimer !== null) clearTimeout(s.mtimeCacheFlushTimer)
+    s.mtimeCacheFlushTimer = setTimeout(() => {
+      s.mtimeCacheFlushTimer = null
+      s.mtimeCacheDirty = false
+      if (s.mtimeCache) saveMtimeCacheToDisk(s.mtimeCache)
+    }, 2000)
+  }
+
+  function setMtimeCacheEntry(file: string, mtime: number) {
+    const s = state()
+    if (!s.mtimeCache) s.mtimeCache = new Map()
+    s.mtimeCache.set(file, mtime)
+    scheduleFlushMtimeCache()
+  }
+
+  function deleteMtimeCacheEntry(file: string) {
+    const s = state()
+    if (s.mtimeCache) {
+      s.mtimeCache.delete(file)
+      scheduleFlushMtimeCache()
+    }
+  }
+
+  // ─── Utilities ───────────────────────────────────────────────────────────────
 
   function toUUID(str: string): string {
     const hasher = new Bun.CryptoHasher("md5")
@@ -80,7 +233,6 @@ export namespace Indexer {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
   }
 
-  // Concurrency limiter for parallel processing
   async function mapParallel<T, R>(
     items: T[],
     concurrency: number,
@@ -90,7 +242,6 @@ export namespace Indexer {
     const results: (R | null)[] = new Array(items.length)
     let index = 0
     const count = Math.min(concurrency, items.length)
-
     const workers = Array.from({ length: count }, async () => {
       while (true) {
         const i = index++
@@ -103,15 +254,16 @@ export namespace Indexer {
         }
       }
     })
-
     await Promise.all(workers)
     return results
   }
 
+  // PERF-8: Cache embedding endpoint URL
+  let _embedEndpoint: string | undefined
   async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
-    const url = embeddingUrl()
+    const url = (_embedEndpoint ??= `${embeddingUrl()}/api/embeddings`)
     const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
-    const response = await fetch(`${url}/api/embeddings`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: combined,
@@ -122,122 +274,437 @@ export namespace Indexer {
     return data.embedding
   }
 
-  async function ensureCollection(signal?: AbortSignal) {
-    const name = collectionName()
-    const url = qdrantUrl()
-    const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
-    const existing = await fetch(`${url}/collections/${name}`, {
-      method: "GET",
-      headers: qdrantHeaders(),
-      signal: combined,
-    })
-    if (existing.ok) return
-    const sample = await embed("dim", signal)
-    const size = sample.length
-    const combined2 = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
-    const response = await fetch(`${url}/collections/${name}`, {
-      method: "PUT",
-      headers: qdrantHeaders(),
-      signal: combined2,
-      body: JSON.stringify({
-        vectors: { size, distance: "Cosine" },
-      }),
-    })
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { status?: { error?: string } }
-      if (!String(body?.status?.error ?? "").includes("already exists")) {
-        throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
-      }
-    }
-  }
+  // ─── Qdrant backend ──────────────────────────────────────────────────────────
 
-  async function upsertPoints(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
-    const name = collectionName()
-    const url = qdrantUrl()
-    const response = await fetch(`${url}/collections/${name}/points`, {
-      method: "PUT",
-      headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({ points }),
-    })
-    if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
-  }
-
-  async function deleteByFilePath(filePath: string) {
-    const name = collectionName()
-    const url = qdrantUrl()
-    const response = await fetch(`${url}/collections/${name}/points/delete`, {
-      method: "POST",
-      headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({
-        filter: {
-          must: [{ key: "file_path", match: { value: filePath } }],
-        },
-      }),
-    })
-    if (!response.ok) throw new Error(`Failed to delete points: ${response.status} ${response.statusText}`)
-  }
-
-  async function getIndexedMtime(filePath: string): Promise<number | null> {
-    const name = collectionName()
-    const url = qdrantUrl()
-    const response = await fetch(`${url}/collections/${name}/points/scroll`, {
-      method: "POST",
-      headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({
-        filter: { must: [{ key: "file_path", match: { value: filePath } }] },
-        limit: 1,
-        with_payload: ["mtime"],
-      }),
-    })
-    if (!response.ok) throw new Error(`Failed to get indexed mtime: ${response.status} ${response.statusText}`)
-    const data = (await response.json()) as { result: { points: { payload: { mtime?: number } }[] } }
-    return data.result?.points?.[0]?.payload?.mtime ?? null
-  }
-
-  async function getAllIndexedMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
-    const mtimes = new Map<string, number>()
-    const name = collectionName()
-    const url = qdrantUrl()
-    let offset: string | number | null = null
-
-    do {
-      const body: Record<string, unknown> = {
-        limit: 1000,
-        with_payload: ["file_path", "mtime"],
-        with_vectors: false,
-      }
-      if (offset !== null) body.offset = offset
-
-      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
-      const response = await fetch(`${url}/collections/${name}/points/scroll`, {
-        method: "POST",
+  const qdrant = {
+    async ensureCollection(signal?: AbortSignal) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+      const existing = await fetch(`${url}/collections/${name}`, {
+        method: "GET",
         headers: qdrantHeaders(),
         signal: combined,
-        body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error(`Failed to fetch indexed mtimes: ${response.status} ${response.statusText}`)
+      if (existing.ok) return
+      const sample = await embed("dim", signal)
+      const combined2 = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+      const response = await fetch(`${url}/collections/${name}`, {
+        method: "PUT",
+        headers: qdrantHeaders(),
+        signal: combined2,
+        body: JSON.stringify({ vectors: { size: sample.length, distance: "Cosine" } }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { status?: { error?: string } }
+        if (!String(body?.status?.error ?? "").includes("already exists"))
+          throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
+      }
+    },
+
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points`, {
+        method: "PUT",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ points }),
+      })
+      if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
+    },
+
+    async deleteByPath(filePath: string) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/delete`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ filter: { must: [{ key: "file_path", match: { value: filePath } }] } }),
+      })
+      if (!response.ok) throw new Error(`Failed to delete points: ${response.status} ${response.statusText}`)
+    },
+
+    async getAllMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
+      const mtimes = new Map<string, number>()
+      const name = collectionName()
+      const url = qdrantUrl()
+      let offset: string | number | null = null
+      do {
+        const body: Record<string, unknown> = { limit: 1000, with_payload: ["file_path", "mtime"], with_vectors: false }
+        if (offset !== null) body.offset = offset
+        const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
+        const response = await fetch(`${url}/collections/${name}/points/scroll`, {
+          method: "POST",
+          headers: qdrantHeaders(),
+          signal: combined,
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) throw new Error(`Failed to fetch indexed mtimes: ${response.status} ${response.statusText}`)
+        const data = (await response.json()) as {
+          result: {
+            points: { payload: { file_path?: string; mtime?: number } }[]
+            next_page_offset: string | number | null
+          }
+        }
+        for (const point of data.result.points) {
+          const { file_path, mtime } = point.payload
+          if (file_path && mtime !== undefined && !mtimes.has(file_path)) mtimes.set(file_path, mtime)
+        }
+        offset = data.result.next_page_offset
+      } while (offset !== null)
+      return mtimes
+    },
+
+    async search(vector: number[], topK: number): Promise<{ file_path: string; text: string; start_line: number }[]> {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/search`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ vector, limit: topK, with_payload: true }),
+      })
+      if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: {
-          points: { payload: { file_path?: string; mtime?: number } }[]
-          next_page_offset: string | number | null
-        }
+        result: { payload: { file_path: string; text: string; start_line: number } }[]
       }
+      return data.result.map((r) => r.payload)
+    },
 
-      for (const point of data.result.points) {
-        const { file_path, mtime } = point.payload
-        // All chunks for the same file share the same mtime; keep the first encountered.
-        if (file_path && mtime !== undefined && !mtimes.has(file_path)) {
-          mtimes.set(file_path, mtime)
-        }
+    async deleteAll() {
+      const name = collectionName()
+      const url = qdrantUrl()
+      try {
+        new URL(url)
+      } catch {
+        throw new Error("Invalid QDRANT_URL configuration")
       }
-      offset = data.result.next_page_offset
-    } while (offset !== null)
+      const response = await fetch(`${url}/collections/${name}`, {
+        method: "DELETE",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (response.status === 404) return
+      if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
+      const verify = await fetch(`${url}/collections/${name}`, {
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+      }).catch((e) => {
+        log.warn("failed to verify collection deletion", { error: String(e) })
+        return null
+      })
+      if (verify?.ok) throw new Error(`Collection ${name} still exists after deletion`)
+    },
 
-    return mtimes
+    async checkHealth(signal?: AbortSignal) {
+      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
+      const r = await fetch(`${qdrantUrl()}/healthz`, { signal: combined })
+      if (!r.ok) throw new Error(`Qdrant unhealthy: ${r.status}`)
+    },
   }
+
+  // ─── Redis backend ────────────────────────────────────────────────────────────
+
+  const redis = {
+    keyPrefix() {
+      return `${collectionName()}:point:`
+    },
+
+    encodeVector(vec: number[]): Buffer {
+      const buf = Buffer.allocUnsafe(vec.length * 4)
+      for (let i = 0; i < vec.length; i++) buf.writeFloatLE(vec[i], i * 4)
+      return buf
+    },
+
+    async ensureIndex(signal?: AbortSignal) {
+      const client = getRedisClient()
+      await client.connect().catch(() => {})
+      const dim = (await embed("dim", signal)).length
+      const indexName = collectionName()
+      const prefix = redis.keyPrefix()
+      try {
+        await client.call(
+          "FT.CREATE",
+          indexName,
+          "ON",
+          "HASH",
+          "PREFIX",
+          "1",
+          prefix,
+          "SCHEMA",
+          "file_path",
+          "TAG",
+          "text",
+          "TEXT",
+          "start_line",
+          "NUMERIC",
+          "mtime",
+          "NUMERIC",
+          "vector",
+          "VECTOR",
+          "HNSW",
+          "6",
+          "TYPE",
+          "FLOAT32",
+          "DIM",
+          String(dim),
+          "DISTANCE_METRIC",
+          "COSINE",
+        )
+      } catch (e: any) {
+        const msg = String(e?.message ?? "")
+        if (!msg.includes("Index already exists")) throw e
+        // Index exists — verify dimension matches to detect embedding model changes
+        try {
+          const info = (await client.call("FT.INFO", indexName)) as string[]
+          // FT.INFO returns flat key-value pairs; find "attributes" and look for "dim"
+          const attrIdx = info.indexOf("attributes")
+          if (attrIdx !== -1) {
+            const attrs = info[attrIdx + 1] as unknown as string[][]
+            for (const attr of attrs) {
+              if (!Array.isArray(attr)) continue
+              const dimIdx = attr.indexOf("dim")
+              if (dimIdx !== -1) {
+                const existingDim = Number(attr[dimIdx + 1])
+                if (existingDim !== dim) {
+                  log.info("embedding dimension mismatch, dropping and recreating Redis index", { existingDim, dim })
+                  await client.call("FT.DROPINDEX", indexName)
+                  await client.call(
+                    "FT.CREATE",
+                    indexName,
+                    "ON",
+                    "HASH",
+                    "PREFIX",
+                    "1",
+                    prefix,
+                    "SCHEMA",
+                    "file_path",
+                    "TAG",
+                    "text",
+                    "TEXT",
+                    "start_line",
+                    "NUMERIC",
+                    "mtime",
+                    "NUMERIC",
+                    "vector",
+                    "VECTOR",
+                    "HNSW",
+                    "6",
+                    "TYPE",
+                    "FLOAT32",
+                    "DIM",
+                    String(dim),
+                    "DISTANCE_METRIC",
+                    "COSINE",
+                  )
+                }
+                break
+              }
+            }
+          }
+        } catch (infoErr) {
+          log.warn("failed to verify Redis index dimension", { error: String(infoErr) })
+        }
+      }
+    },
+
+    // PERF-2: Hoist keyPrefix out of upsert loop
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      const client = getRedisClient()
+      const pipeline = client.pipeline()
+      const prefix = redis.keyPrefix()
+      for (const p of points) {
+        const key = `${prefix}${p.id}`
+        pipeline.hset(
+          key,
+          "file_path",
+          String(p.payload.file_path ?? ""),
+          "text",
+          String(p.payload.text ?? ""),
+          "start_line",
+          String(p.payload.start_line ?? 0),
+          "mtime",
+          String(p.payload.mtime ?? 0),
+          "is_gitignored",
+          String(p.payload.is_gitignored ?? false),
+          "vector",
+          redis.encodeVector(p.vector),
+        )
+      }
+      await pipeline.exec()
+    },
+
+    async deleteByPath(filePath: string) {
+      const client = getRedisClient()
+      const indexName = collectionName()
+      // Escape TAG special chars (comma and backslash are the true separators/escapes)
+      const escaped = filePath.replace(/[\\,]/g, "\\$&")
+      const toDelete: string[] = []
+      const PAGE = 1000
+      let offset = 0
+      while (true) {
+        // RETURN 0 = no fields, response is [count, key1, key2, ...]
+        const result = (await client.call(
+          "FT.SEARCH",
+          indexName,
+          `@file_path:{${escaped}}`,
+          "RETURN",
+          "0",
+          "LIMIT",
+          String(offset),
+          String(PAGE),
+        )) as unknown[]
+        const total = result[0] as number
+        // With RETURN 0, result is [count, key1, key2, ...] — stride 1
+        for (let i = 1; i < result.length; i++) {
+          if (typeof result[i] === "string") toDelete.push(result[i] as string)
+        }
+        offset += PAGE
+        if (offset >= total) break
+      }
+      if (toDelete.length > 0) {
+        const pipeline = client.pipeline()
+        for (const k of toDelete) pipeline.del(k)
+        await pipeline.exec()
+      }
+    },
+
+    async getAllMtimes(): Promise<Map<string, number>> {
+      const client = getRedisClient()
+      const mtimes = new Map<string, number>()
+      const indexName = collectionName()
+      let offset = 0
+      const pageSize = 1000
+      while (true) {
+        const result = (await client.call(
+          "FT.SEARCH",
+          indexName,
+          "*",
+          "RETURN",
+          "2",
+          "file_path",
+          "mtime",
+          "LIMIT",
+          String(offset),
+          String(pageSize),
+        )) as unknown[]
+        const total = result[0] as number
+        // With RETURN 2, result is [count, key1, [f1,v1,f2,v2], key2, [...], ...]
+        for (let i = 1; i < result.length; i += 2) {
+          if (i + 1 >= result.length) break
+          const fields = result[i + 1] as string[]
+          if (!Array.isArray(fields)) continue
+          let fp: string | null = null
+          let mt: number | null = null
+          for (let j = 0; j < fields.length; j += 2) {
+            if (fields[j] === "file_path") fp = fields[j + 1]
+            if (fields[j] === "mtime") mt = Number(fields[j + 1])
+          }
+          if (fp && mt !== null && !mtimes.has(fp)) mtimes.set(fp, mt)
+        }
+        offset += pageSize
+        if (offset >= total) break
+      }
+      return mtimes
+    },
+
+    async search(vector: number[], topK: number): Promise<{ file_path: string; text: string; start_line: number }[]> {
+      const client = getRedisClient()
+      const indexName = collectionName()
+      const vecBuf = redis.encodeVector(vector)
+      const result = (await client.call(
+        "FT.SEARCH",
+        indexName,
+        `*=>[KNN ${topK} @vector $vec AS score]`,
+        "PARAMS",
+        "2",
+        "vec",
+        vecBuf,
+        "RETURN",
+        "3",
+        "file_path",
+        "text",
+        "start_line",
+        "SORTBY",
+        "score",
+        "DIALECT",
+        "2",
+      )) as unknown[]
+      const hits: { file_path: string; text: string; start_line: number }[] = []
+      // With RETURN 3, result is [count, key1, [fields...], key2, [...], ...]
+      for (let i = 1; i < result.length; i += 2) {
+        if (i + 1 >= result.length) break
+        const fields = result[i + 1] as string[]
+        if (!Array.isArray(fields)) continue
+        let fp = "",
+          text = "",
+          sl = 0
+        for (let j = 0; j < fields.length; j += 2) {
+          if (fields[j] === "file_path") fp = fields[j + 1]
+          if (fields[j] === "text") text = fields[j + 1]
+          if (fields[j] === "start_line") sl = Number(fields[j + 1])
+        }
+        if (fp) hits.push({ file_path: fp, text, start_line: sl })
+      }
+      return hits
+    },
+
+    async deleteAll() {
+      const client = getRedisClient()
+      const indexName = collectionName()
+      await client.call("FT.DROPINDEX", indexName, "DD").catch((e: any) => {
+        const msg = String(e?.message ?? "")
+        if (!msg.includes("Unknown Index name")) throw e
+      })
+    },
+
+    // LOGIC-5: Fix Redis checkHealth PING result discarded when signal provided
+    async checkHealth(signal?: AbortSignal) {
+      const client = getRedisClient()
+      await client.connect().catch(() => {})
+      // ioredis ping doesn't accept AbortSignal directly; race with a timeout promise
+      const ping = client.ping()
+      const pong = signal
+        ? await Promise.race([
+            ping,
+            new Promise<never>((_, reject) => {
+              signal.addEventListener("abort", () => reject(new Error("aborted")))
+            }),
+          ])
+        : await ping
+      if (pong !== "PONG") throw new Error("Redis unhealthy: unexpected PING response")
+    },
+  }
+
+  // ─── VectorStore dispatch ─────────────────────────────────────────────────────
+
+  const store = {
+    async ensureIndex(signal?: AbortSignal) {
+      return useRedis() ? redis.ensureIndex(signal) : qdrant.ensureCollection(signal)
+    },
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      return useRedis() ? redis.upsert(points) : qdrant.upsert(points)
+    },
+    async deleteByPath(filePath: string) {
+      return useRedis() ? redis.deleteByPath(filePath) : qdrant.deleteByPath(filePath)
+    },
+    async getAllMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
+      return useRedis() ? redis.getAllMtimes() : qdrant.getAllMtimes(signal)
+    },
+    async search(vector: number[], topK: number) {
+      return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
+    },
+    async deleteAll() {
+      return useRedis() ? redis.deleteAll() : qdrant.deleteAll()
+    },
+    async checkHealth(signal?: AbortSignal) {
+      return useRedis() ? redis.checkHealth(signal) : qdrant.checkHealth(signal)
+    },
+  }
+
+  // ─── Core logic ──────────────────────────────────────────────────────────────
 
   export function chunkFile(content: string, filePath: string): { id: string; text: string; startLine: number }[] {
     if (!content.trim()) return []
@@ -245,49 +712,41 @@ export namespace Indexer {
     const CHUNK_SIZE = 50
     const OVERLAP = 10
     const chunks: { id: string; text: string; startLine: number }[] = []
-
     for (let i = 0; i < lines.length; i += CHUNK_SIZE - OVERLAP) {
       const startLine = i + 1
-      const chunkLines = lines.slice(i, i + CHUNK_SIZE)
-      const text = chunkLines.join("\n")
-      const id = toUUID(`${filePath}:${startLine}`)
-      chunks.push({ id, text, startLine })
+      const text = lines.slice(i, i + CHUNK_SIZE).join("\n")
+      chunks.push({ id: toUUID(`${filePath}:${startLine}`), text, startLine })
       if (i + CHUNK_SIZE >= lines.length) break
     }
-
     return chunks
   }
 
+  /** Returns the file's mtimeMs if it was indexed, null if skipped or errored. */
   async function indexFile(
     filePath: string,
     skipIfUnchanged = false,
     signal?: AbortSignal,
     isIgnored?: (f: string) => boolean,
     indexedMtimes?: Map<string, number>,
-  ) {
+  ): Promise<number | null> {
     try {
       const stat = await fs.promises.stat(filePath)
-      if (!stat.isFile()) return
-      if (stat.size > maxFileSizeBytes()) return
+      if (!stat.isFile()) return null
+      if (stat.size > maxFileSizeBytes()) return null
 
-      if (skipIfUnchanged) {
-        const indexedMtime =
-          indexedMtimes !== undefined ? (indexedMtimes.get(filePath) ?? null) : await getIndexedMtime(filePath)
-        if (indexedMtime === stat.mtimeMs) return
+      if (skipIfUnchanged && indexedMtimes !== undefined) {
+        if (indexedMtimes.get(filePath) === stat.mtimeMs) return stat.mtimeMs
       }
 
       let content = await fs.promises.readFile(filePath, "utf-8")
       const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
-      if (ignored) {
-        content = await Faker.fakeContent(content, filePath)
-      }
+      // LOGIC-2: Keep real filePath as file_path for delete lookup; only obfuscate text content
+      if (ignored) content = await Faker.fakeContent(content, filePath)
       const chunks = chunkFile(content, filePath)
-      if (chunks.length === 0) return
+      if (chunks.length === 0) return null
 
-      // Redact file path for gitignored files to prevent leaking directory structure
       const indexedPath = ignored ? "[gitignored]" : filePath
 
-      // Embed all chunks in parallel (using concurrency limit of 10)
       const results = await mapParallel(
         chunks,
         10,
@@ -298,7 +757,7 @@ export namespace Indexer {
               id: chunk.id,
               vector,
               payload: {
-                file_path: indexedPath,
+                file_path: filePath,
                 text: chunk.text,
                 start_line: chunk.startLine,
                 mtime: stat.mtimeMs,
@@ -314,22 +773,22 @@ export namespace Indexer {
       )
 
       const points = results.filter(Boolean) as { id: string; vector: number[]; payload: Record<string, unknown> }[]
-      if (points.length === 0) return
+      if (points.length === 0) return null
 
-      await deleteByFilePath(filePath)
-      await upsertPoints(points)
+      await store.deleteByPath(filePath)
+      await store.upsert(points)
+      return stat.mtimeMs
     } catch (e) {
       log.warn("failed to index file", { file: filePath, error: String(e) })
+      return null
     }
   }
 
   async function checkServices() {
-    const timeout = AbortSignal.timeout(5_000)
+    const signal = AbortSignal.timeout(5_000)
     await Promise.all([
-      fetch(`${qdrantUrl()}/healthz`, { signal: timeout }).then((r) => {
-        if (!r.ok) throw new Error(`Qdrant unhealthy: ${r.status}`)
-      }),
-      fetch(`${embeddingUrl()}/api/tags`, { signal: timeout }).then((r) => {
+      store.checkHealth(signal),
+      fetch(`${embeddingUrl()}/api/tags`, { signal }).then((r) => {
         if (!r.ok) throw new Error(`Ollama unhealthy: ${r.status}`)
       }),
     ])
@@ -378,20 +837,28 @@ export namespace Indexer {
 
   async function runInitialIndex() {
     const s = state()
-    await ensureCollection(s.abortController.signal)
-    // index-ignore rules are loaded once at startup; edits require a restart.
-    // Files matching new patterns are not automatically removed from Qdrant.
+    const backend = activeBackend()
+    await store.ensureIndex(s.abortController.signal)
+
     const isIndexIgnored = loadIndexIgnore()
 
-    // Bulk-fetch all already-indexed mtimes once to avoid one Qdrant query per file.
-    // NOTE: the map may be stale for files modified during the scan; the file watcher
-    // will re-index any such files after startup completes.
-    const indexedMtimes = await getAllIndexedMtimes(s.abortController.signal).catch((e) => {
-      log.warn("failed to fetch indexed mtimes, falling back to per-file queries", { error: String(e) })
-      return undefined
-    })
+    // ── Fast path: load mtime cache from disk into in-memory state ────────────
+    const cached = loadMtimeCacheFromDisk()
+    if (cached) {
+      s.mtimeCache = cached
+      log.info("loaded mtime cache from disk, skipping vector store scroll", { entries: cached.size })
+    } else {
+      // ── Slow path: fetch from vector store (first boot or cache deleted) ────
+      log.info("no mtime cache found, fetching from vector store")
+      const fetched = await store.getAllMtimes(s.abortController.signal).catch((e) => {
+        log.warn("failed to fetch indexed mtimes, all files will be re-indexed", { error: String(e) })
+        return new Map<string, number>()
+      })
+      s.mtimeCache = fetched
+    }
 
-    // Collect all files first so we can report an accurate percentage.
+    const indexedMtimes = s.mtimeCache
+
     const allFiles: string[] = []
     const scanner = new Bun.Glob("**/*").scan({ cwd: Instance.directory, absolute: true, dot: true, onlyFiles: true })
     for await (const file of scanner) {
@@ -402,32 +869,74 @@ export namespace Indexer {
     }
 
     const total = allFiles.length
-    // Publish total now so UI shows accurate denominator before first batch event.
-    s.status = { type: "indexing", progress: 0, total }
+    s.status = {
+      type: "indexing",
+      progress: 0,
+      total,
+      backend,
+      embedding_url: embeddingUrl(),
+      embedding_model: embeddingModel(),
+      backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+    }
     Bus.publish(Event.Updated, s.status)
 
-    // Build ignore checker once across all files (avoids one subprocess per batch).
     const isIgnored = await buildIgnoreChecker(Instance.worktree, allFiles)
 
     const BATCH_SIZE = 500
     let done = 0
+    let lastPublish = 0
+
+    // PERF-11: Hoist null guard & cache ref out of mapParallel worker
+    if (!s.mtimeCache) s.mtimeCache = new Map()
+    const cache = s.mtimeCache
+    s.mtimeCacheDirty = true // ensure dispose saves progress even on early exit
 
     const processBatch = async (batch: string[]): Promise<boolean> => {
       if (batch.length === 0) return true
-
-      const FILE_CONCURRENCY = 10
       await mapParallel(
         batch,
-        FILE_CONCURRENCY,
+        10,
         async (file) => {
-          await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
+          const mtime = await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
+          // mtime is non-null whether file was indexed OR skipped-but-unchanged
+          // For skipped files, indexFile returns stat.mtimeMs (the unchanged mtime)
+          // We always update the cache so it stays current
+          if (mtime !== null) {
+            cache.set(file, mtime)
+          }
+          done++
+          const now = Date.now()
+          if (now - lastPublish >= 100) {
+            lastPublish = now
+            s.status = {
+              type: "indexing",
+              progress: done,
+              total,
+              backend,
+              embedding_url: embeddingUrl(),
+              embedding_model: embeddingModel(),
+              backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+            }
+            Bus.publish(Event.Updated, s.status)
+          }
         },
         s.abortController.signal,
       )
-
-      done += batch.length
-      s.status = { type: "indexing", progress: done, total }
-      Bus.publish(Event.Updated, s.status)
+      const endNow = Date.now()
+      if (endNow - lastPublish >= 50) {
+        lastPublish = endNow
+        s.status = {
+          type: "indexing",
+          progress: done,
+          total,
+          backend,
+          embedding_url: embeddingUrl(),
+          embedding_model: embeddingModel(),
+          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+        }
+        Bus.publish(Event.Updated, s.status)
+      }
+      saveMtimeCacheToDisk(cache)
       return !s.abortController.signal.aborted
     }
 
@@ -444,7 +953,31 @@ export namespace Indexer {
       }
     }
 
-    s.status = { type: "complete" }
+    // LOGIC-10: Prune orphan vectors when removing stale cache entries
+    if (s.mtimeCache) {
+      const existingSet = new Set(allFiles)
+      const stalePrunePromises: Promise<void>[] = []
+      for (const k of s.mtimeCache.keys()) {
+        if (!existingSet.has(k)) {
+          s.mtimeCache.delete(k)
+          stalePrunePromises.push(
+            store.deleteByPath(k).catch((e) => console.error("Failed to prune stale vectors for", k, e)),
+          )
+        }
+      }
+      await Promise.all(stalePrunePromises)
+    }
+
+    // Persist the updated mtime map so next restart is fast
+    if (s.mtimeCache) saveMtimeCacheToDisk(s.mtimeCache)
+
+    s.status = {
+      type: "complete",
+      backend,
+      embedding_url: embeddingUrl(),
+      embedding_model: embeddingModel(),
+      backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+    }
     Bus.publish(Event.Updated, s.status)
   }
 
@@ -455,13 +988,16 @@ export namespace Indexer {
       if (FileIgnore.match(rel)) return
       if (isIndexIgnored(rel)) return
       if (event === "unlink") {
-        await deleteByFilePath(file).catch((error) => {
+        await store.deleteByPath(file).catch((error) => {
           log.error("failed to delete index entry for file", { file, error: String(error) })
         })
+        deleteMtimeCacheEntry(file)
       } else {
-        await indexFile(file).catch((error) => {
+        const mtime = await indexFile(file).catch((error) => {
           log.error("failed to index file from watcher event", { file, event, error: String(error) })
+          return null
         })
+        if (mtime !== null) setMtimeCacheEntry(file, mtime)
       }
     })
   }
@@ -476,35 +1012,29 @@ export namespace Indexer {
     if (!query || query.length > MAX_QUERY_LENGTH) throw new Error("Invalid query length")
     if (state().status.type !== "complete") return []
     const vector = await embed(query)
-    const name = collectionName()
-    const url = qdrantUrl()
-    const response = await fetch(`${url}/collections/${name}/points/search`, {
-      method: "POST",
-      headers: qdrantHeaders(),
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({ vector, limit: topK, with_payload: true }),
-    })
-    if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
-    const data = (await response.json()) as {
-      result: { payload: { file_path: string; text: string; start_line: number } }[]
-    }
-    return data.result.map((r) => {
-      const { file_path, text, start_line } = r.payload
-      return `// ${file_path}:${start_line}\n${text}`
-    })
+    const hits = await store.search(vector, topK)
+    return hits.map((r) => `// ${r.file_path}:${r.start_line}\n${r.text}`)
   }
 
   export function init() {
     if (!VuHitraSettings.indexingEnabled()) return
     const s = state()
-    // Check services BEFORE setting status to "indexing" to avoid misleading UI
     Promise.resolve().then(async () => {
       try {
         await checkServices()
-        s.status = { type: "indexing", progress: 0, total: 0 }
+        s.status = {
+          type: "indexing",
+          progress: 0,
+          total: 0,
+          backend: activeBackend(),
+          embedding_url: embeddingUrl(),
+          embedding_model: embeddingModel(),
+          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+        }
         Bus.publish(Event.Updated, s.status)
         await runInitialIndex()
-        watchForChanges()
+        // LOGIC-8: Guard watchForChanges after aborted runInitialIndex
+        if (!s.abortController.signal.aborted) watchForChanges()
       } catch (e) {
         log.error("indexer failed to start", { error: String(e) })
         s.status = { type: "disabled" }
@@ -513,58 +1043,20 @@ export namespace Indexer {
     })
   }
 
-  let deleting = false
-
   export async function deleteCollection(): Promise<void> {
-    if (deleting) throw new Error("Deletion already in progress")
-    deleting = true
+    const s = state()
+    if (s.deleting) throw new Error("Deletion already in progress")
+    s.deleting = true
     try {
-      const s = state()
-
-      // 1. Abort in-flight work (so nothing can recreate the collection)
       s.abortController.abort()
       s.abortController = new AbortController()
-
-      // 2. Attempt the deletion
-      const name = collectionName()
-      const url = qdrantUrl()
-      try {
-        new URL(url)
-      } catch {
-        throw new Error("Invalid QDRANT_URL configuration")
-      }
-      const response = await fetch(`${url}/collections/${name}`, {
-        method: "DELETE",
-        headers: qdrantHeaders(),
-        signal: AbortSignal.timeout(30_000),
-      })
-
-      // Handle 404 (already deleted) idempotently
-      if (response.status === 404) {
-        const newStatus: Status = { type: "disabled" }
-        s.status = newStatus
-        await Bus.publish(Event.Updated, newStatus)
-        return
-      }
-
-      if (!response.ok) throw new Error(`Failed to delete collection: ${response.status} ${response.statusText}`)
-
-      // Verify deletion
-      const verify = await fetch(`${url}/collections/${name}`, {
-        headers: qdrantHeaders(),
-        signal: AbortSignal.timeout(10_000),
-      }).catch((e) => {
-        log.warn("failed to verify collection deletion", { name, error: String(e) })
-        return null
-      })
-      if (verify?.ok) throw new Error(`Collection ${name} still exists after deletion`)
-
-      // 3. ONLY update status AFTER successful deletion
+      await store.deleteAll()
+      deleteMtimeCache()
       const newStatus: Status = { type: "disabled" }
       s.status = newStatus
       await Bus.publish(Event.Updated, newStatus)
     } finally {
-      deleting = false
+      s.deleting = false
     }
   }
 }

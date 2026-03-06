@@ -41,25 +41,33 @@ const IndexDeleteCommand = cmd({
         console.log("\nThe indexer will automatically regenerate the index on next use.")
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        const url = Env.get("QDRANT_URL") || "http://localhost:6333"
 
-        // Distinguish between connection issues and deletion failures
-        if (msg.includes("Failed to delete collection")) {
-          // Real deletion failure (404 is handled idempotently, so this is a real error)
-          const status = msg.match(/(\d+)/)?.[1]
+        if (Env.get("REDIS_URL") || Env.get("REDIS_HOST")) {
+          const url =
+            Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`
           const hint =
-            status === "503"
-              ? "Qdrant appears to be unavailable"
-              : status === "401" || status === "403"
-                ? "Authentication failed; check QDRANT_API_KEY"
-                : "Qdrant returned an error"
-          prompts.log.error(`Failed to delete index: ${msg}\n${hint}\nQdrant URL: ${url}`)
-        } else if (msg.includes("Invalid QDRANT_URL") || msg.includes("fetch") || msg.includes("Connect")) {
-          // Configuration or network issues
-          prompts.log.error(`Failed to connect to Qdrant: ${msg}\nCheck QDRANT_URL: ${url}`)
+            msg.includes("ECONNREFUSED") || msg.includes("connect")
+              ? "Redis appears to be unavailable"
+              : msg.includes("NOAUTH") || msg.includes("AUTH") || msg.includes("WRONGPASS")
+                ? "Authentication failed; check REDIS_PASSWORD"
+                : "Redis returned an error"
+          prompts.log.error(`Failed to delete index: ${msg}\n${hint}\nRedis URL: ${url}`)
         } else {
-          // Other unexpected errors
-          prompts.log.error(`Failed to delete index: ${msg}`)
+          const url = Env.get("QDRANT_URL") || "http://localhost:6333"
+          if (msg.includes("Failed to delete collection")) {
+            const status = msg.match(/(\d+)/)?.[1]
+            const hint =
+              status === "502" || status === "503" || status === "504"
+                ? "Qdrant appears to be unavailable or overloaded"
+                : status === "401" || status === "403"
+                  ? "Authentication failed; check QDRANT_API_KEY"
+                  : "Qdrant returned an error"
+            prompts.log.error(`Failed to delete index: ${msg}\n${hint}\nQdrant URL: ${url}`)
+          } else if (msg.includes("Invalid QDRANT_URL") || msg.includes("fetch") || msg.includes("Connect")) {
+            prompts.log.error(`Failed to connect to Qdrant: ${msg}\nCheck QDRANT_URL: ${url}`)
+          } else {
+            prompts.log.error(`Failed to delete index: ${msg}`)
+          }
         }
         process.exit(1)
       }

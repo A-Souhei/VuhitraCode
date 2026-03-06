@@ -24,6 +24,11 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
   const inProgressTodo = createMemo(() => todo().find((t) => t.status === "in_progress"))
   const completedCount = createMemo(() => todo().filter((t) => t.status === "completed").length)
+  const activeIndexer = createMemo(() => {
+    const st = sync.data.indexer_status
+    if (!st || st.type === "disabled") return undefined
+    return st
+  })
 
   const [expanded, setExpanded] = createStore({
     mcp: true,
@@ -244,6 +249,27 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                     })()}
                   </text>
                 </box>
+                <Show when={activeIndexer()}>
+                  {(s) => (
+                    <>
+                      <Show when={s().embedding_url !== undefined}>
+                        <text fg={theme.textMuted}>
+                          {"  Embed: "}
+                          {s().embedding_url || "(empty)"}
+                          {s().embedding_model ? ` (${s().embedding_model})` : ""}
+                        </text>
+                      </Show>
+                      <Show when={s().backend_url !== undefined}>
+                        <text fg={theme.textMuted}>
+                          {"  Store: "}
+                          {s().backend}
+                          {": "}
+                          {s().backend_url || "(empty)"}
+                        </text>
+                      </Show>
+                    </>
+                  )}
+                </Show>
               </box>
             </Show>
             <Show when={todo().length > 0}>
