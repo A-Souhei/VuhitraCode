@@ -22,7 +22,6 @@ import {
   isGitHubCopilotMcp,
   startDeviceFlow as startGHDeviceFlow,
   pollDeviceFlow as pollGHDeviceFlow,
-  type DeviceFlowStart,
 } from "./github-oauth"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
@@ -884,7 +883,7 @@ export namespace MCP {
     return {
       userCode: flow.userCode,
       verificationUri: flow.verificationUri,
-      verificationUriComplete: (flow as any).verificationUriComplete,
+      verificationUriComplete: flow.verificationUriComplete,
       done,
     }
   }
