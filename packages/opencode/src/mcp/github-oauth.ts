@@ -73,8 +73,10 @@ async function pollDeviceFlow(
   let base = interval * 1000 + POLLING_MARGIN_MS
   let wait = base
   while (true) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) throw new Error("Device code expired — please run auth again")
+    await Bun.sleep(Math.min(wait, remaining))
     if (Date.now() >= deadline) throw new Error("Device code expired — please run auth again")
-    await Bun.sleep(wait)
     const res = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
