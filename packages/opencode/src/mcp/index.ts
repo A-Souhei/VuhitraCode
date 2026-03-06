@@ -733,6 +733,13 @@ export namespace MCP {
       throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
     }
 
+    if (isGitHubCopilotMcp(mcpConfig.url)) {
+      throw new Error(
+        `MCP server ${mcpName} is a GitHub Copilot server and does not support the browser OAuth flow. ` +
+          `Use the device flow instead: opencode mcp auth ${mcpName}`,
+      )
+    }
+
     // Start the callback server
     await McpOAuthCallback.ensureRunning()
 
