@@ -70,7 +70,7 @@ async function pollDeviceFlow(
   serverUrl: string,
 ): Promise<void> {
   const deadline = Date.now() + expiresIn * 1000
-  const base = interval * 1000 + POLLING_MARGIN_MS
+  let base = interval * 1000 + POLLING_MARGIN_MS
   let wait = base
   while (true) {
     if (Date.now() >= deadline) throw new Error("Device code expired — please run auth again")
@@ -114,7 +114,8 @@ async function pollDeviceFlow(
       return
     }
     if (data.error === "slow_down") {
-      wait = (data.interval ? data.interval * 1000 : base + 5000) + POLLING_MARGIN_MS
+      base = (data.interval ? data.interval * 1000 : base + 5000) + POLLING_MARGIN_MS
+      wait = base
       continue
     }
     if (data.error === "authorization_pending") {
