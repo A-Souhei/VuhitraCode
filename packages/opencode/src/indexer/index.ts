@@ -855,8 +855,9 @@ export namespace Indexer {
 
   async function runInitialIndex() {
     const s = state()
+    const signal = s.abortController.signal
     const backend = activeBackend()
-    await store.ensureIndex(s.abortController.signal)
+    await store.ensureIndex(signal)
 
     const isIndexIgnored = loadIndexIgnore()
 
@@ -868,7 +869,7 @@ export namespace Indexer {
     } else {
       // ── Slow path: fetch from vector store (first boot or cache deleted) ────
       log.info("no mtime cache found, fetching from vector store")
-      const fetched = await store.getAllMtimes(s.abortController.signal).catch((e) => {
+      const fetched = await store.getAllMtimes(signal).catch((e) => {
         log.warn("failed to fetch indexed mtimes, all files will be re-indexed", { error: String(e) })
         return new Map<string, number>()
       })
@@ -915,7 +916,7 @@ export namespace Indexer {
         batch,
         10,
         async (file) => {
-          const mtime = await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
+          const mtime = await indexFile(file, true, signal, isIgnored, indexedMtimes)
           // mtime is non-null whether file was indexed OR skipped-but-unchanged
           // For skipped files, indexFile returns stat.mtimeMs (the unchanged mtime)
           // We always update the cache so it stays current
@@ -938,7 +939,7 @@ export namespace Indexer {
             Bus.publish(Event.Updated, s.status)
           }
         },
-        s.abortController.signal,
+        signal,
       )
       const endNow = Date.now()
       if (endNow - lastPublish >= 50) {
@@ -955,11 +956,11 @@ export namespace Indexer {
         Bus.publish(Event.Updated, s.status)
       }
       saveMtimeCacheToDisk(cache)
-      return !s.abortController.signal.aborted
+      return !signal.aborted
     }
 
     for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
-      if (s.abortController.signal.aborted) {
+      if (signal.aborted) {
         if (!s.deleting) {
           s.status = { type: "disabled", reason: "aborted" }
           Bus.publish(Event.Updated, s.status)
@@ -1028,6 +1029,13 @@ export namespace Indexer {
     return state().status
   }
 
+  export function classifyReason(msg: string): "embedding_unreachable" | "backend_unreachable" | "error" {
+    const lower = msg.toLowerCase()
+    if (lower.includes("ollama") || lower.startsWith("embedding")) return "embedding_unreachable"
+    if (lower.includes("qdrant") || lower.includes("redis") || lower.includes("backend")) return "backend_unreachable"
+    return "error"
+  }
+
   const MAX_QUERY_LENGTH = 1000
 
   export async function search(query: string, topK = 5): Promise<string[]> {
@@ -1065,13 +1073,7 @@ export namespace Indexer {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         log.error("indexer failed to start", { error: msg })
-        const lower = msg.toLowerCase()
-        const reason =
-          lower.includes("ollama") || lower.includes("embedding")
-            ? "embedding_unreachable"
-            : lower.includes("qdrant") || lower.includes("redis") || lower.includes("backend")
-              ? "backend_unreachable"
-              : "error"
+        const reason = classifyReason(msg)
         s.status = { type: "disabled", reason, message: msg }
         Bus.publish(Event.Updated, s.status)
       }

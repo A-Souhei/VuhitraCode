@@ -227,3 +227,127 @@ secret_key = "sk-secret"`
     expect(chunks[0].text).toContain("password")
   })
 })
+
+describe("Indexer.classifyReason", () => {
+  test("classifies ollama errors as embedding_unreachable", () => {
+    expect(Indexer.classifyReason("ollama connection refused")).toBe("embedding_unreachable")
+  })
+
+  test("classifies embedding errors as embedding_unreachable", () => {
+    expect(Indexer.classifyReason("embedding request failed: 503")).toBe("embedding_unreachable")
+  })
+
+  test("case-insensitive: EMBEDDING matches embedding_unreachable", () => {
+    expect(Indexer.classifyReason("EMBEDDING server unreachable")).toBe("embedding_unreachable")
+  })
+
+  test("classifies qdrant errors as backend_unreachable", () => {
+    expect(Indexer.classifyReason("qdrant unhealthy: 503")).toBe("backend_unreachable")
+  })
+
+  test("classifies redis errors as backend_unreachable", () => {
+    expect(Indexer.classifyReason("redis connection refused")).toBe("backend_unreachable")
+  })
+
+  test("classifies backend errors as backend_unreachable", () => {
+    expect(Indexer.classifyReason("backend unhealthy: timeout")).toBe("backend_unreachable")
+  })
+
+  test("falls back to error for unknown messages", () => {
+    expect(Indexer.classifyReason("something completely unknown")).toBe("error")
+  })
+
+  test("falls back to error for empty string", () => {
+    expect(Indexer.classifyReason("")).toBe("error")
+  })
+
+  test("ollama takes priority over backend keyword when both present", () => {
+    // ollama is in the embedding branch, checked before backend branch
+    expect(Indexer.classifyReason("ollama backend unreachable")).toBe("embedding_unreachable")
+  })
+
+  test("embedding mid-string does not match embedding_unreachable (uses startsWith)", () => {
+    expect(Indexer.classifyReason("qdrant embedding dimension mismatch")).toBe("backend_unreachable")
+  })
+})
+
+describe("Indexer Status schema", () => {
+  test("disabled variant accepts all expected reason values", () => {
+    const reasons = [
+      "not_configured",
+      "embedding_unreachable",
+      "backend_unreachable",
+      "error",
+      "deleted",
+      "aborted",
+    ] as const
+    for (const reason of reasons) {
+      const result = Indexer.Status.safeParse({ type: "disabled", reason })
+      expect(result.success).toBe(true)
+    }
+  })
+
+  test("disabled variant accepts no reason (generic disabled)", () => {
+    const result = Indexer.Status.safeParse({ type: "disabled" })
+    expect(result.success).toBe(true)
+    if (result.success && result.data.type === "disabled") expect(result.data.reason).toBeUndefined()
+  })
+
+  test("disabled variant accepts reason with message", () => {
+    const result = Indexer.Status.safeParse({
+      type: "disabled",
+      reason: "embedding_unreachable",
+      message: "Connection refused to http://localhost:11434",
+    })
+    expect(result.success).toBe(true)
+    if (result.success && result.data.type === "disabled") {
+      expect(result.data.reason).toBe("embedding_unreachable")
+      expect(result.data.message).toBe("Connection refused to http://localhost:11434")
+    }
+  })
+
+  test("disabled variant rejects unknown reason values", () => {
+    const result = Indexer.Status.safeParse({ type: "disabled", reason: "unknown_reason" })
+    expect(result.success).toBe(false)
+  })
+
+  test("indexing variant is valid", () => {
+    const result = Indexer.Status.safeParse({
+      type: "indexing",
+      progress: 10,
+      total: 100,
+      backend: "qdrant",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test("complete variant is valid", () => {
+    const result = Indexer.Status.safeParse({
+      type: "complete",
+      backend: "redis",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test("indexing variant rejects missing backend", () => {
+    const result = Indexer.Status.safeParse({ type: "indexing", progress: 10, total: 100 })
+    expect(result.success).toBe(false)
+  })
+
+  test("indexing variant rejects missing total", () => {
+    const result = Indexer.Status.safeParse({ type: "indexing", progress: 10, backend: "qdrant" })
+    expect(result.success).toBe(false)
+  })
+
+  test("complete variant rejects missing backend", () => {
+    const result = Indexer.Status.safeParse({ type: "complete" })
+    expect(result.success).toBe(false)
+  })
+
+  test("complete and indexing variants reject invalid backend value", () => {
+    const r1 = Indexer.Status.safeParse({ type: "complete", backend: "elastic" })
+    expect(r1.success).toBe(false)
+    const r2 = Indexer.Status.safeParse({ type: "indexing", progress: 0, total: 0, backend: "elastic" })
+    expect(r2.success).toBe(false)
+  })
+})
