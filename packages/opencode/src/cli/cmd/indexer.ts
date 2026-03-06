@@ -43,7 +43,8 @@ const IndexDeleteCommand = cmd({
         const msg = error instanceof Error ? error.message : String(error)
 
         if (Env.get("REDIS_URL") || Env.get("REDIS_HOST")) {
-          const url = Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST")}:${Env.get("REDIS_PORT") || "6379"}`
+          const url =
+            Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`
           const hint =
             msg.includes("ECONNREFUSED") || msg.includes("connect")
               ? "Redis appears to be unavailable"
