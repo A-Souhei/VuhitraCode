@@ -242,7 +242,19 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   <text fg={theme.textMuted}>
                     {(() => {
                       const s = sync.data.indexer_status
-                      if (!s || s.type === "disabled") return "Disabled"
+                      if (!s || s.type === "disabled") {
+                        if (!s) return "Disabled"
+                        const label =
+                          {
+                            not_configured: "Not configured",
+                            embedding_unreachable: "Embedding server unreachable",
+                            backend_unreachable: "Vector store unreachable",
+                            error: "Error",
+                            deleted: "Deleted",
+                            aborted: "Aborted",
+                          }[s.reason ?? "not_configured"] ?? "Disabled"
+                        return s.message ? `${label}: ${s.message}` : label
+                      }
                       if (s.type === "complete") return "Index ready"
                       const pct = s.total > 0 ? ` ${Math.round((s.progress / s.total) * 100)}%` : ""
                       return `Indexing (${s.progress} / ${s.total} files${pct})`

@@ -79,6 +79,8 @@ export type EventFileWatcherUpdated = {
 export type IndexerStatus =
   | {
       type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error" | "deleted" | "aborted"
+      message?: string
     }
   | {
       type: "indexing"
