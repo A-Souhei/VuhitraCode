@@ -17,6 +17,12 @@ import { Instance } from "../project/instance"
 import { Installation } from "../installation"
 import { withTimeout } from "@/util/timeout"
 import { McpOAuthProvider } from "./oauth-provider"
+import {
+  GitHubMcpOAuthProvider,
+  isGitHubCopilotMcp,
+  startDeviceFlow as startGHDeviceFlow,
+  pollDeviceFlow as pollGHDeviceFlow,
+} from "./github-oauth"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import { BusEvent } from "../bus/bus-event"
@@ -308,21 +314,22 @@ export namespace MCP {
       let authProvider: McpOAuthProvider | undefined
 
       if (!oauthDisabled) {
-        authProvider = new McpOAuthProvider(
-          key,
-          mcp.url,
-          {
-            clientId: oauthConfig?.clientId,
-            clientSecret: oauthConfig?.clientSecret,
-            scope: oauthConfig?.scope,
-          },
-          {
-            onRedirect: async (url) => {
-              log.info("oauth redirect requested", { key, url: url.toString() })
-              // Store the URL - actual browser opening is handled by startAuth
-            },
-          },
-        )
+        const onRedirect = async (url: URL) => {
+          log.info("oauth redirect requested", { key, url: url.toString() })
+          // Store the URL - actual browser opening is handled by startAuth
+        }
+        authProvider = isGitHubCopilotMcp(mcp.url)
+          ? new GitHubMcpOAuthProvider(key, mcp.url, onRedirect)
+          : new McpOAuthProvider(
+              key,
+              mcp.url,
+              {
+                clientId: oauthConfig?.clientId,
+                clientSecret: oauthConfig?.clientSecret,
+                scope: oauthConfig?.scope,
+              },
+              { onRedirect },
+            )
       }
 
       const transports: Array<{ name: string; transport: TransportWithAuth }> = [
@@ -726,6 +733,13 @@ export namespace MCP {
       throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
     }
 
+    if (isGitHubCopilotMcp(mcpConfig.url)) {
+      throw new Error(
+        `MCP server ${mcpName} is a GitHub Copilot server and does not support the browser OAuth flow. ` +
+          `Use the device flow instead: opencode mcp auth ${mcpName}`,
+      )
+    }
+
     // Start the callback server
     await McpOAuthCallback.ensureRunning()
 
@@ -740,20 +754,21 @@ export namespace MCP {
     // OAuth config is optional - if not provided, we'll use auto-discovery
     const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
     let capturedUrl: URL | undefined
-    const authProvider = new McpOAuthProvider(
-      mcpName,
-      mcpConfig.url,
-      {
-        clientId: oauthConfig?.clientId,
-        clientSecret: oauthConfig?.clientSecret,
-        scope: oauthConfig?.scope,
-      },
-      {
-        onRedirect: async (url) => {
-          capturedUrl = url
-        },
-      },
-    )
+    const onRedirect = async (url: URL) => {
+      capturedUrl = url
+    }
+    const authProvider = isGitHubCopilotMcp(mcpConfig.url)
+      ? new GitHubMcpOAuthProvider(mcpName, mcpConfig.url, onRedirect)
+      : new McpOAuthProvider(
+          mcpName,
+          mcpConfig.url,
+          {
+            clientId: oauthConfig?.clientId,
+            clientSecret: oauthConfig?.clientSecret,
+            scope: oauthConfig?.scope,
+          },
+          { onRedirect },
+        )
 
     // Create transport with auth provider
     const transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url), {
@@ -775,6 +790,7 @@ export namespace MCP {
         pendingOAuthTransports.set(mcpName, transport)
         return { authorizationUrl: capturedUrl.toString() }
       }
+      await McpAuth.clearOAuthState(mcpName)
       throw error
     }
   }
@@ -850,6 +866,36 @@ export namespace MCP {
   }
 
   /**
+   * Authenticate a GitHub MCP server using device code flow (RFC 8628).
+   * Returns device code info so the caller can display it to the user,
+   * and a promise that resolves when the user completes authorization.
+   */
+  export async function authenticateWithDeviceFlow(mcpName: string): Promise<{
+    userCode: string
+    verificationUri: string
+    verificationUriComplete?: string
+    done: Promise<void>
+  }> {
+    const cfg = await Config.get()
+    const mcpConfig = cfg.mcp?.[mcpName]
+    if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
+    if (!isMcpConfigured(mcpConfig)) throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
+    if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
+    if (!isGitHubCopilotMcp(mcpConfig.url))
+      throw new Error(`Device flow is only supported for GitHub Copilot MCP servers`)
+    if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
+
+    const flow = await startGHDeviceFlow()
+    const done = pollGHDeviceFlow(mcpName, flow.deviceCode, flow.interval, flow.expiresIn, mcpConfig.url)
+    return {
+      userCode: flow.userCode,
+      verificationUri: flow.verificationUri,
+      verificationUriComplete: flow.verificationUriComplete,
+      done,
+    }
+  }
+
+  /**
    * Complete OAuth authentication with the authorization code.
    */
   export async function finishAuth(mcpName: string, authorizationCode: string): Promise<Status> {
@@ -885,6 +931,7 @@ export namespace MCP {
       const statusRecord = result.status as Record<string, Status>
       return statusRecord[mcpName] ?? { status: "failed", error: "Unknown error after auth" }
     } catch (error) {
+      await McpAuth.clearCodeVerifier(mcpName)
       log.error("failed to finish oauth", { mcpName, error })
       return {
         status: "failed",
@@ -897,10 +944,10 @@ export namespace MCP {
    * Remove OAuth credentials for an MCP server.
    */
   export async function removeAuth(mcpName: string): Promise<void> {
+    const oauthState = await McpAuth.getOAuthState(mcpName)
     await McpAuth.remove(mcpName)
-    McpOAuthCallback.cancelPending(mcpName)
+    if (oauthState) McpOAuthCallback.cancelPending(oauthState)
     pendingOAuthTransports.delete(mcpName)
-    await McpAuth.clearOAuthState(mcpName)
     log.info("removed oauth credentials", { mcpName })
   }
 

@@ -7,6 +7,7 @@ import { UI } from "../ui"
 import { MCP } from "../../mcp"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
+import { isGitHubCopilotMcp } from "../../mcp/github-oauth"
 import { Config } from "../../config/config"
 import { Instance } from "../../project/instance"
 import { Installation } from "../../installation"
@@ -226,29 +227,53 @@ export const McpAuthCommand = cmd({
           prompts.log.warn(`${serverName} has expired credentials. Re-authenticating...`)
         }
 
-        const spinner = prompts.spinner()
-        spinner.start("Starting OAuth flow...")
-
-        // Subscribe to browser open failure events to show URL for manual opening
-        const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
-          if (evt.properties.mcpName === serverName) {
-            spinner.stop("Could not open browser automatically")
-            prompts.log.warn("Please open this URL in your browser to authenticate:")
-            prompts.log.info(evt.properties.url)
-            spinner.start("Waiting for authorization...")
-          }
-        })
-
-        try {
-          const status = await MCP.authenticate(serverName)
-
-          if (status.status === "connected") {
-            spinner.stop("Authentication successful!")
-          } else if (status.status === "needs_client_registration") {
+        if (isGitHubCopilotMcp(serverConfig.url)) {
+          // Device code flow — no browser redirect needed
+          const spinner = prompts.spinner()
+          spinner.start("Requesting device code from GitHub...")
+          try {
+            const { userCode, verificationUri, verificationUriComplete, done } =
+              await MCP.authenticateWithDeviceFlow(serverName)
+            spinner.stop("Device code ready")
+            prompts.log.info(`Go to: ${verificationUriComplete ?? verificationUri}`)
+            prompts.log.info(`Enter code: ${userCode}`)
+            const waitSpinner = prompts.spinner()
+            waitSpinner.start("Waiting for you to authorize on GitHub...")
+            try {
+              await done
+              waitSpinner.stop("Authorization complete!")
+            } catch (err) {
+              waitSpinner.stop("Authorization failed", 1)
+              prompts.log.error(err instanceof Error ? err.message : String(err))
+            }
+          } catch (error) {
             spinner.stop("Authentication failed", 1)
-            prompts.log.error(status.error)
-            prompts.log.info("Add clientId to your MCP server config:")
-            prompts.log.info(`
+            prompts.log.error(error instanceof Error ? error.message : String(error))
+          }
+        } else {
+          const spinner = prompts.spinner()
+          spinner.start("Starting OAuth flow...")
+
+          // Subscribe to browser open failure events to show URL for manual opening
+          const unsubscribe = Bus.subscribe(MCP.BrowserOpenFailed, (evt) => {
+            if (evt.properties.mcpName === serverName) {
+              spinner.stop("Could not open browser automatically")
+              prompts.log.warn("Please open this URL in your browser to authenticate:")
+              prompts.log.info(evt.properties.url)
+              spinner.start("Waiting for authorization...")
+            }
+          })
+
+          try {
+            const status = await MCP.authenticate(serverName)
+
+            if (status.status === "connected") {
+              spinner.stop("Authentication successful!")
+            } else if (status.status === "needs_client_registration") {
+              spinner.stop("Authentication failed", 1)
+              prompts.log.error(status.error)
+              prompts.log.info("Add clientId to your MCP server config:")
+              prompts.log.info(`
   "mcp": {
     "${serverName}": {
       "type": "remote",
@@ -259,17 +284,18 @@ export const McpAuthCommand = cmd({
       }
     }
   }`)
-          } else if (status.status === "failed") {
+            } else if (status.status === "failed") {
+              spinner.stop("Authentication failed", 1)
+              prompts.log.error(status.error)
+            } else {
+              spinner.stop("Unexpected status: " + status.status, 1)
+            }
+          } catch (error) {
             spinner.stop("Authentication failed", 1)
-            prompts.log.error(status.error)
-          } else {
-            spinner.stop("Unexpected status: " + status.status, 1)
+            prompts.log.error(error instanceof Error ? error.message : String(error))
+          } finally {
+            unsubscribe()
           }
-        } catch (error) {
-          spinner.stop("Authentication failed", 1)
-          prompts.log.error(error instanceof Error ? error.message : String(error))
-        } finally {
-          unsubscribe()
         }
 
         prompts.outro("Done")
@@ -308,8 +334,9 @@ export const McpAuthListCommand = cmd({
           const icon = getAuthStatusIcon(authStatus)
           const statusText = getAuthStatusText(authStatus)
           const url = serverConfig.url
+          const hint = isGitHubCopilotMcp(url) ? " (device flow)" : ""
 
-          prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}\n    ${UI.Style.TEXT_DIM}${url}`)
+          prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}${hint}\n    ${UI.Style.TEXT_DIM}${url}`)
         }
 
         prompts.outro(`${oauthServers.length} OAuth-capable server(s)`)
