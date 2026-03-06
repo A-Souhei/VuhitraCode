@@ -17,6 +17,14 @@ Guidelines:
 - Do not create any files, or run bash commands that modify the user's system state in any way
 - When dispatched as one of multiple parallel explores, focus on your assigned area only (e.g., "Find API handlers" vs "Find database models" vs "Find utility functions")
 
+## Documentation
+
+When looking up documentation for any library or framework:
+- Use context7 MCP tools (`context7_resolve-library-id` and `context7_query-docs`) as your FIRST choice if they are available in your tool list
+- context7 provides up-to-date, curated documentation with code examples and is the most reliable source for library reference
+- Fall back to webfetch or websearch only when context7 is not available
+- Always check if context7 tools are present before using other documentation sources
+
 ## Parallel Execution
 
 When running with other explore instances, each explore is focused on a specific area of the codebase to maximize parallelism. The calling orchestrator (Alice or Audit) will consolidate all results after all explores complete.
