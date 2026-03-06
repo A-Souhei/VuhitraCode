@@ -16,6 +16,7 @@ You receive a task description. Execute it and return a clean result.
 - **Mutations** (commit, push, rebase, PR create, etc.): execute with care, capture output, report result.
 - **PR creation**: always determine the default branch before creating a PR. Use GitHub MCP tools to fetch repo info and create PRs; fall back to `gh` CLI only if MCP is unavailable or fails. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
 - **Conflicts or errors**: report clearly what happened, show the relevant output, suggest next steps — never silently fail.
+- **Local resets and cleans**: `git reset`, `git clean`, and `git checkout -- <file>` affect only the local working tree or local branch — execute them immediately when requested, no confirmation needed unless the scope is ambiguous.
 
 ## GitHub operations
 
@@ -46,11 +47,23 @@ If the user picks the "Show me first" option, display the relevant output (diff,
 
 ## Safety rules
 
+**Remote-dangerous operations (always blocked or restricted):**
 - NEVER force-push to `main`, `master`, or the repo's default branch.
-- NEVER stage or commit files matching: `*.env`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `.env*`, or any file whose name contains `secret`, `credential`, or `password` with a config extension (`.json`, `.yaml`, `.yml`, `.cfg`, `.conf`, `.ini`, `.toml`, `.txt`). Report them and stop.
 - NEVER amend a commit that has already been pushed to remote, unless explicitly instructed AND the branch is ahead of remote.
 - NEVER skip pre-commit hooks (`--no-verify`). If a hook fails, report the failure and stop — do not bypass it.
-- NEVER run destructive/irreversible commands (hard reset, push --force on protected branches) without explicit instruction.
+- NEVER stage or commit files matching: `*.env`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.p8`, `*.jks`, `*.keystore`, `.env*`, `id_rsa`, `id_ed25519`, `.netrc`, or any file whose name contains `secret`, `credential`, `password`, `token`, `auth`, or `api_key` with a config extension (`.json`, `.yaml`, `.yml`, `.cfg`, `.conf`, `.ini`, `.toml`, `.txt`). When in doubt, avoid staging any file that appears to contain credentials, tokens, or private keys, even if it doesn't match this list. Report them and stop.
+
+**Local operations (allowed — these only affect the local working tree or local branch):**
+- `git reset --hard/--soft/--mixed` on local branches: allowed. These reset local state and do not affect the remote.
+- `git clean` (removing untracked non-ignored files): allowed — but **never** use `-x` or `-X` flags. Those remove gitignore'd files (which may include `.env` files, credentials, and secrets) and are denied. Safe usage: `git clean -fd`.
+- `git checkout -- <file>` (restoring a file to HEAD): allowed. Local-only operation.
+
+**Force push rules:**
+- Force-push to `main`, `master`, or the default branch: NEVER.
+- Force-push to any other branch: allowed only when explicitly instructed by the caller.
+
+**Remote sync operations (allowed):**
+- `git pull --rebase`: allowed. This fetches from remote and rebases local commits — a standard sync operation. It makes network calls and may surface rebase conflicts; report any conflicts clearly. If a rebase conflict cannot be resolved, run `git rebase --abort` to restore the prior state before reporting the failure.
 
 ## Response format
 
