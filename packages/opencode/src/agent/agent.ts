@@ -155,7 +155,7 @@ export namespace Agent {
       alice: {
         name: "alice",
         description:
-          "Parallel implementation agent. Orchestrates up to 7 Sentinels for concurrent TODO execution, each with 1 Scout for context gathering. Uses Keeper for verification and Audit for code review.",
+          "Parallel implementation agent. Orchestrates Sentinels and Scouts for concurrent TODO execution (Scouts for simple tasks, Sentinels for complex tasks). Uses Keeper for verification and Audit for code review.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -191,19 +191,16 @@ export namespace Agent {
       sentinel: {
         name: "sentinel",
         description:
-          "Worker agent for parallel TODO execution. Up to 7 can run simultaneously. Each Sentinel can spawn 1 Scout subagent for context gathering.",
+          "Worker agent for parallel TODO execution. Up to 7 can run simultaneously. Dispatched by Alice for complex, multi-step tasks.",
         options: {},
         // user overrides are applied before the task restriction so a permissive
-        // user config cannot allow sentinels to spawn arbitrary subagents beyond scouts.
+        // user config cannot allow sentinels to spawn arbitrary subagents.
         permission: PermissionNext.merge(
           defaults,
           user,
           PermissionNext.fromConfig({
             question: "allow",
-            task: {
-              scout: "allow",
-              "*": "deny",
-            },
+            task: "deny",
             external_directory: {
               "*": "deny",
             },
@@ -217,24 +214,18 @@ export namespace Agent {
       scout: {
         name: "scout",
         description:
-          "Lightweight exploration agent. Each Sentinel can spawn 1 Scout for context gathering. Can browse internet (requires user approval with explicit URL). Read-only — no write or edit permissions.",
+          "Alice's cost-efficient Sentinel alternative. Alice spawns Scout instead of Sentinel for simple/fast tasks to reduce token costs. Functionally equivalent to Sentinel but intended to run on a cheaper model. No sub-agent spawning.",
         options: {},
-        // user overrides are applied before the read-only restriction so a permissive
-        // user config cannot grant scouts write or edit access.
+        // user overrides are applied before the task restriction so a permissive
+        // user config cannot allow scouts to spawn arbitrary subagents.
         permission: PermissionNext.merge(
           defaults,
           user,
           PermissionNext.fromConfig({
-            "*": "deny",
-            grep: "allow",
-            glob: "allow",
-            list: "allow",
-            read: "allow",
-            webfetch: "ask",
-            websearch: "ask",
-            codesearch: "ask",
+            question: "allow",
+            task: "deny",
             external_directory: {
-              "*": "ask",
+              "*": "deny",
             },
           }),
         ),
@@ -259,10 +250,7 @@ export namespace Agent {
             glob: "allow",
             grep: "allow",
             list: "allow",
-            task: {
-              scout: "allow",
-              "*": "deny",
-            },
+            task: "deny",
             external_directory: {
               "*": "deny",
             },
@@ -412,7 +400,6 @@ export namespace Agent {
               "git push --delete *": "deny",
               "git push origin :*": "deny",
               "git pull *": "allow",
-              "git pull --rebase *": "deny",
               "git fetch *": "allow",
               "git status *": "allow",
               "git diff *": "allow",
@@ -421,7 +408,6 @@ export namespace Agent {
               "git branch -D *": "deny",
               "git branch -d *": "deny",
               "git checkout *": "allow",
-              "git checkout -- *": "deny",
               "git switch *": "allow",
               "git stash *": "allow",
               "git stash drop *": "deny",
@@ -446,15 +432,22 @@ export namespace Agent {
               "git config --global *": "deny",
               "git config core.hooksPath *": "deny",
               "git rev-parse *": "allow",
+              "git reset": "allow",
               "git reset *": "allow",
+              "git reset HEAD*": "allow",
               "git push --force*": "deny",
               "git push * --force": "deny",
               "git push --force-with-lease": "deny",
               "git push * --force-with-lease": "deny",
-              "git reset --hard*": "deny",
-              "git reset --soft*": "deny",
-              "git reset --mixed*": "deny",
-              "git clean *": "deny",
+              "git reset --hard*": "allow",
+              "git reset --soft*": "allow",
+              "git reset --mixed*": "allow",
+              "git reset --merge*": "deny",
+              "git reset --keep*": "deny",
+              "git reset --patch*": "deny",
+              "git clean *": "allow",
+              "git clean *-*x*": "deny",
+              "git clean *-*X*": "deny",
               "gh pr view *": "allow",
               "gh pr list *": "allow",
               "gh pr status *": "allow",

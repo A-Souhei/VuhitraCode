@@ -50,9 +50,9 @@ test("deadline enforcement: throws when expiresIn is 0", async () => {
   const orig = Bun.sleep
   ;(Bun as unknown as Record<string, unknown>).sleep = () => Promise.resolve()
   try {
-    await expect(
-      pollDeviceFlow("test-mcp", "dev-code", 5, 0, "https://example.com"),
-    ).rejects.toThrow("Device code expired")
+    await expect(pollDeviceFlow("test-mcp", "dev-code", 5, 0, "https://example.com")).rejects.toThrow(
+      "Device code expired",
+    )
   } finally {
     ;(Bun as unknown as Record<string, unknown>).sleep = orig
   }
@@ -76,9 +76,9 @@ test("access_denied terminates with error", async () => {
   global.fetch = fetchMock as unknown as typeof fetch
 
   try {
-    await expect(
-      pollDeviceFlow("test-mcp", "dev-code", 1, 60, "https://example.com"),
-    ).rejects.toThrow("Device flow error: access_denied")
+    await expect(pollDeviceFlow("test-mcp", "dev-code", 1, 60, "https://example.com")).rejects.toThrow(
+      "Device flow error: access_denied",
+    )
   } finally {
     global.fetch = origFetch
     ;(Bun as unknown as Record<string, unknown>).sleep = orig
@@ -110,7 +110,12 @@ test("token storage on success: updateTokens called with correct data", async ()
   try {
     await pollDeviceFlow("test-mcp", "dev-code", 1, 60, "https://example.com")
     expect(updateTokensMock).toHaveBeenCalledTimes(1)
-    const [name, tokens, url] = updateTokensMock.mock.calls[0]
+    const call = (updateTokensMock.mock.calls as unknown[][])[0] as [
+      string,
+      { accessToken: string; refreshToken: string; scope: string; expiresAt: number },
+      string,
+    ]
+    const [name, tokens, url] = call
     expect(name).toBe("test-mcp")
     expect(tokens.accessToken).toBe("tok123")
     expect(tokens.refreshToken).toBe("ref456")
