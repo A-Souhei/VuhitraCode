@@ -25,8 +25,17 @@ export namespace Indexer {
         progress: z.number(),
         total: z.number(),
         backend: z.enum(["qdrant", "redis"]),
+        embedding_url: z.string().optional(),
+        embedding_model: z.string().optional(),
+        backend_url: z.string().optional(),
       }),
-      z.object({ type: z.literal("complete"), backend: z.enum(["qdrant", "redis"]) }),
+      z.object({
+        type: z.literal("complete"),
+        backend: z.enum(["qdrant", "redis"]),
+        embedding_url: z.string().optional(),
+        embedding_model: z.string().optional(),
+        backend_url: z.string().optional(),
+      }),
     ])
     .meta({ ref: "IndexerStatus" })
   export type Status = z.infer<typeof Status>
@@ -77,16 +86,19 @@ export namespace Indexer {
     return (_collectionName ??= "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
   }
 
+  let _qdrantUrl: string | undefined
   function qdrantUrl() {
-    return Env.get("QDRANT_URL") || "http://localhost:6333"
+    return (_qdrantUrl ??= Env.get("QDRANT_URL") || "http://localhost:6333")
   }
 
+  let _embeddingUrl: string | undefined
   function embeddingUrl() {
-    return Env.get("EMBEDDING_URL") || "http://localhost:11434"
+    return (_embeddingUrl ??= Env.get("EMBEDDING_URL") || "http://localhost:11434")
   }
 
+  let _embeddingModel: string | undefined
   function embeddingModel() {
-    return Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest"
+    return (_embeddingModel ??= Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest")
   }
 
   // PERF-7: Memoized maxFileSizeBytes
@@ -115,6 +127,12 @@ export namespace Indexer {
   let _useRedis: boolean | undefined
   function useRedis() {
     return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
+  }
+
+  let _redisUrl: string | undefined
+  function redisUrl() {
+    return (_redisUrl ??=
+      Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`)
   }
 
   function getRedisClient(): Redis {
@@ -851,17 +869,27 @@ export namespace Indexer {
     }
 
     const total = allFiles.length
-    s.status = { type: "indexing", progress: 0, total, backend }
+    s.status = {
+      type: "indexing",
+      progress: 0,
+      total,
+      backend,
+      embedding_url: embeddingUrl(),
+      embedding_model: embeddingModel(),
+      backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+    }
     Bus.publish(Event.Updated, s.status)
 
     const isIgnored = await buildIgnoreChecker(Instance.worktree, allFiles)
 
     const BATCH_SIZE = 500
     let done = 0
+    let lastPublish = 0
 
     // PERF-11: Hoist null guard & cache ref out of mapParallel worker
     if (!s.mtimeCache) s.mtimeCache = new Map()
     const cache = s.mtimeCache
+    s.mtimeCacheDirty = true // ensure dispose saves progress even on early exit
 
     const processBatch = async (batch: string[]): Promise<boolean> => {
       if (batch.length === 0) return true
@@ -876,12 +904,39 @@ export namespace Indexer {
           if (mtime !== null) {
             cache.set(file, mtime)
           }
+          done++
+          const now = Date.now()
+          if (now - lastPublish >= 100) {
+            lastPublish = now
+            s.status = {
+              type: "indexing",
+              progress: done,
+              total,
+              backend,
+              embedding_url: embeddingUrl(),
+              embedding_model: embeddingModel(),
+              backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+            }
+            Bus.publish(Event.Updated, s.status)
+          }
         },
         s.abortController.signal,
       )
-      done += batch.length
-      s.status = { type: "indexing", progress: done, total, backend }
-      Bus.publish(Event.Updated, s.status)
+      const endNow = Date.now()
+      if (endNow - lastPublish >= 50) {
+        lastPublish = endNow
+        s.status = {
+          type: "indexing",
+          progress: done,
+          total,
+          backend,
+          embedding_url: embeddingUrl(),
+          embedding_model: embeddingModel(),
+          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+        }
+        Bus.publish(Event.Updated, s.status)
+      }
+      saveMtimeCacheToDisk(cache)
       return !s.abortController.signal.aborted
     }
 
@@ -916,7 +971,13 @@ export namespace Indexer {
     // Persist the updated mtime map so next restart is fast
     if (s.mtimeCache) saveMtimeCacheToDisk(s.mtimeCache)
 
-    s.status = { type: "complete", backend }
+    s.status = {
+      type: "complete",
+      backend,
+      embedding_url: embeddingUrl(),
+      embedding_model: embeddingModel(),
+      backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+    }
     Bus.publish(Event.Updated, s.status)
   }
 
@@ -961,7 +1022,15 @@ export namespace Indexer {
     Promise.resolve().then(async () => {
       try {
         await checkServices()
-        s.status = { type: "indexing", progress: 0, total: 0, backend: activeBackend() }
+        s.status = {
+          type: "indexing",
+          progress: 0,
+          total: 0,
+          backend: activeBackend(),
+          embedding_url: embeddingUrl(),
+          embedding_model: embeddingModel(),
+          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+        }
         Bus.publish(Event.Updated, s.status)
         await runInitialIndex()
         // LOGIC-8: Guard watchForChanges after aborted runInitialIndex

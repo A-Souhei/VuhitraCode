@@ -41,6 +41,8 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  IndexerDeleteDataErrors,
+  IndexerDeleteDataResponses,
   IndexerStatusResponses,
   InstanceDisposeResponses,
   LspStatusResponses,
@@ -715,6 +717,44 @@ export class Config2 extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
       url: "/config/providers",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Indexer extends HeyApiClient {
+  /**
+   * Delete all index data
+   *
+   * Delete all vector embeddings and index data for the current project. Useful when switching embedding servers or models. The indexer will automatically regenerate the index on next use.
+   */
+  public deleteData<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).delete<IndexerDeleteDataResponses, IndexerDeleteDataErrors, ThrowOnError>({
+      url: "/indexer/data",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get indexer status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<IndexerStatusResponses, unknown, ThrowOnError>({
+      url: "/indexer",
       ...options,
       ...params,
     })
@@ -3211,25 +3251,6 @@ export class Formatter extends HeyApiClient {
   }
 }
 
-export class Indexer extends HeyApiClient {
-  /**
-   * Get indexer status
-   */
-  public status<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<IndexerStatusResponses, unknown, ThrowOnError>({
-      url: "/indexer",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Event extends HeyApiClient {
   /**
    * Subscribe to events
@@ -3282,6 +3303,11 @@ export class OpencodeClient extends HeyApiClient {
   private _config?: Config2
   get config(): Config2 {
     return (this._config ??= new Config2({ client: this.client }))
+  }
+
+  private _indexer?: Indexer
+  get indexer(): Indexer {
+    return (this._indexer ??= new Indexer({ client: this.client }))
   }
 
   private _tool?: Tool
@@ -3377,11 +3403,6 @@ export class OpencodeClient extends HeyApiClient {
   private _formatter?: Formatter
   get formatter(): Formatter {
     return (this._formatter ??= new Formatter({ client: this.client }))
-  }
-
-  private _indexer?: Indexer
-  get indexer(): Indexer {
-    return (this._indexer ??= new Indexer({ client: this.client }))
   }
 
   private _event?: Event
