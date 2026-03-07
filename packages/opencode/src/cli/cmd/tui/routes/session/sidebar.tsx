@@ -70,6 +70,22 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     }
   })
 
+  const duration = createMemo(() => {
+    const first = messages().find((x) => x.role === "user")
+    if (!first) return
+    const last = messages().findLast((x) => x.role === "assistant")
+    const secs = Math.round((last?.time.completed ?? Date.now() / 1000) - first.time.created)
+    if (secs < 60) return `${secs}s`
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
+    return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+  })
+
+  const rounds = createMemo(() =>
+    messages()
+      .filter((x) => x.role === "assistant")
+      .reduce((sum, x) => sum + (sync.data.part[x.id] ?? []).filter((p) => p.type === "step-finish").length, 0),
+  )
+
   const directory = useDirectory()
   const kv = useKV()
 
@@ -115,6 +131,17 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
+              <Show when={duration()}>
+                <text fg={theme.textMuted}>{duration()} elapsed</text>
+              </Show>
+              <Show when={rounds() > 0}>
+                <text fg={theme.textMuted}>{rounds()} rounds</text>
+              </Show>
+              <Show when={todo().length > 0}>
+                <text fg={theme.textMuted}>
+                  {completedCount()}/{todo().length} todos
+                </text>
+              </Show>
             </box>
             <Show when={mcpEntries().length > 0}>
               <box>
