@@ -61,18 +61,27 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const context = createMemo(() => {
     const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as AssistantMessage
     if (!last) return
-    const total = messages().reduce(
-      (sum, x) =>
-        x.role === "assistant"
-          ? sum + x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
-          : sum,
-      0,
-    )
+    const total =
+      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
     const model = sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
     return {
       tokens: total.toLocaleString(),
       percentage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
     }
+  })
+
+  const subagentTokens = createMemo(() => {
+    const total = sync.data.session
+      .filter((x) => x.parentID === props.sessionID)
+      .flatMap((x) => sync.data.message[x.id] ?? [])
+      .reduce(
+        (sum, x) =>
+          x.role === "assistant"
+            ? sum + x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
+            : sum,
+        0,
+      )
+    return total > 0 ? total.toLocaleString() : undefined
   })
 
   const duration = createMemo(() => {
@@ -139,7 +148,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={RGBA.fromHex("#3d82e2")}>
                 <b>Context</b>
               </text>
-              <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
+              <text fg={theme.textMuted}>
+                {context()?.tokens ?? 0} tokens
+                <Show when={subagentTokens()}>
+                  <span style={{ fg: theme.textMuted }}> / {subagentTokens()} subagent</span>
+                </Show>
+              </text>
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
             </box>
