@@ -86,6 +86,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
       .reduce((sum, x) => sum + (sync.data.part[x.id] ?? []).filter((p) => p.type === "step-finish").length, 0),
   )
 
+  const subagents = createMemo(() =>
+    messages()
+      .filter((x) => x.role === "assistant")
+      .reduce((sum, x) => sum + (sync.data.part[x.id] ?? []).filter((p) => p.type === "subtask").length, 0),
+  )
+
   const directory = useDirectory()
   const kv = useKV()
 
@@ -131,18 +137,28 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
-              <Show when={duration()}>
-                <text fg={theme.textMuted}>{duration()} elapsed</text>
-              </Show>
-              <Show when={rounds() > 0}>
-                <text fg={theme.textMuted}>{rounds()} rounds</text>
-              </Show>
-              <Show when={todo().length > 0}>
-                <text fg={theme.textMuted}>
-                  {completedCount()}/{todo().length} todos
-                </text>
-              </Show>
             </box>
+            <Show when={duration() || rounds() > 0 || todo().length > 0 || subagents() > 0}>
+              <box>
+                <text fg={RGBA.fromHex("#3d82e2")}>
+                  <b>Stats</b>
+                </text>
+                <Show when={duration()}>
+                  <text fg={theme.textMuted}>{duration()} elapsed</text>
+                </Show>
+                <Show when={rounds() > 0}>
+                  <text fg={theme.textMuted}>{rounds()} rounds</text>
+                </Show>
+                <Show when={subagents() > 0}>
+                  <text fg={theme.textMuted}>{subagents()} subagent calls</text>
+                </Show>
+                <Show when={todo().length > 0}>
+                  <text fg={theme.textMuted}>
+                    {completedCount()}/{todo().length} todos
+                  </text>
+                </Show>
+              </box>
+            </Show>
             <Show when={mcpEntries().length > 0}>
               <box>
                 <box
