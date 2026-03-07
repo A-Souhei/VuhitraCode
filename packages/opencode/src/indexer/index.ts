@@ -19,7 +19,13 @@ export namespace Indexer {
 
   export const Status = z
     .discriminatedUnion("type", [
-      z.object({ type: z.literal("disabled") }),
+      z.object({
+        type: z.literal("disabled"),
+        reason: z
+          .enum(["not_configured", "embedding_unreachable", "backend_unreachable", "error", "deleted", "aborted"])
+          .optional(),
+        message: z.string().optional(),
+      }),
       z.object({
         type: z.literal("indexing"),
         progress: z.number(),
@@ -56,7 +62,7 @@ export namespace Indexer {
 
   const state = Instance.state<State>(
     () => ({
-      status: { type: "disabled" },
+      status: { type: "disabled", reason: "not_configured" },
       abortController: new AbortController(),
       deleting: false,
       redisClient: null,
@@ -785,12 +791,24 @@ export namespace Indexer {
   }
 
   async function checkServices() {
-    const signal = AbortSignal.timeout(5_000)
     await Promise.all([
-      store.checkHealth(signal),
-      fetch(`${embeddingUrl()}/api/tags`, { signal }).then((r) => {
-        if (!r.ok) throw new Error(`Ollama unhealthy: ${r.status}`)
+      store.checkHealth(AbortSignal.timeout(5_000)).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(
+          msg.includes("backend") || msg.includes("Qdrant") || msg.includes("Redis")
+            ? msg
+            : `backend unhealthy: ${msg}`,
+        )
       }),
+      fetch(`${embeddingUrl()}/api/tags`, { signal: AbortSignal.timeout(5_000) })
+        .then((r) => {
+          if (!r.ok) throw new Error(`embedding unhealthy: ${r.status}`)
+        })
+        .catch((e: unknown) => {
+          if (e instanceof Error && e.message.startsWith("embedding")) throw e
+          const msg = e instanceof Error ? e.message : String(e)
+          throw new Error(`embedding unreachable: ${msg}`)
+        }),
     ])
   }
 
@@ -837,8 +855,9 @@ export namespace Indexer {
 
   async function runInitialIndex() {
     const s = state()
+    const signal = s.abortController.signal
     const backend = activeBackend()
-    await store.ensureIndex(s.abortController.signal)
+    await store.ensureIndex(signal)
 
     const isIndexIgnored = loadIndexIgnore()
 
@@ -850,7 +869,7 @@ export namespace Indexer {
     } else {
       // ── Slow path: fetch from vector store (first boot or cache deleted) ────
       log.info("no mtime cache found, fetching from vector store")
-      const fetched = await store.getAllMtimes(s.abortController.signal).catch((e) => {
+      const fetched = await store.getAllMtimes(signal).catch((e) => {
         log.warn("failed to fetch indexed mtimes, all files will be re-indexed", { error: String(e) })
         return new Map<string, number>()
       })
@@ -897,7 +916,7 @@ export namespace Indexer {
         batch,
         10,
         async (file) => {
-          const mtime = await indexFile(file, true, s.abortController.signal, isIgnored, indexedMtimes)
+          const mtime = await indexFile(file, true, signal, isIgnored, indexedMtimes)
           // mtime is non-null whether file was indexed OR skipped-but-unchanged
           // For skipped files, indexFile returns stat.mtimeMs (the unchanged mtime)
           // We always update the cache so it stays current
@@ -920,7 +939,7 @@ export namespace Indexer {
             Bus.publish(Event.Updated, s.status)
           }
         },
-        s.abortController.signal,
+        signal,
       )
       const endNow = Date.now()
       if (endNow - lastPublish >= 50) {
@@ -937,18 +956,22 @@ export namespace Indexer {
         Bus.publish(Event.Updated, s.status)
       }
       saveMtimeCacheToDisk(cache)
-      return !s.abortController.signal.aborted
+      return !signal.aborted
     }
 
     for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
-      if (s.abortController.signal.aborted) {
-        s.status = { type: "disabled" }
-        Bus.publish(Event.Updated, s.status)
+      if (signal.aborted) {
+        if (!s.deleting) {
+          s.status = { type: "disabled", reason: "aborted" }
+          Bus.publish(Event.Updated, s.status)
+        }
         return
       }
       if (!(await processBatch(allFiles.slice(i, i + BATCH_SIZE)))) {
-        s.status = { type: "disabled" }
-        Bus.publish(Event.Updated, s.status)
+        if (!s.deleting) {
+          s.status = { type: "disabled", reason: "aborted" }
+          Bus.publish(Event.Updated, s.status)
+        }
         return
       }
     }
@@ -1006,6 +1029,13 @@ export namespace Indexer {
     return state().status
   }
 
+  export function classifyReason(msg: string): "embedding_unreachable" | "backend_unreachable" | "error" {
+    const lower = msg.toLowerCase()
+    if (lower.includes("ollama") || lower.startsWith("embedding")) return "embedding_unreachable"
+    if (lower.includes("qdrant") || lower.includes("redis") || lower.includes("backend")) return "backend_unreachable"
+    return "error"
+  }
+
   const MAX_QUERY_LENGTH = 1000
 
   export async function search(query: string, topK = 5): Promise<string[]> {
@@ -1017,7 +1047,12 @@ export namespace Indexer {
   }
 
   export function init() {
-    if (!VuHitraSettings.indexingEnabled()) return
+    if (!VuHitraSettings.indexingEnabled()) {
+      const s = state()
+      s.status = { type: "disabled", reason: "not_configured" }
+      Bus.publish(Event.Updated, s.status)
+      return
+    }
     const s = state()
     Promise.resolve().then(async () => {
       try {
@@ -1036,8 +1071,10 @@ export namespace Indexer {
         // LOGIC-8: Guard watchForChanges after aborted runInitialIndex
         if (!s.abortController.signal.aborted) watchForChanges()
       } catch (e) {
-        log.error("indexer failed to start", { error: String(e) })
-        s.status = { type: "disabled" }
+        const msg = e instanceof Error ? e.message : String(e)
+        log.error("indexer failed to start", { error: msg })
+        const reason = classifyReason(msg)
+        s.status = { type: "disabled", reason, message: msg }
         Bus.publish(Event.Updated, s.status)
       }
     })
@@ -1052,7 +1089,7 @@ export namespace Indexer {
       s.abortController = new AbortController()
       await store.deleteAll()
       deleteMtimeCache()
-      const newStatus: Status = { type: "disabled" }
+      const newStatus: Status = { type: "disabled", reason: "deleted" }
       s.status = newStatus
       await Bus.publish(Event.Updated, newStatus)
     } finally {

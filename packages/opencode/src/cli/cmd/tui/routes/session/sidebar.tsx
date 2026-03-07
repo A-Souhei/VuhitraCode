@@ -230,8 +230,12 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                     flexShrink={0}
                     style={{
                       fg: (() => {
-                        const s = sync.data.indexer_status
-                        if (!s || s.type === "disabled") return theme.error
+                        const s = sync.data.indexer_status!
+                        if (s.type === "disabled") {
+                          if (!s.reason || s.reason === "not_configured" || s.reason === "aborted")
+                            return theme.textMuted
+                          return theme.error
+                        }
                         if (s.type === "complete") return theme.success
                         return theme.warning
                       })(),
@@ -241,8 +245,19 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                   </text>
                   <text fg={theme.textMuted}>
                     {(() => {
-                      const s = sync.data.indexer_status
-                      if (!s || s.type === "disabled") return "Disabled"
+                      const s = sync.data.indexer_status!
+                      if (s.type === "disabled") {
+                        const labels: Record<string, string> = {
+                          not_configured: "Not configured",
+                          embedding_unreachable: "Embedding server unreachable",
+                          backend_unreachable: "Vector store unreachable",
+                          error: "Error",
+                          deleted: "Deleted",
+                          aborted: "Aborted",
+                        }
+                        const label = (s.reason && labels[s.reason]) || "Disabled"
+                        return s.message ? `${label}: ${s.message}` : label
+                      }
                       if (s.type === "complete") return "Index ready"
                       const pct = s.total > 0 ? ` ${Math.round((s.progress / s.total) * 100)}%` : ""
                       return `Indexing (${s.progress} / ${s.total} files${pct})`
