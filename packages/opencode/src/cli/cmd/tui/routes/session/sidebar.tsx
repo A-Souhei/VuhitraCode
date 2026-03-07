@@ -74,7 +74,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     const first = messages().find((x) => x.role === "user")
     if (!first) return
     const last = messages().findLast((x) => x.role === "assistant")
-    const secs = Math.round((last?.time.completed ?? Date.now() / 1000) - first.time.created)
+    const secs = Math.round(((last?.time.completed ?? Date.now()) - first.time.created) / 1000)
     if (secs < 60) return `${secs}s`
     if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
     return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
