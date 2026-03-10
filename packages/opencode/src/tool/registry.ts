@@ -44,7 +44,11 @@ export namespace ToolRegistry {
     if (matches.length) await Config.waitForDependencies()
     for (const match of matches) {
       const namespace = path.basename(match, path.extname(match))
-      const mod = await import(match)
+      const mod = await import(match).catch((err) => {
+        log.warn("failed to load custom tool (possibly missing dependency), skipping", { file: match, error: err })
+        return null
+      })
+      if (!mod) continue
       for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
         custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
       }
