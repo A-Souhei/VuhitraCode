@@ -80,7 +80,9 @@ export namespace VuHitraSettings {
 
   export async function setActiveProfile(name: string, dir?: string) {
     await writeToDisk({ active_profile: name }, dir)
-    await Bus.publish(Profiles.Event.Switched, { name })
+    try {
+      await Bus.publish(Profiles.Event.Switched, { name })
+    } catch {}
   }
 
   export async function listProfiles(dir?: string): Promise<string[]> {
