@@ -682,8 +682,8 @@ export function Prompt(props: PromptProps) {
                 value: n,
                 disabled: n === local.profile.current,
                 onSelect: async () => {
-                  ctx.clear()
                   await local.profile.switch(n)
+                  ctx.clear()
                 },
               }))}
             />

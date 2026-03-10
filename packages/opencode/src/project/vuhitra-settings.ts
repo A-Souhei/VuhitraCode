@@ -77,8 +77,6 @@ export namespace VuHitraSettings {
   }
 
   export async function setActiveProfile(name: string, dir?: string) {
-    const profiles = await Profiles.list(dir)
-    if (!profiles.includes(name)) throw new Error(`Profile "${name}" does not exist`)
     await writeToDisk({ active_profile: name }, dir)
     await Bus.publish(Profiles.Event.Switched, { name })
   }

@@ -299,12 +299,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         async switch(name: string) {
           if (name === store.current) return
           const dir = sync.data.path.directory || process.cwd()
-          await VuHitraSettings.setActiveProfile(name, dir)
+          try {
+            await VuHitraSettings.setActiveProfile(name, dir)
+          } catch (e) {
+            toast.show({
+              variant: "error",
+              title: "Profile",
+              message: e instanceof Error ? e.message : `Failed to switch to "${name}"`,
+              duration: 4000,
+            })
+            return
+          }
           setStore("current", name)
           agentModels.reload(name)
           sentinelModel.reload(name)
           scoutModel.reload(name)
-          toast.show({ variant: "success", message: `Switched to profile "${name}"`, duration: 3000 })
+          toast.show({ variant: "success", title: "Profile", message: `Switched to "${name}"`, duration: 3000 })
         },
       }
     }

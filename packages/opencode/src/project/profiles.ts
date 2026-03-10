@@ -46,7 +46,12 @@ export namespace Profiles {
   }
 
   function profilesDir(dir?: string) {
-    return path.join(dir ?? Instance.directory, ".vuhitra", "profiles")
+    if (dir) return path.join(dir, ".vuhitra", "profiles")
+    try {
+      return path.join(Instance.directory, ".vuhitra", "profiles")
+    } catch {
+      return path.join(process.cwd(), ".vuhitra", "profiles")
+    }
   }
 
   function profilePath(name: string, dir?: string) {
