@@ -27,6 +27,7 @@ export const LspTool = Tool.define("lsp", {
     filePath: z.string().describe("The absolute or relative path to the file"),
     line: z.number().int().min(1).describe("The line number (1-based, as shown in editors)"),
     character: z.number().int().min(1).describe("The character offset (1-based, as shown in editors)"),
+    query: z.string().optional().describe("Search query for workspaceSymbol operation"),
   }),
   execute: async (args, ctx) => {
     const file = path.isAbsolute(args.filePath) ? args.filePath : path.join(Instance.directory, args.filePath)
@@ -58,7 +59,7 @@ export const LspTool = Tool.define("lsp", {
       throw new Error("No LSP server available for this file type.")
     }
 
-    await LSP.touchFile(file, true)
+    await LSP.touchFile(file, false)
 
     const result: unknown[] = await (async () => {
       switch (args.operation) {
@@ -71,7 +72,7 @@ export const LspTool = Tool.define("lsp", {
         case "documentSymbol":
           return LSP.documentSymbol(uri)
         case "workspaceSymbol":
-          return LSP.workspaceSymbol("")
+          return LSP.workspaceSymbol(args.query ?? "")
         case "goToImplementation":
           return LSP.implementation(position)
         case "prepareCallHierarchy":

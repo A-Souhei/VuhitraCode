@@ -20,6 +20,7 @@ export async function InstanceBootstrap() {
   ShareNext.init()
   Format.init()
   await LSP.init()
+  LSP.prewarm().catch(() => {})
   FileWatcher.init()
   File.init()
   Vcs.init()

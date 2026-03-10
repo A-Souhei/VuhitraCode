@@ -147,6 +147,23 @@ export namespace LSP {
     return state()
   }
 
+  export async function prewarm() {
+    const s = await state().catch(() => undefined)
+    if (!s) return
+    const servers = Object.values(s.servers)
+    if (!servers.length) return
+    const extensions = new Set(servers.flatMap((server) => server.extensions))
+    const found = new Set<string>()
+    for (const ext of extensions) {
+      const glob = new Bun.Glob(`**/*${ext}`)
+      const match = await glob.scan({ cwd: Instance.directory, onlyFiles: true }).next()
+      if (!match.done && match.value) found.add(path.join(Instance.directory, match.value))
+    }
+    for (const file of found) {
+      touchFile(file).catch(() => {})
+    }
+  }
+
   export const Status = z
     .object({
       id: z.string(),
@@ -478,8 +495,12 @@ export namespace LSP {
       const severity = severityMap[diagnostic.severity || 1]
       const line = diagnostic.range.start.line + 1
       const col = diagnostic.range.start.character + 1
+      const sourceCode =
+        diagnostic.source && diagnostic.code
+          ? `${diagnostic.source}(${diagnostic.code})`
+          : diagnostic.source || (diagnostic.code ? `(${diagnostic.code})` : "")
 
-      return `${severity} [${line}:${col}] ${diagnostic.message}`
+      return `${severity} [${line}:${col}]${sourceCode ? ` ${sourceCode}` : ""} ${diagnostic.message}`
     }
   }
 }

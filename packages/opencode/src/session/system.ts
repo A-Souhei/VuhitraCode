@@ -1,5 +1,3 @@
-import { Ripgrep } from "../file/ripgrep"
-
 import { Instance } from "../project/instance"
 
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
@@ -40,14 +38,7 @@ export namespace SystemPrompt {
         ...(sessionID && /^[A-Za-z0-9_-]+$/.test(sessionID) ? [`  Session ID: ${sessionID}`] : []),
         `</env>`,
         `<directories>`,
-        `  ${
-          project.vcs === "git" && false
-            ? await Ripgrep.tree({
-                cwd: Instance.directory,
-                limit: 50,
-              })
-            : ""
-        }`,
+        ``,
         `</directories>`,
       ].join("\n"),
     ]
