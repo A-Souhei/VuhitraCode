@@ -61,6 +61,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  MemoryDeleteResponses,
   MemoryStatusResponses,
   OutputFormat,
   Part as Part2,
@@ -775,6 +776,23 @@ export class Memory extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<MemoryStatusResponses, unknown, ThrowOnError>({
       url: "/memory/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Clear all memory entries
+   */
+  public delete<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).delete<MemoryDeleteResponses, unknown, ThrowOnError>({
+      url: "/memory",
       ...options,
       ...params,
     })

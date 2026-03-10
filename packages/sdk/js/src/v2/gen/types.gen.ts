@@ -76,6 +76,13 @@ export type EventFileWatcherUpdated = {
   }
 }
 
+export type EventProfileSwitched = {
+  type: "profile.switched"
+  properties: {
+    name: string
+  }
+}
+
 export type IndexerStatus =
   | {
       type: "disabled"
@@ -1006,6 +1013,7 @@ export type Event =
   | EventServerConnected
   | EventGlobalDisposed
   | EventFileWatcherUpdated
+  | EventProfileSwitched
   | EventIndexerUpdated
   | EventLspClientDiagnostics
   | EventLspUpdated
@@ -2855,6 +2863,26 @@ export type MemoryStatusResponses = {
 }
 
 export type MemoryStatusResponse = MemoryStatusResponses[keyof MemoryStatusResponses]
+
+export type MemoryDeleteData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/memory"
+}
+
+export type MemoryDeleteResponses = {
+  /**
+   * Memory cleared successfully
+   */
+  200: {
+    success: true
+  }
+}
+
+export type MemoryDeleteResponse = MemoryDeleteResponses[keyof MemoryDeleteResponses]
 
 export type ToolIdsData = {
   body?: never

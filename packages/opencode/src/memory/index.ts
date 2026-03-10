@@ -265,6 +265,18 @@ export namespace Memory {
       const r = await fetch(`${qdrantUrl()}/healthz`, { signal: combined })
       if (!r.ok) throw new Error(`Qdrant unhealthy: ${r.status}`)
     },
+
+    async deleteAll() {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/delete`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ filter: {} }),
+      })
+      if (!response.ok) throw new Error(`Failed to delete all points: ${response.status} ${response.statusText}`)
+    },
   }
 
   // ─── Redis backend ────────────────────────────────────────────────────────────
@@ -418,6 +430,17 @@ export namespace Memory {
         : await ping
       if (pong !== "PONG") throw new Error("Redis unhealthy: unexpected PING response")
     },
+
+    async deleteAll() {
+      const client = getRedisClient()
+      const prefix = redis.keyPrefix()
+      let cursor = "0"
+      do {
+        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
+        cursor = next
+        if (keys.length > 0) await client.del(...keys)
+      } while (cursor !== "0")
+    },
   }
 
   // ─── Store dispatch ───────────────────────────────────────────────────────────
@@ -437,6 +460,9 @@ export namespace Memory {
     },
     async checkHealth(signal?: AbortSignal) {
       return useRedis() ? redis.checkHealth(signal) : qdrant.checkHealth(signal)
+    },
+    async deleteAll() {
+      return useRedis() ? redis.deleteAll() : qdrant.deleteAll()
     },
   }
 
@@ -523,6 +549,18 @@ export namespace Memory {
     const vector = await embed(query)
     const hits = await store.search(vector, topK)
     return hits.map((r) => `[${r.type}] tags: ${r.tags}\n${r.content}`)
+  }
+
+  export async function clear(): Promise<void> {
+    const s = state()
+    if (s.status.type !== "ready") return
+    await store.deleteAll()
+    const s2 = state()
+    if (s2.status.type !== "ready") return // disposed mid-flight
+    s2.entryCount = 0
+    s2.tokenCount = 0
+    s2.status = { ...s2.status, entry_count: 0, token_count: 0 }
+    Bus.publish(Event.Updated, s2.status)
   }
 
   // Fix #1 & #4: disposal-aware init; compare state() to initialState after every await

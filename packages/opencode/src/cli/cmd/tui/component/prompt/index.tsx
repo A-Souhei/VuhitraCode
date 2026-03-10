@@ -30,6 +30,7 @@ import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
@@ -691,6 +692,27 @@ export function Prompt(props: PromptProps) {
       },
     ]
   })
+
+  command.register(() => [
+    {
+      title: "Reset Memory",
+      value: "memory.reset",
+      category: "Memory",
+      description: "Delete all memory entries for this project",
+      slash: { name: "memory reset" },
+      enabled: sync.data.memory_status?.type === "ready",
+      onSelect: async (ctx) => {
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          "Reset Memory",
+          "Delete all memory entries for this project? This cannot be undone.",
+        )
+        if (!confirmed) return
+        await sdk.client.memory.delete()
+        ctx.clear()
+      },
+    },
+  ])
 
   async function submit() {
     if (props.disabled) return
