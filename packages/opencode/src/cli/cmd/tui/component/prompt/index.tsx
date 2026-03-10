@@ -30,6 +30,7 @@ import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
@@ -624,6 +625,95 @@ export function Prompt(props: PromptProps) {
     ]
   })
 
+  command.register(() => {
+    return [
+      {
+        title: "Create profile",
+        description: "Create a new agent model profile",
+        value: "profile.create",
+        category: "Profile",
+        slash: { name: "profile create" },
+        onSelect: (ctx) => {
+          let filterRef: { filter: string } | undefined
+          ctx.replace(() => (
+            <DialogSelect
+              title="Create profile"
+              placeholder="Profile name"
+              ref={(r) => (filterRef = r)}
+              options={[
+                {
+                  title: "Create",
+                  description: "Press enter to create profile with typed name",
+                  value: "create",
+                  onSelect: async () => {
+                    const name = filterRef?.filter.trim() ?? ""
+                    if (!name) {
+                      toast.show({ variant: "warning", message: "Profile name cannot be empty", duration: 3000 })
+                      return
+                    }
+                    if (local.profile.list().includes(name)) {
+                      toast.show({ variant: "warning", message: `Profile "${name}" already exists`, duration: 3000 })
+                      return
+                    }
+                    const ok = await local.profile.create(name)
+                    if (ok) ctx.clear()
+                  },
+                },
+              ]}
+              skipFilter
+            />
+          ))
+        },
+      },
+      {
+        title: "Switch profile",
+        description: `Active: ${local.profile.current}`,
+        value: "profile.switch",
+        category: "Profile",
+        enabled: local.profile.list().length > 1,
+        slash: { name: "profile switch" },
+        onSelect: (ctx) => {
+          ctx.replace(() => (
+            <DialogSelect
+              title="Switch profile"
+              options={local.profile.list().map((n) => ({
+                title: n,
+                description: n === local.profile.current ? "(active)" : undefined,
+                value: n,
+                disabled: n === local.profile.current,
+                onSelect: async () => {
+                  const switched = await local.profile.switch(n)
+                  if (switched) ctx.clear()
+                },
+              }))}
+            />
+          ))
+        },
+      },
+    ]
+  })
+
+  command.register(() => [
+    {
+      title: "Reset Memory",
+      value: "memory.reset",
+      category: "Memory",
+      description: "Delete all memory entries for this project",
+      slash: { name: "memory reset" },
+      enabled: sync.data.memory_status?.type === "ready",
+      onSelect: async (ctx) => {
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          "Reset Memory",
+          "Delete all memory entries for this project? This cannot be undone.",
+        )
+        if (!confirmed) return
+        await sdk.client.memory.delete()
+        ctx.clear()
+      },
+    },
+  ])
+
   async function submit() {
     if (props.disabled) return
     if (autocomplete?.visible) return
@@ -1107,6 +1197,10 @@ export function Prompt(props: PromptProps) {
                     </text>
                   </Show>
                 </box>
+              </Show>
+              <Show when={store.mode === "normal"}>
+                <text fg={theme.textMuted}>·</text>
+                <text fg={theme.accent}>{local.profile.current}</text>
               </Show>
             </box>
           </box>

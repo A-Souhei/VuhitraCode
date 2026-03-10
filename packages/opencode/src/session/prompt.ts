@@ -959,7 +959,7 @@ export namespace SessionPrompt {
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
 
-    const saved = VuHitraSettings.agentModel(agent.name)
+    const saved = await VuHitraSettings.agentModel(agent.name)
     const validSaved =
       saved?.providerID && saved?.modelID
         ? (await Provider.getModel(saved.providerID, saved.modelID).catch(() => undefined))
