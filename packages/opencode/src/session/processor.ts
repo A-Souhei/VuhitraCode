@@ -250,7 +250,6 @@ export namespace SessionProcessor {
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = {
-                    total: usage.tokens.total,
                     input: Math.max(input.assistantMessage.tokens.input, usage.tokens.input),
                     output: input.assistantMessage.tokens.output + usage.tokens.output,
                     reasoning: input.assistantMessage.tokens.reasoning + usage.tokens.reasoning,

@@ -37,9 +37,6 @@ export namespace SystemPrompt {
         `  Today's date: ${new Date().toDateString()}`,
         ...(sessionID && /^[A-Za-z0-9_-]+$/.test(sessionID) ? [`  Session ID: ${sessionID}`] : []),
         `</env>`,
-        `<directories>`,
-        ``,
-        `</directories>`,
       ].join("\n"),
     ]
   }
