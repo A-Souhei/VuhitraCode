@@ -1,20 +1,12 @@
 import { Instance } from "./instance"
+import { Profiles } from "./profiles"
+import { Bus } from "@/bus"
 import { Log } from "@/util/log"
 import path from "path"
 import fs from "fs"
 import z from "zod"
 
 export namespace VuHitraSettings {
-  const ModelRefSchema = z
-    .object({
-      providerID: z.string().optional(),
-      modelID: z.string().optional(),
-    })
-    .refine((v) => (!v.providerID && !v.modelID) || (!!v.providerID && !!v.modelID), {
-      message: "scout_model/sentinel_model requires both providerID and modelID, or neither",
-    })
-    .optional()
-
   const SettingsSchema = z.object({
     indexing: z.object({ enabled: z.boolean().optional() }).optional(),
     memory: z.object({ enabled: z.boolean().optional() }).optional(),
@@ -24,26 +16,7 @@ export namespace VuHitraSettings {
         model: z.string().optional(),
       })
       .optional(),
-    scout_model: ModelRefSchema,
-    sentinel_model: ModelRefSchema,
-    agent_models: z
-      .record(
-        z
-          .string()
-          .max(128)
-          .regex(/^[A-Za-z0-9_\-./:]+$/),
-        ModelRefSchema,
-      )
-      .optional(),
-    subagent_models: z
-      .record(
-        z
-          .string()
-          .max(128)
-          .regex(/^[A-Za-z0-9_\-./:]+$/),
-        ModelRefSchema,
-      )
-      .optional(),
+    active_profile: z.string().optional(),
     review_max_rounds: z.number().int().positive().optional(),
     explore_max_instances: z.number().int().positive().optional(),
     notifications_enabled: z.boolean().optional(),
@@ -79,8 +52,6 @@ export namespace VuHitraSettings {
     const merged = { ...current, ...update }
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
-    // Mutate the cached state in-place so reads within the same process see the new values immediately.
-    // Only update the in-memory cache when operating on the canonical Instance directory.
     if (!dir || dir === Instance.directory) Object.assign(state(), merged)
   }
 
@@ -100,42 +71,57 @@ export namespace VuHitraSettings {
     }
   }
 
-  export function scoutModel(): { providerID?: string; modelID?: string } | undefined {
-    return state().scout_model
+  export function activeProfile(dir?: string): string {
+    if (dir && dir !== Instance.directory) return readFromDisk(dir).active_profile ?? "default"
+    return state().active_profile ?? "default"
   }
 
-  export function sentinelModel(): { providerID?: string; modelID?: string } | undefined {
-    return state().sentinel_model
+  export async function setActiveProfile(name: string, dir?: string) {
+    const profiles = await Profiles.list(dir)
+    if (!profiles.includes(name)) throw new Error(`Profile "${name}" does not exist`)
+    await writeToDisk({ active_profile: name }, dir)
+    await Bus.publish(Profiles.Event.Switched, { name })
+  }
+
+  export async function listProfiles(dir?: string): Promise<string[]> {
+    return Profiles.list(dir)
+  }
+
+  export async function createProfile(name: string, dir?: string) {
+    await Profiles.create(name, dir)
+  }
+
+  // Legacy aliases — kept for backward compatibility
+  export async function scoutModel() {
+    return Profiles.subagentModel(activeProfile(), "scout")
+  }
+
+  export async function sentinelModel() {
+    return Profiles.subagentModel(activeProfile(), "sentinel")
   }
 
   export async function setScoutModel(model: { providerID: string; modelID: string }) {
-    await writeToDisk({ scout_model: model })
+    await Profiles.setSubagentModel(activeProfile(), "scout", model)
   }
 
   export async function setSentinelModel(model: { providerID: string; modelID: string }) {
-    await writeToDisk({ sentinel_model: model })
+    await Profiles.setSubagentModel(activeProfile(), "sentinel", model)
   }
 
-  export function agentModel(name: string): { providerID?: string; modelID?: string } | undefined {
-    return state().agent_models?.[name]
+  export async function agentModel(name: string, dir?: string) {
+    return Profiles.agentModel(activeProfile(dir), name, dir)
   }
 
   export async function setAgentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
-    const current = readFromDisk(dir).agent_models ?? {}
-    await writeToDisk({ agent_models: { ...current, [name]: model } }, dir)
+    await Profiles.setAgentModel(activeProfile(dir), name, model, dir)
   }
 
-  export function subagentModel(name: string): { providerID?: string; modelID?: string } | undefined {
-    const override = state().subagent_models?.[name]
-    if (override) return override
-    if (name === "scout") return state().scout_model
-    if (name === "sentinel") return state().sentinel_model
-    return undefined
+  export async function subagentModel(name: string, dir?: string) {
+    return Profiles.subagentModel(activeProfile(dir), name, dir)
   }
 
   export async function setSubagentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
-    const current = readFromDisk(dir).subagent_models ?? {}
-    await writeToDisk({ subagent_models: { ...current, [name]: model } }, dir)
+    await Profiles.setSubagentModel(activeProfile(dir), name, model, dir)
   }
 
   export function reviewMaxRounds() {

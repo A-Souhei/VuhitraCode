@@ -624,6 +624,74 @@ export function Prompt(props: PromptProps) {
     ]
   })
 
+  command.register(() => {
+    return [
+      {
+        title: "Create profile",
+        description: "Create a new agent model profile",
+        value: "profile.create",
+        category: "Profile",
+        slash: { name: "profile create" },
+        onSelect: (ctx) => {
+          let filterRef: { filter: string } | undefined
+          ctx.replace(() => (
+            <DialogSelect
+              title="Create profile"
+              placeholder="Profile name"
+              ref={(r) => (filterRef = r)}
+              options={[
+                {
+                  title: "Create",
+                  description: "Press enter to create profile with typed name",
+                  value: "create",
+                  onSelect: async () => {
+                    const name = filterRef?.filter.trim() ?? ""
+                    if (!name) {
+                      toast.show({ variant: "warning", message: "Profile name cannot be empty", duration: 3000 })
+                      return
+                    }
+                    if (local.profile.list().includes(name)) {
+                      toast.show({ variant: "warning", message: `Profile "${name}" already exists`, duration: 3000 })
+                      return
+                    }
+                    ctx.clear()
+                    await local.profile.create(name)
+                  },
+                },
+              ]}
+              skipFilter
+            />
+          ))
+        },
+      },
+      {
+        title: "Switch profile",
+        description: `Active: ${local.profile.current}`,
+        value: "profile.switch",
+        category: "Profile",
+        enabled: local.profile.list().length > 1,
+        slash: { name: "profile switch" },
+        onSelect: (ctx) => {
+          ctx.replace(() => (
+            <DialogSelect
+              title="Switch profile"
+              options={local.profile.list().map((n) => ({
+                title: n,
+                description: n === local.profile.current ? "(active)" : undefined,
+                value: n,
+                disabled: n === local.profile.current,
+                onSelect: async () => {
+                  ctx.clear()
+                  await local.profile.switch(n)
+                },
+              }))}
+            />
+          ))
+        },
+      },
+    ]
+  })
+
   async function submit() {
     if (props.disabled) return
     if (autocomplete?.visible) return

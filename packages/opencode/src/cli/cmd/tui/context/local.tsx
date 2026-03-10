@@ -14,6 +14,7 @@ import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
 import { Filesystem } from "@/util/filesystem"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 const MODEL_LOCK_TOAST_DURATION = 5000
 
@@ -139,22 +140,26 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })
 
-    function makeSubagentModelStore(settingKey: "sentinel_model" | "scout_model") {
+    const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
+
+    function profilePath(profileName: string) {
+      return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "profiles", `${profileName}.json`)
+    }
+
+    function makeSubagentModelStore(agentName: "scout" | "sentinel") {
       const [store, setStore] = createStore<{
         enabled: boolean
         model: string | undefined
       }>({ enabled: false, model: undefined })
 
-      function vuHitraPath() {
-        return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
+      function activeProfile() {
+        return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
-      const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
-
-      onMount(() => {
-        Filesystem.readJson(vuHitraPath())
+      function load(profileName: string) {
+        Filesystem.readJson(profilePath(profileName))
           .then((x: any) => {
-            const entry = x?.[settingKey]
+            const entry = x?.subagent_models?.[agentName]
             if (
               typeof entry?.modelID === "string" &&
               typeof entry?.providerID === "string" &&
@@ -165,6 +170,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
           })
           .catch(() => {})
+      }
+
+      onMount(() => {
+        load(activeProfile())
       })
 
       return {
@@ -174,19 +183,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         get model() {
           return store.model
         },
+        reload(profileName: string) {
+          load(profileName)
+        },
         async set(model: { providerID: string; modelID: string }) {
           if (!modelFieldPattern.test(model.providerID) || !modelFieldPattern.test(model.modelID)) return
-          const modelStr = `${model.providerID}/${model.modelID}`
-          const filePath = vuHitraPath()
-          let current: Record<string, any> = {}
-          try {
-            current = await Filesystem.readJson(filePath)
-          } catch {}
-          await Filesystem.writeJson(filePath, {
-            ...current,
-            [settingKey]: { providerID: model.providerID, modelID: model.modelID },
-          })
-          setStore({ enabled: true, model: modelStr })
+          const dir = sync.data.path.directory || process.cwd()
+          await VuHitraSettings.setSubagentModel(
+            agentName,
+            { providerID: model.providerID, modelID: model.modelID },
+            dir,
+          )
+          setStore({ enabled: true, model: `${model.providerID}/${model.modelID}` })
         },
       }
     }
@@ -194,14 +202,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     function makeAgentModelStore() {
       const [store, setStore] = createStore<Record<string, { providerID: string; modelID: string }>>({})
 
-      function vuHitraPath() {
-        return path.join(sync.data.path.directory || process.cwd(), ".vuhitra", "settings.json")
+      function activeProfile() {
+        return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
-      const modelFieldPattern = /^[A-Za-z0-9_\-./:]+$/
-
-      onMount(() => {
-        Filesystem.readJson(vuHitraPath())
+      function loadFromProfile(profileName: string) {
+        Filesystem.readJson(profilePath(profileName))
           .then((x: any) => {
             const models = x?.agent_models
             if (models && typeof models === "object") {
@@ -219,6 +225,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
           })
           .catch(() => {})
+      }
+
+      onMount(() => {
+        loadFromProfile(activeProfile())
       })
 
       return {
@@ -232,26 +242,73 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             !modelFieldPattern.test(model.modelID)
           )
             return
-          const filePath = vuHitraPath()
-          let current: Record<string, any> = {}
-          try {
-            current = await Filesystem.readJson(filePath)
-          } catch {}
-          await Filesystem.writeJson(filePath, {
-            ...current,
-            agent_models: {
-              ...(current.agent_models ?? {}),
-              [name]: { providerID: model.providerID, modelID: model.modelID },
-            },
-          })
+          const dir = sync.data.path.directory || process.cwd()
+          await VuHitraSettings.setAgentModel(name, { providerID: model.providerID, modelID: model.modelID }, dir)
           setStore(name, { providerID: model.providerID, modelID: model.modelID })
+        },
+        reload(profileName: string) {
+          loadFromProfile(profileName)
         },
       }
     }
     const agentModels = makeAgentModelStore()
 
-    const sentinelModel = makeSubagentModelStore("sentinel_model")
-    const scoutModel = makeSubagentModelStore("scout_model")
+    const sentinelModel = makeSubagentModelStore("sentinel")
+    const scoutModel = makeSubagentModelStore("scout")
+
+    function makeProfileStore() {
+      const [store, setStore] = createStore<{
+        current: string
+        list: string[]
+      }>({ current: "default", list: ["default"] })
+
+      onMount(() => {
+        const dir = sync.data.path.directory || process.cwd()
+        Filesystem.readJson(path.join(dir, ".vuhitra", "settings.json"))
+          .then(async (x: any) => {
+            const current = x?.active_profile ?? "default"
+            const list = await VuHitraSettings.listProfiles(dir)
+            setStore({ current, list: list.length ? list : ["default"] })
+          })
+          .catch(() => {})
+      })
+
+      return {
+        get current() {
+          return store.current
+        },
+        list() {
+          return store.list
+        },
+        async create(name: string) {
+          const dir = sync.data.path.directory || process.cwd()
+          try {
+            await VuHitraSettings.createProfile(name, dir)
+          } catch (e) {
+            toast.show({
+              variant: "error",
+              title: "Profile",
+              message: e instanceof Error ? e.message : `Failed to create profile "${name}"`,
+              duration: 4000,
+            })
+            return
+          }
+          setStore("list", [...store.list, name])
+          toast.show({ variant: "success", title: "Profile", message: `Created "${name}"`, duration: 3000 })
+        },
+        async switch(name: string) {
+          if (name === store.current) return
+          const dir = sync.data.path.directory || process.cwd()
+          await VuHitraSettings.setActiveProfile(name, dir)
+          setStore("current", name)
+          agentModels.reload(name)
+          sentinelModel.reload(name)
+          scoutModel.reload(name)
+          toast.show({ variant: "success", message: `Switched to profile "${name}"`, duration: 3000 })
+        },
+      }
+    }
+    const profile = makeProfileStore()
 
     const model = iife(() => {
       const [modelStore, setModelStore] = createStore<{
@@ -601,6 +658,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       sentinelModel,
       scoutModel,
       agentModels,
+      profile,
       agent,
       mcp,
     }

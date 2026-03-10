@@ -14,10 +14,12 @@ import { Snapshot } from "../snapshot"
 import { Truncate } from "../tool/truncation"
 import { Indexer } from "../indexer"
 import { Memory } from "../memory"
+import { Profiles } from "./profiles"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
   await Plugin.init()
+  await Profiles.ensureDefault()
   ShareNext.init()
   Format.init()
   await LSP.init()
