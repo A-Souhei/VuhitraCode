@@ -71,7 +71,9 @@ export namespace Agent {
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
-        "*": "deny",
+        "*": "ask",
+        [Truncate.GLOB]: "allow",
+        ...Object.fromEntries(skillDirs.map((dir) => [path.join(dir, "*"), "allow"])),
       },
       question: "deny",
       plan_enter: "deny",
