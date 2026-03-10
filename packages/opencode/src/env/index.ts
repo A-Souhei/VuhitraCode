@@ -66,7 +66,7 @@ export namespace Env {
     const base = { ...process.env } as Record<string, string | undefined>
 
     const directory = Instance.directory
-    if (directory && !process.env.OPENCODE_TEST_HOME) {
+    if (directory) {
       const fileEnv = loadEnvFile(directory)
       const jsonEnv = loadEnvJson(directory)
       // Precedence: process.env > jsonEnv > fileEnv
