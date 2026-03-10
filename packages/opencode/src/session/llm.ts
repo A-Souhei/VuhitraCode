@@ -142,8 +142,7 @@ export namespace LLM {
     if (
       !input.small &&
       Memory.status().type === "ready" &&
-      // absent memory_read rule means allow by default; all native agents explicitly declare their preference
-      !input.agent.permission.some((r) => r.permission === "memory_read" && r.action === "deny")
+      PermissionNext.evaluate("memory_read", "*", input.agent.permission).action === "allow"
     ) {
       if (userText.trim()) {
         const entries = await Memory.search(userText).catch((e) => {

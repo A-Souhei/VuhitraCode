@@ -8,7 +8,6 @@ import { Log } from "@/util/log"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
-import path from "path"
 
 export namespace Memory {
   const log = Log.create({ service: "memory" })
@@ -138,17 +137,12 @@ export namespace Memory {
 
   // ─── Utilities ────────────────────────────────────────────────────────────────
 
-  function toUUID(str: string): string {
-    const hasher = new Bun.CryptoHasher("md5")
-    hasher.update(str)
-    const hex = hasher.digest("hex")
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
-  }
-
   // Fix #5: extend sanitize pattern to also match colon-separated assignments (KEY: value)
-  function sanitize(text: string): string {
+  export function sanitize(text: string): string {
+    // Only match all-caps env-var style names that contain an underscore (e.g. API_KEY, SECRET_TOKEN)
+    // or are an exact known secret keyword — avoids over-redacting prose like "key: value"
     text = text.replace(
-      /\b(TOKEN|SECRET|KEY|PASSWORD|PASSWD|PWD|API_KEY|APIKEY|AUTH|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|SECRET_KEY)\s*[:=]\s*\S+/gi,
+      /\b([A-Z][A-Z0-9]*_[A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|PASSWD|PWD|CREDENTIAL|CERT|PRIVATE)|(?:API_KEY|ACCESS_KEY|SECRET_KEY|AUTH_TOKEN|PRIVATE_KEY))\s*[:=]\s*\S+/g,
       "[REDACTED]",
     )
     text = text.replace(/(Bearer|Basic)\s+[A-Za-z0-9+/=._-]{8,}/gi, "$1 [REDACTED]")
@@ -158,10 +152,26 @@ export namespace Memory {
     return text
   }
 
+  function safeUrl(raw: string): string {
+    try {
+      const u = new URL(raw)
+      u.username = ""
+      u.password = ""
+      return u.toString()
+    } catch {
+      return raw
+    }
+  }
+
   // Fix #3: cache a Promise to prevent double embed on concurrent callers
   let _dimPromise: Promise<number> | undefined
   async function dimension(signal?: AbortSignal) {
-    return (_dimPromise ??= embed("dim", signal).then((v) => v.length))
+    return (_dimPromise ??= embed("dim", signal)
+      .then((v) => v.length)
+      .catch((e) => {
+        _dimPromise = undefined
+        throw e
+      }))
   }
 
   let _embedEndpoint: string | undefined
@@ -454,7 +464,7 @@ export namespace Memory {
     ])
   }
 
-  function classifyReason(msg: string): "embedding_unreachable" | "backend_unreachable" | "error" {
+  export function classifyReason(msg: string): "embedding_unreachable" | "backend_unreachable" | "error" {
     const lower = msg.toLowerCase()
     if (lower.includes("ollama") || lower.startsWith("embedding")) return "embedding_unreachable"
     if (lower.includes("qdrant") || lower.includes("redis") || lower.includes("backend")) return "backend_unreachable"
@@ -474,7 +484,7 @@ export namespace Memory {
     try {
       const content = sanitize(entry.content)
       const token_count = Math.ceil(content.length / 4)
-      const id = toUUID(entry.session_id + ":" + entry.timestamp + ":" + content.slice(0, 50))
+      const id = crypto.randomUUID()
       const vector = await embed(content)
       await store.upsert([
         {
@@ -543,9 +553,9 @@ export namespace Memory {
           entry_count: entryCount,
           token_count: 0,
           backend: activeBackend(),
-          embedding_url: embeddingUrl(),
+          embedding_url: safeUrl(embeddingUrl()),
           embedding_model: embeddingModel(),
-          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+          backend_url: safeUrl(useRedis() ? redisUrl() : qdrantUrl()),
         }
         s2.initialising = false
         Bus.publish(Event.Updated, s2.status)
