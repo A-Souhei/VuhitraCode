@@ -84,5 +84,14 @@ After ALL items show `status: "completed"`:
 1. Collect all findings from each Inspect agent's report.
 2. Consolidate and group by severity: `[critical]` → `[major]` → `[minor]` → `[suggestion]`.
 3. Present findings to the user — be clear and concise:
-   - If no findings: "No issues found. Code review complete."
-   - If findings exist: list all findings grouped by severity, including file path, area, description, and suggested fix for each.
+    - If no findings: "No issues found. Code review complete."
+    - If findings exist: list all findings grouped by severity, including file path, area, description, and suggested fix for each.
+
+## Memory
+
+If a `<memory_context>` block appears in your system context, you have access to past agent memory relevant to this review. Use it as read-only reference to:
+- Recognize known issues that have already been resolved (avoid flagging them again)
+- Understand past findings and resolutions in related areas
+- Gain context about procedures and patterns the team has established
+
+You have **read-only** memory access. Do NOT call `memory_write` — audit is a read-only role.

@@ -107,6 +107,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             question: "allow",
             plan_enter: "allow",
+            memory_read: "allow",
+            memory_write: "allow",
           }),
           user,
         ),
@@ -122,6 +124,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             question: "allow",
             plan_exit: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
             external_directory: {
               [path.join(Global.Path.data, "plans", "*")]: "allow",
             },
@@ -147,6 +151,8 @@ export namespace Agent {
             question: "allow",
             plan_enter: "allow",
             task: "allow",
+            memory_read: "allow",
+            memory_write: "allow",
           }),
           user,
         ),
@@ -165,6 +171,8 @@ export namespace Agent {
             question: "allow",
             plan_enter: "allow",
             task: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -183,6 +191,8 @@ export namespace Agent {
             question: "allow",
             plan_enter: "allow",
             task: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -203,6 +213,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             question: "allow",
             task: "deny",
+            memory_read: "allow",
+            memory_write: "allow",
             external_directory: {
               "*": "deny",
             },
@@ -226,6 +238,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             question: "allow",
             task: "deny",
+            memory_read: "allow",
+            memory_write: "allow",
             external_directory: {
               "*": "deny",
             },
@@ -253,6 +267,8 @@ export namespace Agent {
             grep: "allow",
             list: "allow",
             task: "deny",
+            memory_read: "allow",
+            memory_write: "deny",
             external_directory: {
               "*": "deny",
             },
@@ -279,6 +295,8 @@ export namespace Agent {
             grep: "allow",
             list: "allow",
             task: "deny",
+            memory_read: "deny",
+            memory_write: "deny",
           }),
         ),
         prompt: PROMPT_KEEPER,
@@ -302,6 +320,8 @@ export namespace Agent {
             edit: "allow",
             write: "allow",
             read: "allow",
+            memory_read: "deny",
+            memory_write: "deny",
             task: {
               chores: "allow",
               "*": "deny",
@@ -328,6 +348,8 @@ export namespace Agent {
             edit: "allow",
             write: "allow",
             read: "allow",
+            memory_read: "deny",
+            memory_write: "deny",
             task: {
               chores: "allow",
               "*": "deny",
@@ -354,6 +376,8 @@ export namespace Agent {
             edit: "allow",
             write: "allow",
             read: "allow",
+            memory_read: "deny",
+            memory_write: "deny",
             task: {
               chores: "allow",
               "*": "deny",
@@ -372,6 +396,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             todoread: "deny",
             todowrite: "deny",
+            memory_read: "allow",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -392,6 +418,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             question: "allow",
             task: "deny",
+            memory_read: "deny",
+            memory_write: "deny",
             bash: {
               "*": "deny",
               "git add *": "allow",
@@ -529,6 +557,8 @@ export namespace Agent {
             websearch: "allow",
             codesearch: "allow",
             read: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
             external_directory: {
               "*": "ask",
             },
@@ -562,6 +592,8 @@ export namespace Agent {
             websearch: "ask",
             codesearch: "allow",
             question: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
             external_directory: {
               "*": "ask",
             },
@@ -581,6 +613,8 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             "*": "deny",
+            memory_read: "deny",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -597,6 +631,8 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             "*": "deny",
+            memory_read: "deny",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -612,6 +648,8 @@ export namespace Agent {
           defaults,
           PermissionNext.fromConfig({
             "*": "deny",
+            memory_read: "deny",
+            memory_write: "deny",
           }),
           user,
         ),
@@ -629,6 +667,8 @@ export namespace Agent {
           PermissionNext.fromConfig({
             todoread: "deny",
             todowrite: "deny",
+            memory_read: "deny",
+            memory_write: "deny",
           }),
           user,
         ),

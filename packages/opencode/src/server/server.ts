@@ -29,6 +29,7 @@ import { McpRoutes } from "./routes/mcp"
 import { FileRoutes } from "./routes/file"
 import { ConfigRoutes } from "./routes/config"
 import { IndexerRoutes } from "./routes/indexer"
+import { MemoryRoutes } from "./routes/memory"
 import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { lazy } from "../util/lazy"
@@ -230,6 +231,7 @@ export namespace Server {
         .route("/pty", PtyRoutes())
         .route("/config", ConfigRoutes())
         .route("/indexer", IndexerRoutes())
+        .route("/memory", MemoryRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
         .route("/permission", PermissionRoutes())

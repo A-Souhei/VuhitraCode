@@ -1,0 +1,603 @@
+import z from "zod"
+import { BusEvent } from "@/bus/bus-event"
+import { Bus } from "@/bus"
+import { Instance } from "@/project/instance"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
+import { Env } from "@/env"
+import { Log } from "@/util/log"
+import { TuiEvent } from "@/cli/cmd/tui/event"
+import { Tool } from "@/tool/tool"
+import Redis from "ioredis"
+import path from "path"
+
+export namespace Memory {
+  const log = Log.create({ service: "memory" })
+
+  export const Status = z
+    .discriminatedUnion("type", [
+      z.object({
+        type: z.literal("disabled"),
+        reason: z.enum(["not_configured", "embedding_unreachable", "backend_unreachable", "error"]).optional(),
+        message: z.string().optional(),
+      }),
+      z.object({
+        type: z.literal("ready"),
+        entry_count: z.number(),
+        token_count: z.number(),
+        backend: z.enum(["qdrant", "redis"]),
+        embedding_url: z.string().optional(),
+        embedding_model: z.string().optional(),
+        backend_url: z.string().optional(),
+      }),
+    ])
+    .meta({ ref: "MemoryStatus" })
+  export type Status = z.infer<typeof Status>
+
+  export const Event = {
+    Updated: BusEvent.define("memory.updated", Status),
+  }
+
+  type EntryType = "issue" | "resolution" | "finding" | "command" | "procedure" | "script" | "branch" | "log"
+
+  interface MemoryEntry {
+    type: EntryType
+    content: string
+    branch: string
+    session_id: string
+    timestamp: number
+    tags: string[]
+    token_count: number
+  }
+
+  interface State {
+    status: Status
+    redisClient: Redis | null
+    entryCount: number
+    tokenCount: number
+    collectionName?: string
+    initialising?: boolean
+  }
+
+  const state = Instance.state<State>(
+    () => ({
+      status: { type: "disabled", reason: "not_configured" },
+      redisClient: null,
+      entryCount: 0,
+      tokenCount: 0,
+    }),
+    async (s) => {
+      if (s.redisClient) {
+        await s.redisClient.quit().catch(() => {})
+        s.redisClient = null
+      }
+    },
+  )
+
+  // ─── Config helpers ───────────────────────────────────────────────────────────
+
+  // Fix #1: collectionName is stored per-instance in state to avoid cross-project leaks
+  function collectionName() {
+    const s = state()
+    return (s.collectionName ??= "memory_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
+  }
+
+  let _qdrantUrl: string | undefined
+  function qdrantUrl() {
+    return (_qdrantUrl ??= Env.get("QDRANT_URL") || "http://localhost:6333")
+  }
+
+  let _embeddingUrl: string | undefined
+  function embeddingUrl() {
+    return (_embeddingUrl ??= Env.get("EMBEDDING_URL") || "http://localhost:11434")
+  }
+
+  let _embeddingModel: string | undefined
+  function embeddingModel() {
+    return (_embeddingModel ??= Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest")
+  }
+
+  let _qdrantHeaders: Record<string, string> | undefined
+  function qdrantHeaders() {
+    if (_qdrantHeaders) return _qdrantHeaders
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const key = Env.get("QDRANT_API_KEY")
+    if (key) headers["api-key"] = key
+    return (_qdrantHeaders = headers)
+  }
+
+  let _useRedis: boolean | undefined
+  function useRedis() {
+    return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
+  }
+
+  let _redisUrl: string | undefined
+  function redisUrl() {
+    return (_redisUrl ??=
+      Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`)
+  }
+
+  function getRedisClient(): Redis {
+    const s = state()
+    if (!s.redisClient) {
+      const url = Env.get("REDIS_URL")
+      if (url) {
+        s.redisClient = new Redis(url, { lazyConnect: true, enableReadyCheck: false })
+      } else {
+        const host = Env.get("REDIS_HOST") || "localhost"
+        const port = parseInt(Env.get("REDIS_PORT") || "6379", 10)
+        const password = Env.get("REDIS_PASSWORD")
+        s.redisClient = new Redis({ host, port, password, lazyConnect: true, enableReadyCheck: false })
+      }
+    }
+    return s.redisClient
+  }
+
+  function activeBackend(): "qdrant" | "redis" {
+    return useRedis() ? "redis" : "qdrant"
+  }
+
+  // ─── Utilities ────────────────────────────────────────────────────────────────
+
+  function toUUID(str: string): string {
+    const hasher = new Bun.CryptoHasher("md5")
+    hasher.update(str)
+    const hex = hasher.digest("hex")
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+  }
+
+  // Fix #5: extend sanitize pattern to also match colon-separated assignments (KEY: value)
+  function sanitize(text: string): string {
+    text = text.replace(
+      /\b(TOKEN|SECRET|KEY|PASSWORD|PASSWD|PWD|API_KEY|APIKEY|AUTH|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|SECRET_KEY)\s*[:=]\s*\S+/gi,
+      "[REDACTED]",
+    )
+    text = text.replace(/(Bearer|Basic)\s+[A-Za-z0-9+/=._-]{8,}/gi, "$1 [REDACTED]")
+    text = text.replace(/\b[0-9a-fA-F]{32,}\b/g, "[REDACTED]")
+    text = text.replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, "[REDACTED]")
+    text = text.replace(/(-----BEGIN [A-Z ]+KEY-----[\s\S]*?-----END [A-Z ]+KEY-----)/g, "[REDACTED_PRIVATE_KEY]")
+    return text
+  }
+
+  // Fix #3: cache a Promise to prevent double embed on concurrent callers
+  let _dimPromise: Promise<number> | undefined
+  async function dimension(signal?: AbortSignal) {
+    return (_dimPromise ??= embed("dim", signal).then((v) => v.length))
+  }
+
+  let _embedEndpoint: string | undefined
+  async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
+    const url = (_embedEndpoint ??= `${embeddingUrl()}/api/embeddings`)
+    const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: combined,
+      body: JSON.stringify({ model: embeddingModel(), prompt: text }),
+    })
+    if (!response.ok) throw new Error(`Embedding request failed: ${response.status} ${response.statusText}`)
+    const data = (await response.json()) as { embedding: number[] }
+    return data.embedding
+  }
+
+  // ─── Qdrant backend ───────────────────────────────────────────────────────────
+
+  const qdrant = {
+    async ensureCollection(signal?: AbortSignal) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+      const existing = await fetch(`${url}/collections/${name}`, {
+        method: "GET",
+        headers: qdrantHeaders(),
+        signal: combined,
+      })
+      if (existing.ok) return
+      // Fix #9: use cached dimension instead of re-embedding
+      const dim = await dimension(signal)
+      const combined2 = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
+      const response = await fetch(`${url}/collections/${name}`, {
+        method: "PUT",
+        headers: qdrantHeaders(),
+        signal: combined2,
+        body: JSON.stringify({ vectors: { size: dim, distance: "Cosine" } }),
+      })
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { status?: { error?: string } }
+        if (!String(body?.status?.error ?? "").includes("already exists"))
+          throw new Error(`Failed to ensure collection: ${response.status} ${response.statusText}`)
+      }
+    },
+
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points`, {
+        method: "PUT",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ points }),
+      })
+      if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
+    },
+
+    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/search`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ vector, limit: topK, with_payload: true }),
+      })
+      if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
+      const data = (await response.json()) as {
+        result: { payload: { type: string; tags: string; content: string } }[]
+      }
+      return data.result.map((r) => r.payload)
+    },
+
+    async count(): Promise<number> {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/count`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ exact: true }),
+      })
+      if (!response.ok) return 0
+      const data = (await response.json()) as { result?: { count?: number } }
+      return data.result?.count ?? 0
+    },
+
+    async checkHealth(signal?: AbortSignal) {
+      const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
+      const r = await fetch(`${qdrantUrl()}/healthz`, { signal: combined })
+      if (!r.ok) throw new Error(`Qdrant unhealthy: ${r.status}`)
+    },
+  }
+
+  // ─── Redis backend ────────────────────────────────────────────────────────────
+
+  const redis = {
+    keyPrefix() {
+      return `${collectionName()}:point:`
+    },
+
+    encodeVector(vec: number[]): Buffer {
+      const buf = Buffer.allocUnsafe(vec.length * 4)
+      for (let i = 0; i < vec.length; i++) buf.writeFloatLE(vec[i], i * 4)
+      return buf
+    },
+
+    async ensureIndex(signal?: AbortSignal) {
+      const client = getRedisClient()
+      await client.connect().catch(() => {})
+      // Fix #9: use cached dimension instead of re-embedding
+      const dim = await dimension(signal)
+      const indexName = collectionName()
+      const prefix = redis.keyPrefix()
+      try {
+        await client.call(
+          "FT.CREATE",
+          indexName,
+          "ON",
+          "HASH",
+          "PREFIX",
+          "1",
+          prefix,
+          "SCHEMA",
+          "type",
+          "TAG",
+          "tags",
+          "TEXT",
+          "content",
+          "TEXT",
+          "timestamp",
+          "NUMERIC",
+          "token_count",
+          "NUMERIC",
+          "vector",
+          "VECTOR",
+          "HNSW",
+          "6",
+          "TYPE",
+          "FLOAT32",
+          "DIM",
+          String(dim),
+          "DISTANCE_METRIC",
+          "COSINE",
+        )
+      } catch (e: unknown) {
+        const msg = String((e as { message?: string })?.message ?? "")
+        if (!msg.includes("Index already exists")) throw e
+      }
+    },
+
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      const client = getRedisClient()
+      const pipeline = client.pipeline()
+      const prefix = redis.keyPrefix()
+      for (const p of points) {
+        const key = `${prefix}${p.id}`
+        pipeline.hset(
+          key,
+          "type",
+          String(p.payload.type ?? ""),
+          "tags",
+          String(p.payload.tags ?? ""),
+          "content",
+          String(p.payload.content ?? ""),
+          "timestamp",
+          String(p.payload.timestamp ?? 0),
+          "token_count",
+          String(p.payload.token_count ?? 0),
+          "session_id",
+          String(p.payload.session_id ?? ""),
+          "branch",
+          String(p.payload.branch ?? ""),
+          "vector",
+          redis.encodeVector(p.vector),
+        )
+      }
+      await pipeline.exec()
+    },
+
+    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+      const client = getRedisClient()
+      const indexName = collectionName()
+      const vecBuf = redis.encodeVector(vector)
+      const result = (await client.call(
+        "FT.SEARCH",
+        indexName,
+        `*=>[KNN ${topK} @vector $vec AS score]`,
+        "PARAMS",
+        "2",
+        "vec",
+        vecBuf,
+        "RETURN",
+        "3",
+        "type",
+        "tags",
+        "content",
+        "SORTBY",
+        "score",
+        "DIALECT",
+        "2",
+      )) as unknown[]
+      const hits: { type: string; tags: string; content: string }[] = []
+      for (let i = 1; i < result.length; i += 2) {
+        if (i + 1 >= result.length) break
+        const fields = result[i + 1] as string[]
+        if (!Array.isArray(fields)) continue
+        let type = "",
+          tags = "",
+          content = ""
+        for (let j = 0; j < fields.length; j += 2) {
+          if (fields[j] === "type") type = fields[j + 1]
+          if (fields[j] === "tags") tags = fields[j + 1]
+          if (fields[j] === "content") content = fields[j + 1]
+        }
+        if (content) hits.push({ type, tags, content })
+      }
+      return hits
+    },
+
+    async count(): Promise<number> {
+      const client = getRedisClient()
+      const indexName = collectionName()
+      const result = (await client.call("FT.SEARCH", indexName, "*", "LIMIT", "0", "0").catch((e) => {
+        log.warn("redis memory count failed, defaulting to 0", { error: String(e) })
+        return [0]
+      })) as unknown[]
+      return (result[0] as number) ?? 0
+    },
+
+    // Fix #3: use { once: true } to avoid AbortSignal listener leak
+    async checkHealth(signal?: AbortSignal) {
+      const client = getRedisClient()
+      await client.connect().catch(() => {})
+      const ping = client.ping()
+      const pong = signal
+        ? await Promise.race([
+            ping,
+            new Promise<never>((_, reject) => {
+              signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+            }),
+          ])
+        : await ping
+      if (pong !== "PONG") throw new Error("Redis unhealthy: unexpected PING response")
+    },
+  }
+
+  // ─── Store dispatch ───────────────────────────────────────────────────────────
+
+  const store = {
+    async ensureIndex(signal?: AbortSignal) {
+      return useRedis() ? redis.ensureIndex(signal) : qdrant.ensureCollection(signal)
+    },
+    async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
+      return useRedis() ? redis.upsert(points) : qdrant.upsert(points)
+    },
+    async search(vector: number[], topK: number) {
+      return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
+    },
+    async count() {
+      return useRedis() ? redis.count() : qdrant.count()
+    },
+    async checkHealth(signal?: AbortSignal) {
+      return useRedis() ? redis.checkHealth(signal) : qdrant.checkHealth(signal)
+    },
+  }
+
+  // ─── Services check ───────────────────────────────────────────────────────────
+
+  async function checkServices() {
+    await Promise.all([
+      store.checkHealth(AbortSignal.timeout(5_000)).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(
+          msg.includes("backend") || msg.includes("Qdrant") || msg.includes("Redis")
+            ? msg
+            : `backend unhealthy: ${msg}`,
+        )
+      }),
+      fetch(`${embeddingUrl()}/api/tags`, { signal: AbortSignal.timeout(5_000) })
+        .then((r) => {
+          if (!r.ok) throw new Error(`embedding unhealthy: ${r.status}`)
+        })
+        .catch((e: unknown) => {
+          if (e instanceof Error && e.message.startsWith("embedding")) throw e
+          const msg = e instanceof Error ? e.message : String(e)
+          throw new Error(`embedding unreachable: ${msg}`)
+        }),
+    ])
+  }
+
+  function classifyReason(msg: string): "embedding_unreachable" | "backend_unreachable" | "error" {
+    const lower = msg.toLowerCase()
+    if (lower.includes("ollama") || lower.startsWith("embedding")) return "embedding_unreachable"
+    if (lower.includes("qdrant") || lower.includes("redis") || lower.includes("backend")) return "backend_unreachable"
+    return "error"
+  }
+
+  // ─── Public API ───────────────────────────────────────────────────────────────
+
+  export function status(): Status {
+    return state().status
+  }
+
+  // Fix #2: re-acquire state after awaits to avoid mutating orphaned state on disposal mid-flight
+  export async function write(entry: Omit<MemoryEntry, "token_count">): Promise<void> {
+    const s = state()
+    if (s.status.type !== "ready") return
+    try {
+      const content = sanitize(entry.content)
+      const token_count = Math.ceil(content.length / 4)
+      const id = toUUID(entry.session_id + ":" + entry.timestamp + ":" + content.slice(0, 50))
+      const vector = await embed(content)
+      await store.upsert([
+        {
+          id,
+          vector,
+          payload: {
+            type: entry.type,
+            content,
+            tags: entry.tags.join(","),
+            timestamp: entry.timestamp,
+            token_count,
+            session_id: entry.session_id,
+            branch: entry.branch,
+          },
+        },
+      ])
+      const s2 = state() // re-acquire after awaits
+      if (s2.status.type !== "ready") return // disposed mid-flight
+      s2.entryCount++
+      s2.tokenCount += token_count
+      s2.status = { ...s2.status, entry_count: s2.entryCount, token_count: s2.tokenCount }
+      Bus.publish(Event.Updated, s2.status)
+      // Fix #8: show human-readable entry type in toast message
+      Bus.publish(TuiEvent.ToastShow, {
+        title: `◈ Memory — ${s2.entryCount} ${s2.entryCount === 1 ? "entry" : "entries"}`,
+        message: `New ${entry.type} recorded`,
+        variant: "info",
+      })
+    } catch (e) {
+      log.warn("failed to write memory entry", { type: entry.type, error: String(e) })
+    }
+  }
+
+  export async function search(query: string, topK = 5): Promise<string[]> {
+    if (state().status.type !== "ready") return []
+    const vector = await embed(query)
+    const hits = await store.search(vector, topK)
+    return hits.map((r) => `[${r.type}] tags: ${r.tags}\n${r.content}`)
+  }
+
+  // Fix #1 & #4: disposal-aware init; compare state() to initialState after every await
+  export function init() {
+    if (!VuHitraSettings.memoryEnabled()) {
+      const s = state()
+      s.status = { type: "disabled", reason: "not_configured" }
+      Bus.publish(Event.Updated, s.status)
+      return
+    }
+    Promise.resolve().then(async () => {
+      const initialState = state()
+      if (initialState.initialising) return
+      initialState.initialising = true
+      try {
+        await checkServices()
+        if (state() !== initialState) return // disposed mid-init
+        await store.ensureIndex()
+        if (state() !== initialState) return // disposed mid-init
+        const entryCount = await store.count()
+        if (state() !== initialState) return // disposed mid-init
+        const s2 = state()
+        s2.entryCount = entryCount
+        // session-only: token count resets on restart
+        s2.tokenCount = 0
+        s2.status = {
+          type: "ready",
+          entry_count: entryCount,
+          token_count: 0,
+          backend: activeBackend(),
+          embedding_url: embeddingUrl(),
+          embedding_model: embeddingModel(),
+          backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+        }
+        s2.initialising = false
+        Bus.publish(Event.Updated, s2.status)
+      } catch (e) {
+        if (state() !== initialState) return // disposed mid-init
+        const msg = e instanceof Error ? e.message : String(e)
+        log.error("memory failed to start", { error: msg })
+        const reason = classifyReason(msg)
+        const s2 = state()
+        s2.initialising = false
+        s2.status = { type: "disabled", reason, message: msg }
+        Bus.publish(Event.Updated, s2.status)
+      }
+    })
+  }
+
+  // ─── memory_write tool ────────────────────────────────────────────────────────
+
+  export const WriteTool = Tool.define("memory_write", {
+    description:
+      "Write an entry to agent memory for future reference. Use this to capture important findings, commands, procedures, scripts, issues, and resolutions. Content is automatically sanitized before storage.",
+    parameters: z.object({
+      type: z
+        .enum(["issue", "resolution", "finding", "command", "procedure", "script", "branch", "log"])
+        .describe("Type of memory entry"),
+      content: z.string().describe("The content to memorize. Will be sanitized of credentials before storage."),
+      tags: z.array(z.string()).optional().describe("Optional tags for categorization"),
+      session_id: z.string().optional().describe("Session ID (auto-populated if omitted)"),
+      // Fix #7: remove misleading "(auto-populated if omitted)" claim; fallback changed from "unknown" to ""
+      branch: z.string().optional().describe("Git branch name (leave empty if unknown)"),
+    }),
+    async execute(params, ctx) {
+      if (status().type !== "ready") {
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: {},
+          output: "Memory is not available — backend is not configured or unreachable. Entry was not stored.",
+        }
+      }
+      await write({
+        type: params.type,
+        content: params.content,
+        tags: params.tags ?? [],
+        session_id: params.session_id ?? ctx.sessionID,
+        branch: params.branch ?? "",
+        timestamp: Date.now(),
+      })
+      return {
+        title: `Memory: ${params.type}`,
+        metadata: {},
+        output: `Memory entry written (type: ${params.type})`,
+      }
+    },
+  })
+}

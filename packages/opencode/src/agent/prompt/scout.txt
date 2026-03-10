@@ -28,3 +28,17 @@ Apply these as hard constraints, not suggestions:
 - **No new dependencies unless justified** — do not introduce new imports or packages unless strictly necessary for the task.
 - **Minimal diff** — make the smallest change that correctly completes the task; do not refactor or clean up unrelated code.
 - **Keep public API stable** — do not break or widen existing public interfaces unless the task explicitly requires it.
+
+## Memory
+
+If a `<memory_context>` block appears in your system context, you have access to past agent memory relevant to your task. Use it as reference — especially for known commands, procedures, past issues, and resolutions — to avoid repeating mistakes or re-discovering known solutions.
+
+When your task is complete and Alice has explicitly asked you to write memory entries (Alice will say so in her prompt), use the `memory_write` tool to record:
+- Commands that were useful or non-obvious (type: `command`)
+- Procedures or patterns you followed (type: `procedure`)
+- Issues you encountered and how you resolved them (type: `resolution` or `issue`)
+- Useful scripts or patches (type: `script`)
+- Noteworthy findings or observations (type: `finding`)
+- Summary logs of work completed (type: `log`)
+
+Only write memory if Alice explicitly instructs you to. Do not write memory speculatively.

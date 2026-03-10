@@ -18,6 +18,7 @@ import type {
   ProviderAuthMethod,
   VcsInfo,
   IndexerStatus,
+  MemoryStatus,
 } from "@opencode-ai/sdk/v2"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
@@ -75,6 +76,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       vcs: VcsInfo | undefined
       path: Path
       indexer_status: IndexerStatus | undefined
+      memory_status: MemoryStatus | undefined
     }>({
       provider_next: {
         all: [],
@@ -103,6 +105,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       vcs: undefined,
       path: { state: "", config: "", worktree: "", directory: "" },
       indexer_status: undefined,
+      memory_status: undefined,
     })
 
     const sdk = useSDK()
@@ -348,6 +351,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("indexer_status", event.properties)
           break
         }
+
+        case "memory.updated": {
+          setStore("memory_status", event.properties)
+          break
+        }
       }
     })
 
@@ -430,6 +438,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   error: e instanceof Error ? e.message : String(e),
                 })
                 setStore("indexer_status", { type: "disabled" })
+              }),
+            sdk.client.memory
+              .status()
+              .then((x) => {
+                setStore("memory_status", x.data ?? { type: "disabled" })
+              })
+              .catch((e) => {
+                Log.Default.error("failed to fetch memory status", {
+                  error: e instanceof Error ? e.message : String(e),
+                })
+                setStore("memory_status", { type: "disabled" })
               }),
           ])
             .then(() => {
