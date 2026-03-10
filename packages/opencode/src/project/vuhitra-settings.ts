@@ -52,7 +52,9 @@ export namespace VuHitraSettings {
     const merged = { ...current, ...update }
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
-    if (!dir || dir === Instance.directory) Object.assign(state(), merged)
+    try {
+      if (!dir || dir === Instance.directory) Object.assign(state(), merged)
+    } catch {}
   }
 
   export function indexingEnabled(): boolean {
