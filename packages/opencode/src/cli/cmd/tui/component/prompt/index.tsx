@@ -1176,6 +1176,10 @@ export function Prompt(props: PromptProps) {
                   </Show>
                 </box>
               </Show>
+              <Show when={store.mode === "normal"}>
+                <text fg={theme.textMuted}>·</text>
+                <text fg={theme.accent}>{local.profile.current}</text>
+              </Show>
             </box>
           </box>
         </box>
