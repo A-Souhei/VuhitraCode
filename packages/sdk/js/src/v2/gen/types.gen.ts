@@ -696,6 +696,27 @@ export type EventTuiSessionSelect = {
   }
 }
 
+export type MemoryStatus =
+  | {
+      type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
+      message?: string
+    }
+  | {
+      type: "ready"
+      entry_count: number
+      token_count: number
+      backend: "qdrant" | "redis"
+      embedding_url?: string
+      embedding_model?: string
+      backend_url?: string
+    }
+
+export type EventMemoryUpdated = {
+  type: "memory.updated"
+  properties: MemoryStatus
+}
+
 export type QuestionOption = {
   /**
    * Display text (1-5 words, concise)
@@ -1002,6 +1023,7 @@ export type Event =
   | EventTuiCommandExecute
   | EventTuiToastShow
   | EventTuiSessionSelect
+  | EventMemoryUpdated
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -2815,6 +2837,24 @@ export type IndexerDeleteDataResponses = {
 }
 
 export type IndexerDeleteDataResponse = IndexerDeleteDataResponses[keyof IndexerDeleteDataResponses]
+
+export type MemoryStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/memory/status"
+}
+
+export type MemoryStatusResponses = {
+  /**
+   * Memory status retrieved successfully
+   */
+  200: MemoryStatus
+}
+
+export type MemoryStatusResponse = MemoryStatusResponses[keyof MemoryStatusResponses]
 
 export type ToolIdsData = {
   body?: never

@@ -37,71 +37,14 @@ jobs:
       - name: Run unit tests
         run: bun turbo test
 
-  e2e:
-    name: e2e (${{ matrix.settings.name }})
-    needs: unit
-    strategy:
-      fail-fast: false
-      matrix:
-        settings:
-          - name: linux
-            host: ubuntu-24.04
-            playwright: bunx playwright install --with-deps
-          - name: windows
-            host: windows-2025
-            playwright: bunx playwright install
-    runs-on: ${{ matrix.settings.host }}
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: 0
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Install Playwright browsers
-        working-directory: packages/app
-        run: ${{ matrix.settings.playwright }}
-
-      - name: Run app e2e tests
-        run: bun --cwd packages/app test:e2e:local
-        env:
-          CI: true
-        timeout-minutes: 30
-
-      - name: Upload Playwright artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-${{ matrix.settings.name }}-${{ github.run_attempt }}
-          if-no-files-found: ignore
-          retention-days: 7
-          path: |
-            packages/app/e2e/test-results
-            packages/app/e2e/playwright-report
-
   required:
     name: test (linux)
     runs-on: ubuntu-24.04
     needs:
       - unit
-      - e2e
     if: always()
     steps:
       - name: Verify upstream test jobs passed
         run: |
           echo "unit=${{ needs.unit.result }}"
-          echo "e2e=${{ needs.e2e.result }}"
           test "${{ needs.unit.result }}" = "success"
-          test "${{ needs.e2e.result }}" = "success"

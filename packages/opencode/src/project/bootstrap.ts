@@ -13,6 +13,7 @@ import { ShareNext } from "@/share/share-next"
 import { Snapshot } from "../snapshot"
 import { Truncate } from "../tool/truncation"
 import { Indexer } from "../indexer"
+import { Memory } from "../memory"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
@@ -27,6 +28,7 @@ export async function InstanceBootstrap() {
   Snapshot.init()
   Truncate.init()
   Indexer.init()
+  Memory.init()
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {

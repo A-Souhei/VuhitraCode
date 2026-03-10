@@ -61,6 +61,7 @@ import type {
   McpLocalConfig,
   McpRemoteConfig,
   McpStatusResponses,
+  MemoryStatusResponses,
   OutputFormat,
   Part as Part2,
   PartDeleteErrors,
@@ -755,6 +756,25 @@ export class Indexer extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<IndexerStatusResponses, unknown, ThrowOnError>({
       url: "/indexer",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Memory extends HeyApiClient {
+  /**
+   * Get memory status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<MemoryStatusResponses, unknown, ThrowOnError>({
+      url: "/memory/status",
       ...options,
       ...params,
     })
@@ -3308,6 +3328,11 @@ export class OpencodeClient extends HeyApiClient {
   private _indexer?: Indexer
   get indexer(): Indexer {
     return (this._indexer ??= new Indexer({ client: this.client }))
+  }
+
+  private _memory?: Memory
+  get memory(): Memory {
+    return (this._memory ??= new Memory({ client: this.client }))
   }
 
   private _tool?: Tool

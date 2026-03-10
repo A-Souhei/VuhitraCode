@@ -52,17 +52,26 @@ function init() {
     currentToast: null as ToastOptions | null,
   })
 
+  const queue: ToastOptions[] = []
   let timeoutHandle: NodeJS.Timeout | null = null
+
+  function next() {
+    if (timeoutHandle || queue.length === 0) return
+    const item = queue.shift()!
+    const { duration, ...current } = item
+    setStore("currentToast", current)
+    timeoutHandle = setTimeout(() => {
+      timeoutHandle = null
+      setStore("currentToast", null)
+      next()
+    }, duration).unref()
+  }
 
   const toast = {
     show(options: ToastOptions) {
-      const parsedOptions = TuiEvent.ToastShow.properties.parse(options)
-      const { duration, ...currentToast } = parsedOptions
-      setStore("currentToast", currentToast)
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-      timeoutHandle = setTimeout(() => {
-        setStore("currentToast", null)
-      }, duration).unref()
+      const parsed = TuiEvent.ToastShow.properties.parse(options)
+      queue.push(parsed)
+      next()
     },
     error: (err: any) => {
       if (err instanceof Error)
