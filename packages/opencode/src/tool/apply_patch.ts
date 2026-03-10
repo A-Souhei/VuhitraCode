@@ -232,11 +232,9 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
     }
 
     // Notify LSP of file changes and collect diagnostics
-    for (const change of fileChanges) {
-      if (change.type === "delete") continue
-      const target = change.movePath ?? change.filePath
-      await LSP.touchFile(target, true)
-    }
+    await Promise.all(
+      fileChanges.filter((c) => c.type !== "delete").map((c) => LSP.touchFile(c.movePath ?? c.filePath, true)),
+    )
     const diagnostics = await LSP.diagnostics()
 
     // Generate output summary

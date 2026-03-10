@@ -11,7 +11,13 @@ mock.module("../../src/mcp/auth", () => ({
 
 // Mock Installation
 mock.module("../../src/installation", () => ({
-  Installation: { VERSION: "test" },
+  Installation: {
+    VERSION: "test",
+    CHANNEL: "local",
+    isLocal: () => false,
+    isPreview: () => false,
+    latest: async () => null,
+  },
 }))
 
 // Mock oauth-provider (not needed in unit tests for pollDeviceFlow)

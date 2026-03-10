@@ -70,6 +70,48 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     }
   })
 
+  const subagentTokens = createMemo(() => {
+    const total = sync.data.session
+      .filter((x) => x.parentID === props.sessionID)
+      .reduce((sum, x) => {
+        const last = (sync.data.message[x.id] ?? []).findLast(
+          (m): m is AssistantMessage => m.role === "assistant" && m.tokens.output > 0,
+        )
+        if (!last) return sum
+        return (
+          sum +
+          last.tokens.input +
+          last.tokens.output +
+          last.tokens.reasoning +
+          last.tokens.cache.read +
+          last.tokens.cache.write
+        )
+      }, 0)
+    return total > 0 ? total.toLocaleString() : undefined
+  })
+
+  const duration = createMemo(() => {
+    const first = messages().find((x) => x.role === "user")
+    if (!first) return
+    const last = messages().findLast((x) => x.role === "assistant")
+    const secs = Math.round(((last?.time.completed ?? Date.now()) - first.time.created) / 1000)
+    if (secs < 60) return `${secs}s`
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
+    return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+  })
+
+  const rounds = createMemo(() =>
+    messages()
+      .filter((x) => x.role === "assistant")
+      .reduce((sum, x) => sum + (sync.data.part[x.id] ?? []).filter((p) => p.type === "step-finish").length, 0),
+  )
+
+  const subagents = createMemo(() =>
+    messages()
+      .filter((x) => x.role === "assistant")
+      .reduce((sum, x) => sum + (sync.data.part[x.id] ?? []).filter((p) => p.type === "subtask").length, 0),
+  )
+
   const directory = useDirectory()
   const kv = useKV()
 
@@ -112,10 +154,36 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={RGBA.fromHex("#3d82e2")}>
                 <b>Context</b>
               </text>
-              <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
+              <text fg={theme.textMuted}>
+                {context()?.tokens ?? 0} tokens
+                <Show when={subagentTokens()}>
+                  <span style={{ fg: theme.textMuted }}> / {subagentTokens()} subagent</span>
+                </Show>
+              </text>
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
             </box>
+            <Show when={duration() || rounds() > 0 || todo().length > 0 || subagents() > 0}>
+              <box>
+                <text fg={RGBA.fromHex("#3d82e2")}>
+                  <b>Stats</b>
+                </text>
+                <Show when={duration()}>
+                  <text fg={theme.textMuted}>{duration()} elapsed</text>
+                </Show>
+                <Show when={rounds() > 0}>
+                  <text fg={theme.textMuted}>{rounds()} rounds</text>
+                </Show>
+                <Show when={subagents() > 0}>
+                  <text fg={theme.textMuted}>{subagents()} subagent calls</text>
+                </Show>
+                <Show when={todo().length > 0}>
+                  <text fg={theme.textMuted}>
+                    {completedCount()}/{todo().length} todos
+                  </text>
+                </Show>
+              </box>
+            </Show>
             <Show when={mcpEntries().length > 0}>
               <box>
                 <box

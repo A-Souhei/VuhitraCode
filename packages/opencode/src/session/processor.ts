@@ -249,7 +249,15 @@ export namespace SessionProcessor {
                   })
                   input.assistantMessage.finish = value.finishReason
                   input.assistantMessage.cost += usage.cost
-                  input.assistantMessage.tokens = usage.tokens
+                  input.assistantMessage.tokens = {
+                    input: Math.max(input.assistantMessage.tokens.input, usage.tokens.input),
+                    output: input.assistantMessage.tokens.output + usage.tokens.output,
+                    reasoning: input.assistantMessage.tokens.reasoning + usage.tokens.reasoning,
+                    cache: {
+                      read: Math.max(input.assistantMessage.tokens.cache.read, usage.tokens.cache.read),
+                      write: input.assistantMessage.tokens.cache.write + usage.tokens.cache.write,
+                    },
+                  }
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     reason: value.finishReason,

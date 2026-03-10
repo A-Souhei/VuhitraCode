@@ -55,9 +55,7 @@ export namespace LSPClient {
         path: filePath,
         count: params.diagnostics.length,
       })
-      const exists = diagnostics.has(filePath)
       diagnostics.set(filePath, params.diagnostics)
-      if (!exists && input.serverID === "typescript") return
       Bus.publish(Event.Diagnostics, { path: filePath, serverID: input.serverID })
     })
     connection.onRequest("window/workDoneProgress/create", (params) => {
@@ -101,6 +99,9 @@ export namespace LSPClient {
             didChangeWatchedFiles: {
               dynamicRegistration: true,
             },
+            symbol: {
+              resolveSupport: { properties: ["location.range"] },
+            },
           },
           textDocument: {
             synchronization: {
@@ -110,10 +111,23 @@ export namespace LSPClient {
             publishDiagnostics: {
               versionSupport: true,
             },
+            hover: {
+              contentFormat: ["markdown", "plaintext"],
+            },
+            definition: {
+              linkSupport: true,
+            },
+            implementation: {
+              linkSupport: true,
+            },
+            documentSymbol: {
+              hierarchicalDocumentSymbolSupport: true,
+            },
+            callHierarchy: {},
           },
         },
       }),
-      45_000,
+      10_000,
     ).catch((err) => {
       l.error("initialize error", { error: err })
       throw new InitializeError(
