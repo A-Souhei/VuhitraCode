@@ -555,12 +555,12 @@ export namespace Memory {
     const s = state()
     if (s.status.type !== "ready") return
     await store.deleteAll()
-    const s2 = state()
-    if (s2.status.type !== "ready") return // disposed mid-flight
-    s2.entryCount = 0
-    s2.tokenCount = 0
-    s2.status = { ...s2.status, entry_count: 0, token_count: 0 }
-    Bus.publish(Event.Updated, s2.status)
+    if (state() !== s) return // disposed or reinitialised mid-flight
+    if (s.status.type !== "ready") return
+    s.entryCount = 0
+    s.tokenCount = 0
+    s.status = { ...s.status, entry_count: 0, token_count: 0 }
+    Bus.publish(Event.Updated, s.status)
   }
 
   // Fix #1 & #4: disposal-aware init; compare state() to initialState after every await

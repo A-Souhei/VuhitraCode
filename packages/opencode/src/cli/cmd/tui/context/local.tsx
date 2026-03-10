@@ -280,7 +280,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         list() {
           return store.list
         },
-        async create(name: string) {
+        async create(name: string): Promise<boolean> {
           const dir = sync.data.path.directory || process.cwd()
           try {
             await VuHitraSettings.createProfile(name, dir)
@@ -291,13 +291,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               message: e instanceof Error ? e.message : `Failed to create profile "${name}"`,
               duration: 4000,
             })
-            return
+            return false
           }
           setStore("list", [...store.list, name])
           toast.show({ variant: "success", title: "Profile", message: `Created "${name}"`, duration: 3000 })
+          return true
         },
-        async switch(name: string) {
-          if (name === store.current) return
+        async switch(name: string): Promise<boolean> {
+          if (name === store.current) return false
           const dir = sync.data.path.directory || process.cwd()
           try {
             await VuHitraSettings.setActiveProfile(name, dir)
@@ -308,13 +309,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               message: e instanceof Error ? e.message : `Failed to switch to "${name}"`,
               duration: 4000,
             })
-            return
+            return false
           }
           setStore("current", name)
           agentModels.reload(name)
           sentinelModel.reload(name)
           scoutModel.reload(name)
           toast.show({ variant: "success", title: "Profile", message: `Switched to "${name}"`, duration: 3000 })
+          return true
         },
       }
     }

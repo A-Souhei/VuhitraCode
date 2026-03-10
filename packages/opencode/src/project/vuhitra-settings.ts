@@ -79,6 +79,7 @@ export namespace VuHitraSettings {
   }
 
   export async function setActiveProfile(name: string, dir?: string) {
+    if (!/^[A-Za-z0-9_\-.]+$/.test(name)) throw new Error(`Invalid profile name: ${name}`)
     await writeToDisk({ active_profile: name }, dir)
     try {
       await Bus.publish(Profiles.Event.Switched, { name })

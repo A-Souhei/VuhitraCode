@@ -655,8 +655,8 @@ export function Prompt(props: PromptProps) {
                       toast.show({ variant: "warning", message: `Profile "${name}" already exists`, duration: 3000 })
                       return
                     }
-                    ctx.clear()
-                    await local.profile.create(name)
+                    const ok = await local.profile.create(name)
+                    if (ok) ctx.clear()
                   },
                 },
               ]}
@@ -682,8 +682,8 @@ export function Prompt(props: PromptProps) {
                 value: n,
                 disabled: n === local.profile.current,
                 onSelect: async () => {
-                  await local.profile.switch(n)
-                  ctx.clear()
+                  const switched = await local.profile.switch(n)
+                  if (switched) ctx.clear()
                 },
               }))}
             />
