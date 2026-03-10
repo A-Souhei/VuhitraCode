@@ -72,7 +72,7 @@ export namespace VuHitraSettings {
   }
 
   export function activeProfile(dir?: string): string {
-    if (dir && dir !== Instance.directory) return readFromDisk(dir).active_profile ?? "default"
+    if (dir) return readFromDisk(dir).active_profile ?? "default"
     return state().active_profile ?? "default"
   }
 
