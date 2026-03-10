@@ -210,6 +210,7 @@ export function Session() {
   })
 
   let lastSwitch: string | undefined = undefined
+  let lastLspToast = 0
   sdk.event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
     if (part.type !== "tool") return
@@ -222,6 +223,14 @@ export function Session() {
       lastSwitch = part.id
     } else if (part.tool === "plan_enter") {
       local.agent.set("plan")
+      lastSwitch = part.id
+    } else if (part.tool === "lsp") {
+      const now = Date.now()
+      if (now - lastLspToast > 4000) {
+        const op = part.state.title.split(" ")[0]
+        toast.show({ variant: "info", message: `LSP: ${op}`, duration: 2000 })
+        lastLspToast = now
+      }
       lastSwitch = part.id
     }
   })
