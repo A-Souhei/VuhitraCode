@@ -87,7 +87,10 @@ export const InitCommand = cmd({
       if (!existsSync(settingsPath)) {
         const settings = {
           indexing: { enabled: indexingEnabled },
+          memory: { enabled: true },
           model_lock: { enabled: false },
+          review_max_rounds: 7,
+          explore_max_instances: 3,
         }
         await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8")
         prompts.log.success(
