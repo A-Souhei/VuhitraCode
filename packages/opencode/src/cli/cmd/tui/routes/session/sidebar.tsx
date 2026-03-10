@@ -73,14 +73,20 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const subagentTokens = createMemo(() => {
     const total = sync.data.session
       .filter((x) => x.parentID === props.sessionID)
-      .flatMap((x) => sync.data.message[x.id] ?? [])
-      .reduce(
-        (sum, x) =>
-          x.role === "assistant"
-            ? sum + x.tokens.input + x.tokens.output + x.tokens.reasoning + x.tokens.cache.read + x.tokens.cache.write
-            : sum,
-        0,
-      )
+      .reduce((sum, x) => {
+        const last = (sync.data.message[x.id] ?? []).findLast(
+          (m): m is AssistantMessage => m.role === "assistant" && m.tokens.output > 0,
+        )
+        if (!last) return sum
+        return (
+          sum +
+          last.tokens.input +
+          last.tokens.output +
+          last.tokens.reasoning +
+          last.tokens.cache.read +
+          last.tokens.cache.write
+        )
+      }, 0)
     return total > 0 ? total.toLocaleString() : undefined
   })
 
