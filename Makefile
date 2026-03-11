@@ -1,4 +1,4 @@
-.PHONY: dev docs setup test-privacy install-dev install
+.PHONY: dev docs setup test-privacy install-dev install redis redis-stop
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -44,3 +44,13 @@ install:
 
 test-privacy:
 	bun test --cwd packages/opencode test/util/faker.test.ts test/tool/read.test.ts
+
+# Redis Stack on port 23790 (non-default to avoid conflicts)
+redis:
+	docker run -d --name redis-stack --network host \
+		--restart unless-stopped \
+		-e REDIS_ARGS="--port 23790" \
+		redis/redis-stack:latest
+
+redis-stop:
+	docker stop redis-stack && docker rm redis-stack
