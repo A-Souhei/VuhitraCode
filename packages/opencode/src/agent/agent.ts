@@ -35,6 +35,31 @@ import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Env } from "../env"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
+import { Bridge } from "@/bridge"
+
+async function getBridgeSettings(): Promise<string> {
+  if (!Bridge.isActive()) return ""
+  const info = Bridge.info()
+  if (!info) return ""
+
+  if (Bridge.isMaster()) {
+    const ctx = await Bridge.getContext(info.bridgeID, 50)
+    const friends = info.nodes.filter((n) => n.role === "friend")
+    const friendList = friends
+      .map((n) => `- Node: ${n.slug} | Directory: ${n.directory} | Status: ${n.status}\n  Server URL: ${n.nodeURL}`)
+      .join("\n")
+    const ctxLines = ctx
+      .map((e) => `[${new Date(e.timestamp).toISOString()}] [${e.role}@${e.directory}] [${e.type}]: ${e.content}`)
+      .join("\n")
+    return `\n\n## Bridge Mode (MASTER)\n\nYou are running in Bridge Mode as the MASTER Alice. You coordinate ${friends.length} friend terminal(s):\n\n### Friend Nodes\n${friendList || "(none yet)"}\n\n### Shared Context (from friends)\n${ctxLines || "(empty)"}\n\n### Bridge Mode Rules\n- You are the ONLY Alice that accepts user input. Friends have input disabled.\n- Dispatch tasks to friends via the task tool, prefixing prompts with [bridge_node: {nodeID}].\n- Friends will share their findings back via shared context.\n- You CANNOT see friends' indexer, memory, or biblion — only shared context.\n- Your directory: ${Instance.directory}. Friends' directories are listed above.`
+  }
+
+  if (Bridge.isFriend()) {
+    return `\n\n## Bridge Mode (FRIEND)\n\nYou are running in Bridge Mode as a FRIEND Alice, attached to master: ${info.masterID} (${info.masterSlug}).\n\n### Bridge Mode Rules\n- Your input is disabled. Only execute tasks dispatched from the master Alice.\n- After completing each task, the result is shared back to the master.\n- Your directory: ${Instance.directory}. Stay within it unless explicitly told otherwise.\n- Report results clearly so the master can incorporate them.`
+  }
+
+  return ""
+}
 
 export namespace Agent {
   export const Info = z
@@ -97,6 +122,7 @@ export namespace Agent {
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
     const maxRounds = VuHitraSettings.reviewMaxRounds()
     const reviewSettings = `\n\n## Agent Settings\n- REVIEW_MAX_ROUNDS: ${maxRounds}`
+    const bridgeSettings = await getBridgeSettings()
 
     const result: Record<string, Info> = {
       build: {
@@ -174,10 +200,11 @@ export namespace Agent {
             task: "allow",
             memory_read: "allow",
             memory_write: "deny",
+            bridge_dispatch: "allow",
           }),
           user,
         ),
-        prompt: PROMPT_ALICE + reviewSettings,
+        prompt: PROMPT_ALICE + bridgeSettings + reviewSettings,
         mode: "primary",
         native: true,
       },

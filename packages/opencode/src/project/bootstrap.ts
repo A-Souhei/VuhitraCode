@@ -16,6 +16,7 @@ import { Indexer } from "../indexer"
 import { Memory } from "../memory"
 import { Biblion } from "../biblion"
 import { Profiles } from "./profiles"
+import { Bridge } from "../bridge"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
@@ -33,6 +34,7 @@ export async function InstanceBootstrap() {
   Indexer.init()
   Memory.init()
   Biblion.init()
+  Bridge.init()
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {

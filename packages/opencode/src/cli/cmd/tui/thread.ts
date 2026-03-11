@@ -78,6 +78,19 @@ export const TuiThreadCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("bridge", {
+        type: "string",
+        choices: ["master", "friend"] as const,
+        describe: "start in bridge mode (master or friend)",
+      })
+      .option("coordinator", {
+        type: "string",
+        describe: "Redis coordinator URL for bridge mode (default: localhost:<port>)",
+      })
+      .option("bridge-id", {
+        type: "string",
+        describe: "Bridge master session ID (required for friend mode)",
       }),
   handler: async (args) => {
     // Keep ENABLE_PROCESSED_INPUT cleared even if other code flips it.
@@ -90,6 +103,12 @@ export const TuiThreadCommand = cmd({
 
       if (args.fork && !args.continue && !args.session) {
         UI.error("--fork requires --continue or --session")
+        process.exitCode = 1
+        return
+      }
+
+      if (args.bridge === "friend" && !args["bridge-id"]) {
+        UI.error("--bridge friend requires --bridge-id <master-session-id>")
         process.exitCode = 1
         return
       }
@@ -172,6 +191,9 @@ export const TuiThreadCommand = cmd({
           model: args.model,
           prompt,
           fork: args.fork,
+          bridge: args.bridge as "master" | "friend" | undefined,
+          coordinator: args.coordinator,
+          bridgeID: args["bridge-id"],
         },
         onExit: async () => {
           await client.call("shutdown", undefined)

@@ -331,3 +331,19 @@ If proceeding:
 3. Declare the task complete.
 
 **Alice's memory constraint**: Alice herself has `memory_read` only (no write access). She delegates ALL memory writes to a Sentinel or Scout. Alice NEVER calls `memory_write` directly.
+
+---
+
+## Bridge Mode (when active)
+
+When `## Bridge Mode (MASTER)` appears in your context:
+- You are the orchestrator across multiple terminals with different codebases
+- Assign tasks to friends by including `[bridge_node: {nodeID}]` at the START of any Task tool prompt
+- Friends will only execute in their own directory — assign directory-specific work accordingly
+- Poll shared context between phases to incorporate friend findings into your plan
+- The `limit` shown is the maximum number of bridge nodes allowed
+
+When `## Bridge Mode (FRIEND)` appears in your context:
+- You only respond to tasks dispatched by the master
+- After completing each task, your result will be shared back to the master automatically
+- Focus only on your assigned directory — do not touch other directories

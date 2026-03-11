@@ -1,0 +1,230 @@
+---
+title: "Bridge Mode"
+description: "Link multiple opencode instances into a coordinated multi-agent session"
+icon: "link"
+---
+
+Bridge Mode lets you connect multiple `opencode` CLI instances — on the same machine or across different machines — into a single coordinated session. One instance acts as **master** (where you type prompts), and one or more act as **friends** (input disabled; they receive and execute tasks dispatched by master's Alice agent).
+
+## How It Works
+
+In a Bridge session, Alice on the master instance can dispatch TODO items to friend instances, effectively extending her pool of workers beyond the current terminal. Each friend runs its own agent in a separate directory, so tasks can operate on different parts of a project (or different projects entirely) in parallel.
+
+<CardGroup cols={2}>
+
+<Card icon="crown" title="Master">
+  The instance where you type. Alice plans, delegates, and coordinates. Friend instances appear as additional workers
+  available for task dispatch.
+</Card>
+
+<Card icon="users" title="Friends">
+  Input is locked — friends only execute tasks sent by the master's Alice. Each friend has its own directory, memory,
+  and indexer context.
+</Card>
+
+</CardGroup>
+
+<Note>
+  Bridge Mode requires a running Redis instance reachable by all participants. Redis acts as the coordination layer — no
+  direct connections between instances are needed for task dispatch.
+</Note>
+
+## Prerequisites
+
+- **Redis** — a Redis server reachable by all instances. Set via `REDIS_URL` (e.g., `redis://localhost:6379`) or individually via `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`.
+- **Terminal sessions** — each instance must be started interactively in a terminal (not headless / backgrounded). Bridge Mode does not work with non-interactive sessions.
+- **Different directories** — each instance must be opened in a different working directory.
+- **`BRIDGE_NODE_URL`** — required for cross-machine setups (see [Cross-machine setup](#cross-machine-setup)).
+- **`BRIDGE_MAX_NODES`** — optional. Set in `.vuhitra/env.json` to control the maximum number of nodes in a bridge session (default: `3`, no upper bound enforced by the system — set as high as your infrastructure allows).
+
+## Quick Start
+
+<Steps>
+
+<Step title="Start Redis">
+  The easiest way is with Docker Compose using the `docker-compose.yml` at the project root:
+
+```bash
+docker compose up -d redis
+```
+
+Or start Redis directly if you have it installed:
+
+```bash
+redis-server
+```
+
+</Step>
+
+<Step title="Start the master instance">
+  Open a terminal, navigate to your primary project directory, and launch opencode with the `--bridge master` flag:
+
+```bash
+opencode --bridge master
+```
+
+To specify a Redis coordinator explicitly (e.g., a remote server):
+
+```bash
+opencode --bridge master --coordinator redis://192.168.1.5:6379
+```
+
+If `--coordinator` is omitted, the coordinator defaults to `localhost:<auto-port>`.
+
+</Step>
+
+<Step title="Start a friend instance">
+  Open a **second terminal**, navigate to a **different directory**, and launch opencode with the `--bridge friend` flag.
+  The `--coordinator` flag is required so the friend knows which Redis instance to connect to:
+
+```bash
+opencode --bridge friend --coordinator redis://192.168.1.5:6379
+```
+
+The friend's input is locked. It will display incoming tasks as Alice dispatches them.
+
+</Step>
+
+<Step title="Work normally in the master">
+  Type prompts in the master terminal as usual. Alice automatically considers friend instances as additional workers and
+  may dispatch tasks to them based on availability and task requirements.
+</Step>
+
+</Steps>
+
+## CLI Flags Reference
+
+| Flag                  | Description                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--bridge master`     | Start opencode as the master node. You type prompts here; Alice coordinates and dispatches tasks to friends.                                                                         |
+| `--bridge friend`     | Start opencode as a friend node. Input is locked; the instance executes tasks sent by the master. `--coordinator` is required.                                                       |
+| `--coordinator <url>` | Redis URL used as the coordination layer (e.g., `redis://192.168.1.5:6379` or `localhost:6379`). Accepted by both master and friend. Defaults to `localhost:<auto-port>` if omitted. |
+
+Both master and friend accept `--coordinator`, which means the Redis coordinator can live on a remote machine, a Docker container, or anywhere reachable by all nodes. All nodes (master + friends) must point `--coordinator` to the **same** Redis instance.
+
+## Cross-Machine Setup
+
+To connect instances on different machines, point every node at the same Redis instance using `--coordinator`, and set `BRIDGE_NODE_URL` in each machine's `.vuhitra/env.json` so nodes can advertise their reachable address.
+
+On **Machine A** (master):
+
+```bash
+opencode --bridge master --coordinator redis://192.168.1.10:6379
+```
+
+```json title=".vuhitra/env.json"
+{
+  "BRIDGE_NODE_URL": "http://192.168.1.10:4096"
+}
+```
+
+On **Machine B** (friend):
+
+```bash
+opencode --bridge friend --coordinator redis://192.168.1.10:6379
+```
+
+```json title=".vuhitra/env.json"
+{
+  "BRIDGE_NODE_URL": "http://192.168.1.20:4096"
+}
+```
+
+Replace `192.168.1.10` with the IP or hostname of your Redis server, and set `BRIDGE_NODE_URL` to the IP or hostname that **other machines on your network can reach** for each respective node. The default opencode server port is `4096`.
+
+<Warning>
+  Both machines must be able to reach each other's `BRIDGE_NODE_URL`. Ensure your firewall allows inbound connections on
+  port `4096` (or whichever port you configure) from the other machine's IP.
+</Warning>
+
+## Docker Compose
+
+The project root includes a ready-to-use `docker-compose.yml` for spinning up Redis:
+
+```yaml title="docker-compose.yml"
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: opencode-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+```
+
+Start it with:
+
+```bash
+docker compose up -d redis
+```
+
+For cross-machine Docker setups, uncomment the `opencode-node` service examples in the file and adjust `BRIDGE_NODE_URL` to each container's reachable address. Pass `--coordinator redis://<host>:6379` when launching each node.
+
+## Context Sharing
+
+Friend instances run fully isolated — they have their own local memory, indexer, and biblion context. They **cannot** see the master's local memory, project index, or stored knowledge.
+
+Alice on the master can **explicitly share context entries** with friends when dispatching tasks. This is done by including relevant context in the task description sent to the friend instance. Friends treat shared context as part of their task instructions.
+
+<Note>
+  Context sharing is unidirectional: master → friends. Friends report results back to master, but do not push their
+  local memory or indexer state upstream.
+</Note>
+
+## Limitations
+
+- **Terminal sessions only** — Bridge Mode requires interactive terminal instances. Headless or background processes are not supported.
+- **Different directories required** — each instance must run in a distinct working directory. Two instances in the same directory will conflict.
+- **Master controls input** — only the master accepts user prompts. Friend terminals display task output only.
+- **Friends are locked** — once a friend joins a bridge, its input is disabled for the duration of the session. Stop the friend process to restore normal operation.
+- **Redis required** — there is no fallback coordination mechanism. If Redis becomes unavailable, bridge communication halts.
+
+## Security
+
+<Warning>
+  Redis has no authentication by default. Anyone who can reach your Redis server can read bridge coordination data. Use
+  Redis on a trusted private network, or enable authentication.
+</Warning>
+
+For production or shared-network setups:
+
+1. **Enable Redis authentication** — set `requirepass` in your `redis.conf`:
+
+   ```
+   requirepass your-strong-password
+   ```
+
+   Then include the password in your coordinator URL:
+
+   ```bash
+   opencode --bridge master --coordinator redis://:your-strong-password@localhost:6379
+   ```
+
+   Or set it via `.vuhitra/env.json`:
+
+   ```json title=".vuhitra/env.json"
+   {
+     "REDIS_URL": "redis://:your-strong-password@localhost:6379"
+   }
+   ```
+
+2. **Restrict Redis to localhost** — if all instances are on the same machine, bind Redis to `127.0.0.1` only (`bind 127.0.0.1` in `redis.conf`).
+
+3. **Use a VPN** — for cross-machine setups, route Redis traffic through a VPN rather than exposing it to the public internet.
+
+## Related
+
+- [Memory](/memory) — persistent agent memory used within each instance
+- [Indexer](/indexer) — codebase search and indexing, local to each instance
+- [Alice](/agents/alice) — the orchestrator that dispatches tasks to bridge friends

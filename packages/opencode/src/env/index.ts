@@ -13,7 +13,7 @@ function loadEnvJson(directory: string) {
     }
     const result: Record<string, string> = {}
     // _comment keys (and any key without a known prefix) are naturally excluded — only OLLAMA_, QDRANT_, etc. prefixes pass the allowlist
-    const allowed = ["OLLAMA_", "QDRANT_", "EMBEDDING_", "INDEXER_", "REDIS_"]
+    const allowed = ["OLLAMA_", "QDRANT_", "EMBEDDING_", "INDEXER_", "REDIS_", "BRIDGE_"]
     for (const [key, value] of Object.entries(json)) {
       if (allowed.some((prefix) => key.startsWith(prefix)) && typeof value === "string" && value !== "") {
         result[key] = value

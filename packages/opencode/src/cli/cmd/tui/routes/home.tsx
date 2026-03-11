@@ -14,6 +14,7 @@ import { usePromptRef } from "../context/prompt"
 import { Installation } from "@/installation"
 import { useKV } from "../context/kv"
 import { useCommandDialog } from "../component/dialog-command"
+import { useBridge } from "../context/bridge"
 
 // TODO: what is the best way to do this?
 let once = false
@@ -25,6 +26,7 @@ export function Home() {
   const route = useRouteData("home")
   const promptRef = usePromptRef()
   const command = useCommandDialog()
+  const bridge = useBridge()
   const mcp = createMemo(() => Object.keys(sync.data.mcp).length > 0)
   const mcpError = createMemo(() => {
     return Object.values(sync.data.mcp).some((x) => x.status === "failed")
@@ -56,22 +58,27 @@ export function Home() {
   ])
 
   const Hint = (
-    <Show when={connectedMcpCount() > 0}>
-      <box flexShrink={0} flexDirection="row" gap={1}>
-        <text fg={theme.text}>
-          <Switch>
-            <Match when={mcpError()}>
-              <span style={{ fg: theme.error }}>•</span> mcp errors{" "}
-              <span style={{ fg: theme.textMuted }}>ctrl+x s</span>
-            </Match>
-            <Match when={true}>
-              <span style={{ fg: theme.success }}>•</span>{" "}
-              {Locale.pluralize(connectedMcpCount(), "{} mcp server", "{} mcp servers")}
-            </Match>
-          </Switch>
-        </text>
-      </box>
-    </Show>
+    <>
+      <Show when={bridge.state.inputLocked}>
+        <text fg={theme.textMuted}>⚡ Bridge mode — input controlled by master</text>
+      </Show>
+      <Show when={connectedMcpCount() > 0 && !bridge.state.inputLocked}>
+        <box flexShrink={0} flexDirection="row" gap={1}>
+          <text fg={theme.text}>
+            <Switch>
+              <Match when={mcpError()}>
+                <span style={{ fg: theme.error }}>•</span> mcp errors{" "}
+                <span style={{ fg: theme.textMuted }}>ctrl+x s</span>
+              </Match>
+              <Match when={true}>
+                <span style={{ fg: theme.success }}>•</span>{" "}
+                {Locale.pluralize(connectedMcpCount(), "{} mcp server", "{} mcp servers")}
+              </Match>
+            </Switch>
+          </text>
+        </box>
+      </Show>
+    </>
   )
 
   let prompt: PromptRef
@@ -107,6 +114,7 @@ export function Home() {
               promptRef.set(r)
             }}
             hint={Hint}
+            disabled={bridge.state.inputLocked}
           />
         </box>
         <box height={4} minHeight={0} width="100%" maxWidth={75} alignItems="center" paddingTop={3} flexShrink={1}>

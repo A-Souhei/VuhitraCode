@@ -357,6 +357,38 @@ Create specialized reviewers for different domains:
 }
 ```
 
+## Bridge Mode
+
+Bridge Mode connects multiple `opencode` CLI instances (same machine or across machines) into a single coordinated session, extending Alice's worker pool to additional terminals.
+
+### Overview
+
+- **Master** — the instance where the user types; Alice plans and dispatches tasks to friends
+- **Friends** — input-locked instances that execute tasks sent by master's Alice; each runs in a separate directory
+
+### Usage
+
+Show the CLI flags with a code block:
+
+```bash
+# Start master (with optional remote Redis coordinator)
+opencode --bridge master --coordinator redis://192.168.1.5:6379
+
+# Start a friend (--coordinator required to locate the same Redis)
+opencode --bridge friend --coordinator redis://192.168.1.5:6379
+```
+
+If `--coordinator` is omitted, defaults to `localhost:<auto-port>`. Both master and friend must point to the **same** Redis instance.
+
+### Key behaviours
+
+- Friend terminals have input locked — they only display task output
+- `BRIDGE_MAX_NODES` env var controls max nodes (default: `3`)
+- Context is isolated per instance; master shares context explicitly via task descriptions
+- Supports any number of nodes; all must be interactive terminal sessions in different directories
+
+See [Bridge Mode](/bridge) for full setup instructions, cross-machine configuration, Docker Compose, and security guidance.
+
 ## Integration with Existing Features
 
 ### Pass Over + Custom Agents

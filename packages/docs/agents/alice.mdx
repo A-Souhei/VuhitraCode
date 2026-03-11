@@ -197,3 +197,26 @@ alice "implement user authentication module with tests and code review"
 Alice respects the Pass Over configuration system for bidirectional delegation and can work with Audit agents for automated code review.
 
 See [Pass Over](/features#pass-over) for advanced agent coordination workflows.
+
+## Bridge Mode
+
+When Bridge Mode is active, Alice on the master instance is bridge-aware: she knows how many friend nodes are connected and can dispatch TODO items to them as additional workers.
+
+### How Alice Behaves in Bridge Mode
+
+- **Friend instances appear as additional workers** in Alice's pool
+- **Alice dispatches tasks to friends** via the same Sentinel/Scout mechanism
+- **Friends execute tasks** in their own directory with isolated memory and indexer context
+- **Master/Friend badges** — Master Alice shows `⚡master` in the TUI prompt bar; friend terminals show `⚡friend`
+
+### Launching Alice in Bridge Mode
+
+```bash
+# Master (Alice orchestrates here)
+opencode --bridge master --coordinator redis://host:6379
+
+# Friend (Alice executes here, input locked)
+opencode --bridge friend --coordinator redis://host:6379
+```
+
+See [Bridge Mode](/bridge) for full setup instructions.

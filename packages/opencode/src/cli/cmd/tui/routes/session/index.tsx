@@ -79,6 +79,7 @@ import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI, CLI_NAME } from "@/cli/ui.ts"
+import { useBridge } from "@tui/context/bridge"
 
 addDefaultParsers(parsers.parsers)
 
@@ -117,6 +118,7 @@ export function Session() {
   const kv = useKV()
   const { theme } = useTheme()
   const promptRef = usePromptRef()
+  const bridge = useBridge()
   const session = createMemo(() => sync.session.get(route.sessionID))
   const children = createMemo(() => {
     const parentID = session()?.parentID ?? session()?.id
@@ -1240,7 +1242,12 @@ export function Session() {
                     r.set(route.initialPrompt)
                   }
                 }}
-                disabled={permissions().length > 0 || questions().length > 0}
+                disabled={permissions().length > 0 || questions().length > 0 || bridge.state.inputLocked}
+                hint={
+                  <Show when={bridge.state.inputLocked}>
+                    <text fg={theme.textMuted}>⚡ Bridge mode — input controlled by master</text>
+                  </Show>
+                }
                 onSubmit={() => {
                   toBottom()
                 }}

@@ -7,6 +7,9 @@ export interface Args {
   continue?: boolean
   sessionID?: string
   fork?: boolean
+  bridge?: "master" | "friend"
+  coordinator?: string
+  bridgeID?: string
 }
 
 export const { use: useArgs, provider: ArgsProvider } = createSimpleContext({
