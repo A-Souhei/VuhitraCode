@@ -31,6 +31,8 @@ import { DbCommand } from "./cli/cmd/db"
 import { SetCommand } from "./cli/cmd/set"
 import { InitCommand } from "./cli/cmd/init"
 import { IndexCommand } from "./cli/cmd/indexer"
+import { Profiles } from "./project/profiles"
+import { VuHitraSettings } from "./project/vuhitra-settings"
 import path from "path"
 import { Global } from "./global"
 import { JsonMigration } from "./storage/json-migration"
@@ -65,6 +67,10 @@ const cli = yargs(hideBin(process.argv))
     type: "string",
     choices: ["DEBUG", "INFO", "WARN", "ERROR"],
   })
+  .option("profile", {
+    describe: "profile to use",
+    type: "string",
+  })
   .middleware(async (opts) => {
     await Log.init({
       print: process.argv.includes("--print-logs"),
@@ -75,6 +81,20 @@ const cli = yargs(hideBin(process.argv))
         return "INFO"
       })(),
     })
+
+    if (opts.profile) {
+      const dir = process.cwd()
+      if (!/^[A-Za-z0-9_\-.]+$/.test(opts.profile)) {
+        UI.error(`Invalid profile name: ${opts.profile}`)
+        process.exit(1)
+      }
+      const available = await Profiles.list(dir)
+      if (!available.includes(opts.profile)) {
+        UI.error(`Profile "${opts.profile}" not found. Available profiles: ${available.join(", ") || "(none)"}`)
+        process.exit(1)
+      }
+      await VuHitraSettings.setActiveProfile(opts.profile, dir)
+    }
 
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"

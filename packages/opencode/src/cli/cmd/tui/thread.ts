@@ -12,6 +12,7 @@ import { Filesystem } from "@/util/filesystem"
 import type { Event } from "@opencode-ai/sdk/v2"
 import type { EventSource } from "./context/sdk"
 import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -109,6 +110,10 @@ export const TuiThreadCommand = cmd({
       } catch (e) {
         UI.error("Failed to change directory to " + cwd)
         return
+      }
+
+      if (args.profile) {
+        await VuHitraSettings.setActiveProfile(args.profile as string, cwd)
       }
 
       const worker = new Worker(workerPath, {

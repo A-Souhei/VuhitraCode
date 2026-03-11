@@ -27,6 +27,7 @@ import { SkillTool } from "../../tool/skill"
 import { BashTool } from "../../tool/bash"
 import { TodoWriteTool } from "../../tool/todo"
 import { Locale } from "../../util/locale"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 type ToolProps<T extends Tool.Info> = {
   input: Tool.InferParameters<T>
@@ -314,6 +315,10 @@ export const RunCommand = cmd({
         process.exit(1)
       }
     })()
+
+    if (args.profile && directory && !args.attach) {
+      await VuHitraSettings.setActiveProfile(args.profile as string, directory)
+    }
 
     const files: { type: "file"; url: string; filename: string; mime: string }[] = []
     if (args.file) {

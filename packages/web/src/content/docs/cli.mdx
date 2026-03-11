@@ -37,10 +37,19 @@ opencode [project]
 | `--prompt`   |       | Prompt to use                                                           |
 | `--model`    | `-m`  | Model to use in the form of provider/model                              |
 | `--agent`    |       | Agent to use                                                            |
+| `--profile`  |       | Profile to use (overrides active profile in settings for this run)      |
 | `--port`     |       | Port to listen on                                                       |
 | `--hostname` |       | Hostname to listen on                                                   |
 
----
+#### Examples
+
+```bash
+# Start with a specific profile
+opencode --profile fast
+
+# Combine profile with agent
+opencode --profile quality --agent alice
+```
 
 ## Commands
 
