@@ -990,6 +990,27 @@ export type EventPtyDeleted = {
   }
 }
 
+export type BiblionStatus =
+  | {
+      type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
+      message?: string
+    }
+  | {
+      type: "ready"
+      entry_count: number
+      token_count: number
+      backend: "qdrant" | "redis"
+      embedding_url?: string
+      embedding_model?: string
+      backend_url?: string
+    }
+
+export type EventBiblionUpdated = {
+  type: "biblion.updated"
+  properties: BiblionStatus
+}
+
 export type EventWorktreeReady = {
   type: "worktree.ready"
   properties: {
@@ -1050,6 +1071,7 @@ export type Event =
   | EventPtyUpdated
   | EventPtyExited
   | EventPtyDeleted
+  | EventBiblionUpdated
   | EventWorktreeReady
   | EventWorktreeFailed
 
@@ -2883,6 +2905,172 @@ export type MemoryDeleteResponses = {
 }
 
 export type MemoryDeleteResponse = MemoryDeleteResponses[keyof MemoryDeleteResponses]
+
+export type BiblionStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/status"
+}
+
+export type BiblionStatusResponses = {
+  /**
+   * Biblion status retrieved successfully
+   */
+  200: BiblionStatus
+}
+
+export type BiblionStatusResponse = BiblionStatusResponses[keyof BiblionStatusResponses]
+
+export type BiblionListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/list"
+}
+
+export type BiblionListResponses = {
+  /**
+   * List of biblion entries
+   */
+  200: Array<{
+    id: string
+    type: string
+    tags: string
+    content: string
+  }>
+}
+
+export type BiblionListResponse = BiblionListResponses[keyof BiblionListResponses]
+
+export type BiblionSearchData = {
+  body?: {
+    /**
+     * Search query string
+     */
+    query: string
+    /**
+     * Maximum number of results to return
+     */
+    limit?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/search"
+}
+
+export type BiblionSearchResponses = {
+  /**
+   * Search results
+   */
+  200: Array<string>
+}
+
+export type BiblionSearchResponse = BiblionSearchResponses[keyof BiblionSearchResponses]
+
+export type BiblionWriteData = {
+  body?: {
+    /**
+     * Type of biblion entry
+     */
+    type: "structure" | "pattern" | "dependency" | "api" | "config" | "workflow"
+    /**
+     * The content to store
+     */
+    content: string
+    /**
+     * Optional tags for categorization
+     */
+    tags?: Array<string>
+    /**
+     * Session ID
+     */
+    session_id?: string
+    /**
+     * Git branch name
+     */
+    branch?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/write"
+}
+
+export type BiblionWriteErrors = {
+  /**
+   * Biblion not ready
+   */
+  503: {
+    success: false
+    reason: string
+  }
+}
+
+export type BiblionWriteError = BiblionWriteErrors[keyof BiblionWriteErrors]
+
+export type BiblionWriteResponses = {
+  /**
+   * Entry written successfully
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BiblionWriteResponse = BiblionWriteResponses[keyof BiblionWriteResponses]
+
+export type BiblionClearData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/clear"
+}
+
+export type BiblionClearResponses = {
+  /**
+   * Biblion cleared successfully
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BiblionClearResponse = BiblionClearResponses[keyof BiblionClearResponses]
+
+export type BiblionDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Entry ID to delete
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/biblion/{id}"
+}
+
+export type BiblionDeleteResponses = {
+  /**
+   * Entry deleted successfully
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BiblionDeleteResponse = BiblionDeleteResponses[keyof BiblionDeleteResponses]
 
 export type ToolIdsData = {
   body?: never

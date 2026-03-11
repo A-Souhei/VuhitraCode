@@ -392,6 +392,43 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </box>
               </box>
             </Show>
+            <Show when={sync.data.biblion_status}>
+              <box>
+                <text fg={RGBA.fromHex("#14b8a6")}>
+                  <b>Biblion</b>
+                </text>
+                <box flexDirection="row" gap={1}>
+                  <text
+                    flexShrink={0}
+                    style={{
+                      fg: sync.data.biblion_status?.type === "ready" ? theme.success : theme.textMuted,
+                    }}
+                  >
+                    •
+                  </text>
+                  <text fg={theme.textMuted}>
+                    {(() => {
+                      const s = sync.data.biblion_status!
+                      if (s.type === "disabled") {
+                        const labels: Record<string, string> = {
+                          not_configured: "Not configured",
+                          backend_unreachable: "Vector store unreachable",
+                          embedding_unreachable: "Embedding server unreachable",
+                          error: "Error",
+                        }
+                        return (s.reason && labels[s.reason]) || "Disabled"
+                      }
+                      if (s.type === "ready") {
+                        const tk =
+                          s.token_count >= 1000 ? `${(s.token_count / 1000).toFixed(1)}k` : String(s.token_count)
+                        return `${s.entry_count} entr${s.entry_count !== 1 ? "ies" : "y"} · ${tk} tokens`
+                      }
+                      return null
+                    })()}
+                  </text>
+                </box>
+              </box>
+            </Show>
             <Show when={todo().length > 0}>
               <box>
                 <box

@@ -10,6 +10,7 @@ export namespace VuHitraSettings {
   const SettingsSchema = z.object({
     indexing: z.object({ enabled: z.boolean().optional() }).optional(),
     memory: z.object({ enabled: z.boolean().optional() }).optional(),
+    biblion: z.object({ enabled: z.boolean().optional() }).optional(),
     model_lock: z
       .object({
         enabled: z.boolean().optional(),
@@ -79,6 +80,10 @@ export namespace VuHitraSettings {
 
   export function memoryEnabled(): boolean {
     return state().memory?.enabled === true
+  }
+
+  export function biblionEnabled(): boolean {
+    return state().biblion?.enabled === true
   }
 
   export function modelLock(): { enabled: boolean; model?: string } {
