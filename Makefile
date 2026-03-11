@@ -1,4 +1,4 @@
-.PHONY: dev docs setup test-privacy install-dev install redis redis-stop
+.PHONY: dev docs setup test-privacy install-dev install redis redis-stop mcp-install
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -54,3 +54,18 @@ redis:
 
 redis-stop:
 	docker stop redis-stack && docker rm redis-stack
+
+# Install official GitHub and Context7 MCP servers globally
+mcp-install:
+	@mkdir -p ~/.config/opencode
+	@echo 'Installing GitHub MCP (OAuth) and Context7 MCP...'
+	@tmp=$$(mktemp); \
+	echo '{"$$schema":"https://opencode.ai/config.json","mcp":{"github":{"type":"remote","url":"https://api.githubcopilot.com/mcp/","oauth":{}},"context7":{"type":"remote","url":"https://mcp.context7.com/mcp"}}}' > "$$tmp"; \
+	if [ -f ~/.config/opencode/opencode.json ]; then \
+		jq -s '.[0] * .[1]' ~/.config/opencode/opencode.json "$$tmp" > ~/.config/opencode/opencode.json.merged && \
+		mv ~/.config/opencode/opencode.json.merged ~/.config/opencode/opencode.json; \
+	else \
+		mv "$$tmp" ~/.config/opencode/opencode.json; \
+	fi; \
+	rm -f "$$tmp"
+	@echo '✓ MCP servers configured. Run `opencode mcp auth github` to authenticate GitHub (opens browser).'
