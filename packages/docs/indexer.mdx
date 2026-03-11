@@ -1,0 +1,142 @@
+---
+title: "Indexer"
+description: "Semantic code search with vector embeddings"
+icon: "search"
+---
+
+OpenCode's indexer provides semantic code search capabilities by indexing your codebase with vector embeddings. This allows agents to find relevant code based on meaning, not just keyword matching.
+
+## How It Works
+
+The indexer scans your project files, chunks the code into manageable pieces, and generates vector embeddings for each chunk. When an agent needs to find relevant code, it searches by semantic similarity.
+
+### Indexing Process
+
+1. **File Discovery** - Scans all files in the project directory
+2. **Filtering** - Respects `.gitignore` and `.opencodeignore` patterns
+3. **Chunking** - Splits files into chunks for embedding
+4. **Embedding** - Generates vector embeddings via configured embedding server
+5. **Storage** - Stores vectors in Qdrant or Redis
+
+### Incremental Updates
+
+The indexer tracks file modification times (mtime) and only re-indexes changed files, making subsequent indexations fast.
+
+## Backend Options
+
+<CardGroup cols={2}>
+
+<Card icon="database" title="Qdrant (Default)">
+  Self-hosted or cloud vector database. Configure via QDRANT_URL environment variable (defaults to
+  http://localhost:6333).
+</Card>
+
+<Card icon="server" title="Redis Stack">
+  Use Redis for vector storage. Configure via REDIS_URL or REDIS_HOST. Takes priority over Qdrant when configured.
+</Card>
+
+</CardGroup>
+
+## Configuration
+
+### Embedding Server
+
+Configure the embedding server in `.vuhitra/env.json`:
+
+```json title=".vuhitra/env.json"
+{
+  "OLLAMA_HOST": "http://localhost:11434",
+  "OLLAMA_MODEL": "nomic-embed-text:latest"
+}
+```
+
+The indexer uses Ollama for embeddings by default. Make sure Ollama is running with a compatible embedding model.
+
+### Backend Configuration
+
+For Qdrant:
+
+```json title=".vuhitra/env.json"
+{
+  "QDRANT_URL": "http://localhost:6333"
+}
+```
+
+For Redis Stack:
+
+```json title=".vuhitra/env.json"
+{
+  "REDIS_URL": "redis://localhost:6379"
+}
+```
+
+## CLI Commands
+
+### Delete Index
+
+Delete all index data for the current project:
+
+```bash frame="none"
+vuhitracode indexer delete
+```
+
+Skip the confirmation prompt:
+
+```bash frame="none"
+vuhitracode indexer delete --force
+```
+
+<Note>The indexer will automatically regenerate the index on next use.</Note>
+
+## Status
+
+Check indexer status via the HTTP API:
+
+```bash
+curl http://localhost:4096/indexer
+```
+
+Response shows indexing progress or completion status:
+
+```json
+{
+  "type": "complete",
+  "backend": "qdrant",
+  "embedding_url": "http://localhost:11434",
+  "embedding_model": "nomic-embed-text:latest",
+  "backend_url": "http://localhost:6333"
+}
+```
+
+## Best Practices
+
+<CardGroup cols={3}>
+
+<Card icon="git" title="Respect Gitignore">
+  The indexer automatically respects .gitignore patterns. Keep your gitignore up to date to avoid indexing unnecessary
+  files.
+</Card>
+
+<Card icon="zap" title="Use Local Embeddings">
+  For best performance, run Ollama locally with a fast embedding model like nomic-embed-text.
+</Card>
+
+<Card icon="refresh" title="Reset When Switching Models">
+  If you change the embedding model, delete and regenerate the index to ensure consistency.
+</Card>
+
+</CardGroup>
+
+## Troubleshooting
+
+### Indexer Disabled
+
+If the status shows `disabled`, check:
+
+1. **Embedding server unavailable** - Ensure Ollama is running
+2. **Backend unavailable** - Ensure Qdrant or Redis is accessible
+3. **Model not found** - Ensure the embedding model is pulled in Ollama
+
+### Slow Indexing
+
+Large codebases may take time to index initially. Subsequent runs will be faster due to mtime caching.

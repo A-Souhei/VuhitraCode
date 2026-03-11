@@ -1,0 +1,186 @@
+---
+title: Memory
+description: Persistent agent memory for context across sessions.
+---
+
+OpenCode's memory system provides persistent storage for agent context across sessions. Agents can store and retrieve information about your project, including commands, procedures, resolutions, and findings.
+
+---
+
+## How It Works
+
+The memory system uses vector embeddings to store and retrieve information semantically. When an agent needs context, it searches memory for relevant entries based on similarity to the current task.
+
+---
+
+### Entry Types
+
+Memory entries are categorized by type:
+
+| Type         | Description                             |
+| ------------ | --------------------------------------- |
+| `command`    | Useful commands and their usage         |
+| `procedure`  | Workflows and procedures to follow      |
+| `resolution` | Issues resolved and how they were fixed |
+| `finding`    | Important discoveries or observations   |
+| `script`     | Useful scripts or patches               |
+| `log`        | Summary of work completed               |
+| `issue`      | Problems encountered                    |
+| `branch`     | Branch-specific information             |
+
+---
+
+### Tags
+
+Each entry can be tagged for easier retrieval. Tags help organize memory by feature, component, or any relevant category.
+
+---
+
+## Backend Options
+
+OpenCode supports two backends for vector storage:
+
+- **Qdrant** (default) - Self-hosted or cloud vector database
+- **Redis Stack** - Use Redis for vector storage
+
+---
+
+### Qdrant
+
+By default, OpenCode uses Qdrant for vector storage. Set the following environment variables:
+
+```bash
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=your-api-key  # optional
+```
+
+---
+
+### Redis Stack
+
+To use Redis Stack as the backend, set the following environment variables:
+
+```bash
+REDIS_URL=redis://localhost:6379
+# or individually:
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your-password  # optional
+```
+
+:::note
+Redis Stack requires the RediSearch module with vector search capabilities.
+:::
+
+---
+
+### Embeddings
+
+Memory requires an embedding service. By default, it uses Ollama with the `nomic-embed-text` model:
+
+```bash
+EMBEDDING_URL=http://localhost:11434
+EMBEDDING_MODEL=nomic-embed-text:latest
+```
+
+Ensure Ollama is running with the embedding model installed:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+---
+
+## Configuration
+
+Memory is enabled by default when the required services are available. You can explicitly configure it in `.vuhitra/settings.json`:
+
+```json title=".vuhitra/settings.json"
+{
+  "memory": {
+    "enabled": true
+  }
+}
+```
+
+Set `enabled` to `false` to disable memory entirely.
+
+---
+
+## TUI Commands
+
+### View Memory Status
+
+The memory status is displayed in the TUI sidebar. When enabled, you'll see the entry count and token count.
+
+---
+
+### Reset Memory
+
+Use the `/memory reset` command to clear all memory entries for the current project:
+
+```txt frame="none"
+/memory reset
+```
+
+:::caution
+This action cannot be undone. All memory entries will be permanently deleted.
+:::
+
+---
+
+## Best Practices
+
+- Let agents write memory entries naturally during complex tasks
+- Use descriptive tags for easier retrieval
+- Reset memory when switching to a different project or context
+- Review memory status periodically to understand context size
+
+---
+
+## API
+
+Memory can also be managed via the HTTP API:
+
+| Method   | Endpoint         | Description              |
+| -------- | ---------------- | ------------------------ |
+| `GET`    | `/memory/status` | Get memory status        |
+| `DELETE` | `/memory`        | Clear all memory entries |
+
+---
+
+### Get Memory Status
+
+```bash
+curl http://localhost:4096/memory/status
+```
+
+Response:
+
+```json
+{
+  "type": "ready",
+  "entry_count": 42,
+  "token_count": 15000,
+  "backend": "qdrant",
+  "embedding_url": "http://localhost:11434",
+  "embedding_model": "nomic-embed-text:latest",
+  "backend_url": "http://localhost:6333"
+}
+```
+
+---
+
+### Clear Memory
+
+```bash
+curl -X DELETE http://localhost:4096/memory
+```
+
+Response:
+
+```json
+{
+  "success": true
+}
+```

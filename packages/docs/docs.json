@@ -21,6 +21,10 @@
           {
             "group": "Features",
             "pages": ["features"]
+          },
+          {
+            "group": "Integrations",
+            "pages": ["memory", "indexer"]
           }
         ]
       },
@@ -29,7 +33,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": ["agents/alice", "agents/sentinel", "agents/audit"]
+            "pages": ["agents/alice", "agents/sentinel", "agents/scout", "agents/audit"]
           }
         ]
       }

@@ -1,0 +1,134 @@
+---
+title: Redis Integration
+description: Use Redis Stack for vector storage and semantic search
+---
+
+OpenCode supports Redis Stack as an alternative backend for vector storage. This is useful when you already have Redis in your infrastructure or prefer Redis over Qdrant.
+
+---
+
+## Requirements
+
+- **Redis Stack** (required for FT.CREATE and vector search support)
+- **ioredis** v5.10.0 or compatible
+
+:::note
+Standard Redis is not sufficient. You need Redis Stack which includes the RediSearch module for vector indexing.
+:::
+
+---
+
+## Configuration
+
+Configure Redis via environment variables in `.vuhitra/env.json`:
+
+---
+
+### Option A: Single URL (Recommended)
+
+```json title=".vuhitra/env.json"
+{
+  "REDIS_URL": "redis://localhost:6379"
+}
+```
+
+For authenticated connections:
+
+```json title=".vuhitra/env.json"
+{
+  "REDIS_URL": "redis://:password@localhost:6379"
+}
+```
+
+---
+
+### Option B: Host/Port/Password
+
+```json title=".vuhitra/env.json"
+{
+  "REDIS_HOST": "localhost",
+  "REDIS_PORT": "6379",
+  "REDIS_PASSWORD": ""
+}
+```
+
+:::tip
+Option A (REDIS_URL) takes precedence when both are configured.
+:::
+
+---
+
+## Priority
+
+Redis takes priority over Qdrant when configured. If both are available, Redis will be used.
+
+---
+
+## How It Works
+
+---
+
+### Vector Storage
+
+- Uses Redis Hash with FT.CREATE for vector indexing
+- Vectors stored as binary buffers (float32 encoded)
+- HNSW algorithm for approximate nearest neighbor search
+- Cosine distance metric
+
+---
+
+### Memory Service
+
+Keys are prefixed with `memory_{project_id}:point:` and store:
+
+| Field       | Type    | Description          |
+| ----------- | ------- | -------------------- |
+| type        | TAG     | Entry type           |
+| tags        | TEXT    | Comma-separated tags |
+| content     | TEXT    | Entry content        |
+| timestamp   | NUMERIC | Unix timestamp       |
+| token_count | NUMERIC | Token count          |
+| vector      | VECTOR  | Embedding vector     |
+
+---
+
+### Indexer Service
+
+Keys are prefixed with `opencode_{project_id}:point:` and store:
+
+| Field      | Type    | Description            |
+| ---------- | ------- | ---------------------- |
+| file_path  | TAG     | File path              |
+| text       | TEXT    | File content chunk     |
+| start_line | NUMERIC | Starting line number   |
+| mtime      | NUMERIC | File modification time |
+| vector     | VECTOR  | Embedding vector       |
+
+---
+
+## Health Checks
+
+OpenCode performs automatic health checks:
+
+- Redis PING response validation
+- Embedding service connectivity check
+
+---
+
+## Status
+
+You can check the backend status via the memory status endpoint. The `backend` field will show `"redis"` when Redis is active.
+
+---
+
+## Troubleshooting
+
+If you encounter issues with Redis:
+
+1. **Check Redis Stack is installed**: Run `redis-cli MODULE LIST` and verify `search` is listed.
+
+2. **Verify connection**: Test your connection with `redis-cli ping`.
+
+3. **Check authentication**: Ensure `REDIS_PASSWORD` matches your Redis configuration.
+
+4. **Index errors**: If you see "Index already exists" errors, this is normal - OpenCode handles this gracefully.

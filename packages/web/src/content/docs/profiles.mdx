@@ -1,0 +1,105 @@
+---
+title: Profiles
+description: Manage multiple model configurations with profiles.
+---
+
+Profiles allow you to save and switch between different model configurations. This is useful when you work with different models for different tasks or projects.
+
+---
+
+## How Profiles Work
+
+Each profile stores:
+
+- Model selections for primary agents
+- Model selections for subagents
+- Memory settings
+- Review and explore configuration
+
+Profiles are stored in `.vuhitra/profiles/<name>.json` and the active profile is tracked in `.vuhitra/settings.json`.
+
+---
+
+## Default Profile
+
+OpenCode creates a `default` profile automatically. This profile uses your configured models and settings.
+
+---
+
+## Creating Profiles
+
+Use the `/profile create` command in the TUI:
+
+```bash frame="none"
+/profile create
+```
+
+You'll be prompted to enter a profile name. The new profile will use your current model settings as a starting point.
+
+---
+
+## Switching Profiles
+
+Use the `/profile switch` command:
+
+```bash frame="none"
+/profile switch
+```
+
+Select the profile you want to activate from the list.
+
+The active profile name is displayed below the input field in the TUI.
+
+---
+
+## Use Cases
+
+### Different Models for Different Tasks
+
+Create profiles for different model preferences:
+
+- **fast** - Uses faster, cheaper models for quick iterations
+- **quality** - Uses more capable models for important work
+- **local** - Uses local models for offline work
+
+---
+
+### Project-Specific Settings
+
+Create profiles for different projects:
+
+- **frontend** - Optimized for React/Vue development
+- **backend** - Optimized for server-side work
+- **docs** - Optimized for documentation writing
+
+---
+
+### Team Shared Configurations
+
+Share profiles via version control so team members use consistent model settings.
+
+---
+
+## Configuration
+
+Profile files are stored in `.vuhitra/profiles/`:
+
+```json title=".vuhitra/profiles/fast.json"
+{
+  "model": "anthropic/claude-haiku-4-5",
+  "agent": {
+    "build": {
+      "model": "anthropic/claude-haiku-4-5"
+    }
+  }
+}
+```
+
+---
+
+## Best Practices
+
+- Name profiles descriptively based on their purpose
+- Create a profile before making significant model changes
+- Share useful profiles with your team
+- Use `/profile switch` to quickly adapt to different tasks

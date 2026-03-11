@@ -1,0 +1,150 @@
+---
+title: "Memory"
+description: "Persistent agent memory for context across sessions"
+icon: "brain"
+---
+
+OpenCode's memory system provides persistent storage for agent context across sessions. Agents can store and retrieve information about your project, including commands, procedures, resolutions, and findings.
+
+## How It Works
+
+The memory system uses vector embeddings to store and retrieve information semantically. When an agent needs context, it searches memory for relevant entries based on similarity to the current task.
+
+### Entry Types
+
+Memory entries are categorized by type:
+
+| Type         | Description                             |
+| ------------ | --------------------------------------- |
+| `command`    | Useful commands and their usage         |
+| `procedure`  | Workflows and procedures to follow      |
+| `resolution` | Issues resolved and how they were fixed |
+| `finding`    | Important discoveries or observations   |
+| `script`     | Useful scripts or patches               |
+| `log`        | Summary of work completed               |
+| `issue`      | Problems encountered                    |
+| `branch`     | Branch-specific information             |
+
+### Tags
+
+Each entry can be tagged for easier retrieval. Tags help organize memory by feature, component, or any relevant category.
+
+## Backend Options
+
+OpenCode supports two backends for vector storage:
+
+<CardGroup cols={2}>
+
+<Card icon="database" title="Qdrant (Default)" href="#qdrant">
+  Self-hosted or cloud vector database. Configure via QDRANT_URL environment variable.
+</Card>
+
+<Card icon="server" title="Redis Stack" href="#redis-stack">
+  Use Redis for vector storage. Configure via REDIS_URL or REDIS_HOST. Takes priority over Qdrant when configured.
+</Card>
+
+</CardGroup>
+
+## Configuration
+
+Memory is configured in `.vuhitra/settings.json`:
+
+```json title=".vuhitra/settings.json"
+{
+  "memory": {
+    "enabled": true
+  }
+}
+```
+
+Set `enabled` to `false` to disable memory entirely.
+
+<Note>
+  Memory requires an embedding model to be configured. The default embedding model is `nomic-embed-text:latest`.
+</Note>
+
+## TUI Commands
+
+### View Memory Status
+
+The memory status is displayed in the TUI sidebar. When enabled, you'll see the entry count and token count.
+
+### Reset Memory
+
+Use the `/memory reset` command to clear all memory entries for the current project:
+
+```bash frame="none"
+/memory reset
+```
+
+<Warning>This action cannot be undone. All memory entries will be permanently deleted.</Warning>
+
+## Best Practices
+
+<CardGroup cols={3}>
+
+<Card icon="lightbulb" title="Natural Memory Writing">
+  Let agents write memory entries naturally during complex tasks. They'll capture useful context automatically.
+</Card>
+
+<Card icon="tags" title="Descriptive Tags">
+  Use descriptive tags for easier retrieval. Tag by feature, component, or task type.
+</Card>
+
+<Card icon="refresh" title="Reset When Switching">
+  Reset memory when switching to a different project or context to avoid stale entries.
+</Card>
+
+</CardGroup>
+
+## API
+
+Memory can also be managed via the HTTP API:
+
+| Method   | Endpoint         | Description              |
+| -------- | ---------------- | ------------------------ |
+| `GET`    | `/memory/status` | Get memory status        |
+| `DELETE` | `/memory`        | Clear all memory entries |
+
+### Get Memory Status
+
+```bash
+curl http://localhost:4096/memory/status
+```
+
+Response:
+
+```json
+{
+  "type": "ready",
+  "entry_count": 42,
+  "token_count": 15000,
+  "backend": "qdrant",
+  "embedding_url": "http://localhost:11434",
+  "embedding_model": "nomic-embed-text:latest",
+  "backend_url": "http://localhost:6333"
+}
+```
+
+### Clear Memory
+
+```bash
+curl -X DELETE http://localhost:4096/memory
+```
+
+<Note>
+  The server must be running for these API endpoints to be available. By default, the server listens on port 4096.
+</Note>
+
+## Environment Variables
+
+Configure memory backends using environment variables:
+
+| Variable     | Description                                | Default                 |
+| ------------ | ------------------------------------------ | ----------------------- |
+| `QDRANT_URL` | Qdrant server URL                          | `http://localhost:6333` |
+| `REDIS_URL`  | Redis connection URL                       | -                       |
+| `REDIS_HOST` | Redis host (fallback if REDIS_URL not set) | `localhost`             |
+| `REDIS_PORT` | Redis port                                 | `6379`                  |
+
+<Note>When Redis is configured (via REDIS_URL or REDIS_HOST), it takes priority over Qdrant.</Note>

@@ -5,14 +5,14 @@ description: Primary orchestrator agent for planning, delegating, and verifying 
 
 import { Card, Columns } from "@mintlify/components"
 
-Alice is a pure orchestrator agent that plans, delegates, and verifies work without implementing anything itself. She dispatches up to 7 Sentinel workers to execute independent tasks concurrently and verifies completion before declaring done.
+Alice is a pure orchestrator agent that plans, delegates, and verifies work without implementing anything itself. She dispatches up to 7 Sentinel or Scout workers to execute independent tasks concurrently and verifies completion before declaring done.
 
 ## Overview
 
 Alice excels at:
 
 - **Planning** - Breaking down complex tasks into atomic, independently verifiable items
-- **Delegating** - Spawning up to 7 parallel Sentinel workers to execute tasks
+- **Delegating** - Spawning up to 7 parallel Sentinel or Scout workers to execute tasks
 - **Orchestrating** - Managing dependencies and coordinating work across multiple agents
 - **Verifying** - Using Keeper agents to validate work completion before proceeding
 
@@ -21,7 +21,7 @@ Alice follows a strict 6-phase workflow (with Phase 4b as a sub-phase) ensuring 
 1. **Phase 0** - Silent mode intake (optional preferences)
 2. **Phase 1** - Gather context via explore agents
 3. **Phase 2** - Create TODO list
-4. **Phase 3** - Execute in parallel (up to 7 Sentinels)
+4. **Phase 3** - Execute in parallel (up to 7 Sentinels or Scouts)
 5. **Phase 4** - Keeper verification
 6. **Phase 4b** - Code review (inline with Inspect agents)
 7. **Phase 5** - Testing
@@ -60,11 +60,16 @@ In silent mode, Alice collects preferences for:
 Alice leverages parallel processing throughout:
 
 - **Up to 3 parallel explores** for codebase mapping
-- **Up to 7 parallel Sentinels** for task execution
+- **Up to 7 parallel Sentinels or Scouts** for task execution (combined total)
 - **Up to 7 parallel Inspect agents** for code review
 - **Up to 3 concurrent test agents** for verification
 
-This enables Alice to handle large, complex projects efficiently.
+Alice uses two types of workers for task execution:
+
+- **Sentinels** for complex tasks — multi-file changes, refactors, tasks requiring exploration
+- **Scouts** for simple tasks — single file edits, small targeted changes, renames
+
+This enables Alice to handle large, complex projects efficiently while optimizing costs for simpler work.
 
 ## Phase-by-Phase Workflow
 
@@ -85,15 +90,37 @@ Alice creates a complete, ordered TODO list with atomic items before any impleme
 
 ### Phase 3: Execute (Parallel)
 
-Alice spawns up to 7 Sentinels to execute independent TODO items in parallel:
+Alice spawns up to 7 Sentinels or Scouts to execute independent TODO items in parallel:
 
 1. Mark batch items as `in_progress`
-2. Spawn Sentinels with full context
+2. Spawn workers with full context
 3. Wait for all to complete
 4. Mark completed items
 5. Repeat with next batch
 
-**Critical rule**: Alice never implements tasks herself — every item is delegated to a Sentinel.
+**Critical rule**: Alice never implements tasks herself — every item is delegated to a Sentinel or Scout.
+
+#### Scout vs Sentinel — Choosing the Right Worker
+
+Alice chooses the appropriate worker type based on task complexity:
+
+**Dispatch a Scout for:**
+
+- Simple single-file edits
+- Small targeted changes
+- Self-contained tasks
+- Tasks estimated to complete in a few steps
+
+**Dispatch a Sentinel for:**
+
+- Multi-file changes
+- Complex logic or refactors
+- Tasks with unknowns or exploration needed
+- Cross-cutting concerns
+
+**When in doubt, use Sentinel.**
+
+Scout runs on a cheaper, faster model (configured by the user) and is nearly identical to Sentinel — same write/edit/bash access, same reporting format — except Scout cannot spawn sub-agents.
 
 ### Phase 4: Keeper Verification
 

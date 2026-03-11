@@ -285,6 +285,74 @@ Unshare current session. [Learn more](/docs/share#un-sharing).
 
 ---
 
+### memory reset
+
+Reset the agent memory for the current project. This deletes all stored memory entries that the agent uses for context across sessions.
+
+:::caution
+This action cannot be undone. All memory entries will be permanently deleted.
+:::
+
+```bash frame="none"
+/memory reset
+```
+
+---
+
+### profile create
+
+Create a new agent model profile with a custom name. Profiles allow you to save different model configurations for different use cases.
+
+```bash frame="none"
+/profile create
+```
+
+You'll be prompted to enter a profile name. The new profile will use your current model settings.
+
+---
+
+### profile switch
+
+Switch between existing agent model profiles. Only available if you have multiple profiles configured.
+
+```bash frame="none"
+/profile switch
+```
+
+The active profile name is displayed below the input field in the TUI.
+
+---
+
+### set-current-model-to-agent
+
+Save the currently selected model as the default model for the active primary agent. This allows you to have different default models for different agents.
+
+```bash frame="none"
+/set-current-model-to-agent
+```
+
+---
+
+### set-current-model-to-subagent
+
+Save the currently selected model as the default model for a selected subagent. Useful for optimizing costs by using cheaper models for simple subagent tasks.
+
+```bash frame="none"
+/set-current-model-to-subagent
+```
+
+---
+
+### skills
+
+Browse and insert available skills from the system. Skills are reusable prompt templates for common tasks.
+
+```bash frame="none"
+/skills
+```
+
+---
+
 ## Editor setup
 
 Both the `/editor` and `/export` commands use the editor specified in your `EDITOR` environment variable.

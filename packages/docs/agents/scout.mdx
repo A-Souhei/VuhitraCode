@@ -1,0 +1,114 @@
+---
+title: Scout
+description: Lightweight worker agent for simple, fast tasks
+---
+
+import { Card } from "@mintlify/components"
+
+Scout is a lightweight worker agent that serves as Alice's cost-efficient alternative for simple, fast tasks. It runs on a cheaper model while maintaining the same execution capabilities as Sentinel.
+
+## Overview
+
+Scouts excel at:
+
+- **Simple edits** - Update strings, add fields, fix typos
+- **Targeted changes** - Rename symbols, change constants
+- **Self-contained tasks** - Clear scope with no unknowns
+- **Fast execution** - Completes in a few steps
+
+## Scout vs Sentinel
+
+<Card icon="zap" title="Use Scout For">
+  Simple single-file edits, small targeted changes, self-contained tasks with clear scope, anything estimated to
+  complete in a few steps.
+</Card>
+
+<Card icon="shield" title="Use Sentinel For">
+  Multi-file changes or refactors, complex logic requiring exploration, tasks with unknowns, anything touching
+  interfaces, APIs, or cross-cutting concerns.
+</Card>
+
+## How Scouts Work
+
+Alice dispatches Scouts for simple tasks:
+
+1. **Alice** evaluates task complexity
+2. **Alice** spawns a Scout for simple tasks
+3. **Scout** receives full task context and executes independently
+4. **Scout** reports results with `[Modified files: ...]` tag
+5. **Alice** marks task as completed
+
+### Key Differences from Sentinel
+
+- **No sub-agent spawning** - Scouts cannot spawn other agents
+- **Single task focus** - One task at a time, no parallel batches
+- **Cheaper model** - Configured by user for cost efficiency
+- **Same capabilities** - Write, edit, bash access like Sentinel
+
+## Integration with Alice
+
+```
+Alice → Evaluates complexity → Dispatches Scout or Sentinel
+
+Scout → Executes task → Reports to Alice
+
+Keeper → Verifies Scout work after completion
+```
+
+### Decision Flow
+
+When Alice receives a task:
+
+1. **Assess complexity** - Is this simple or complex?
+2. **Simple task?** → Dispatch Scout (cost-efficient)
+3. **Complex task?** → Dispatch Sentinel (full capabilities)
+4. **Unknown scope?** → Default to Sentinel (safe choice)
+
+## Best Practices
+
+<Card icon="dollar-sign" title="Use Scout Aggressively">
+  Simple tasks are common. Using Scout for these reduces costs significantly while maintaining quality.
+</Card>
+
+<Card icon="help-circle" title="When in Doubt">
+  Let Alice decide. She defaults to Sentinel for safety when complexity is uncertain.
+</Card>
+
+<Card icon="check-circle" title="Trust Alice's Judgment">
+  Alice's complexity assessment is reliable. She balances cost and capability automatically.
+</Card>
+
+## Typical Workflow
+
+```
+Alice receives task: "Update API endpoint URL in config"
+
+Alice evaluates: Simple, single-file change → Scout
+
+Scout executes:
+1. Reads config file
+2. Updates endpoint URL
+3. Reports: [Modified files: config.ts]
+
+Alice marks task complete
+
+Keeper verifies change
+```
+
+Compare with Sentinel workflow:
+
+```
+Alice receives task: "Refactor authentication to support OAuth"
+
+Alice evaluates: Multi-file, complex logic → Sentinel
+
+Sentinel executes:
+1. Explores auth module structure
+2. Modifies multiple files
+3. May spawn sub-agents for parallel work
+4. Reports: [Modified files: auth/*.ts, oauth/*.ts]
+
+Alice marks task complete
+
+Keeper verifies, Audit reviews
+```
