@@ -308,7 +308,6 @@ function App() {
   createEffect(() => {
     if (bridgeInited || sync.status === "loading" || !args.bridge) return
     if (sync.data.session.length === 0) return
-    bridgeInited = true
     const current = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
     const session = current ?? sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)[0]
     if (args.bridge === "master") {
@@ -333,6 +332,7 @@ function App() {
           toast.show({ message: `Bridge active! Share this ID with friends: ${id}`, variant: "info", duration: 8000 })
           bridge.setRole("master")
           bridge.setBridgeID(id)
+          bridgeInited = true
         })
         .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
     } else if (args.bridge === "friend") {
@@ -348,7 +348,7 @@ function App() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          masterIDOrSlug: args.bridgeID ?? "",
+          masterIDOrSlug: args.bridgeID,
           sessionID: session.id,
           slug: session.slug,
           title: session.title,
@@ -367,6 +367,7 @@ function App() {
           bridge.setRole("friend")
           bridge.setBridgeID(id)
           bridge.setInputLocked(true)
+          bridgeInited = true
         })
         .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
     }
@@ -830,8 +831,8 @@ function App() {
       if (!error) return "An error occurred"
 
       if (typeof error === "object") {
-        const data = error.data
-        if ("message" in data && typeof data.message === "string") {
+        const data = (error as any).data
+        if (data && "message" in data && typeof data.message === "string") {
           return data.message
         }
       }
@@ -854,12 +855,12 @@ function App() {
     })
   })
 
-  sdk.event.on("bridge.state.changed" as any, (evt: any) => {
+  sdk.event.on("bridge.state.changed" as any, (evt: { properties?: { bridgeID?: string; nodes?: unknown[] } }) => {
     bridge.setBridgeID(evt.properties?.bridgeID ?? null)
     bridge.setNodeCount(evt.properties?.nodes?.length ?? 0)
   })
 
-  sdk.event.on("bridge.input.locked" as any, (evt: any) => {
+  sdk.event.on("bridge.input.locked" as any, (evt: { properties?: { locked?: boolean } }) => {
     bridge.setInputLocked(evt.properties?.locked ?? false)
   })
 

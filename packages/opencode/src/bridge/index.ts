@@ -93,6 +93,7 @@ export namespace Bridge {
     inputLocked: boolean
     coordinator?: string
     lastRefresh: number
+    inProgress: Promise<Info> | null
   }
 
   const state = Instance.state<State>(
@@ -106,6 +107,7 @@ export namespace Bridge {
       info: null,
       inputLocked: false,
       lastRefresh: 0,
+      inProgress: null,
     }),
     async () => {
       await leave()
@@ -184,17 +186,20 @@ export namespace Bridge {
       const node = NodeInfo.safeParse(msg.node)
       if (node.success) Bus.publish(Event.NodeJoined, node.data)
     } else if (msg.type === "node.left") {
-      const nodeID = msg.nodeID as string
-      if (s.bridgeID) Bus.publish(Event.NodeLeft, { nodeID, bridgeID: s.bridgeID })
+      const parsed = z.object({ nodeID: z.string() }).safeParse(msg)
+      if (parsed.success && s.bridgeID)
+        Bus.publish(Event.NodeLeft, { nodeID: parsed.data.nodeID, bridgeID: s.bridgeID })
     } else if (msg.type === "context.shared") {
       const entry = ContextEntry.safeParse(msg.entry)
       if (entry.success) Bus.publish(Event.ContextShared, entry.data)
     } else if (msg.type === "input.locked") {
-      const nodeID = msg.nodeID as string
-      const locked = msg.locked as boolean
-      if (s.sessionID && nodeID === s.sessionID) {
-        s.inputLocked = locked
-        Bus.publish(Event.InputLocked, { locked })
+      const parsed = z.object({ nodeID: z.string(), locked: z.boolean() }).safeParse(msg)
+      if (parsed.success) {
+        const cs = state()
+        if (cs.bridgeID && cs.sessionID && parsed.data.nodeID === cs.sessionID) {
+          cs.inputLocked = parsed.data.locked
+          Bus.publish(Event.InputLocked, { locked: parsed.data.locked })
+        }
       }
     } else if (msg.type === "task.dispatched") {
       const parsed = z
@@ -287,103 +292,108 @@ export namespace Bridge {
     const s = state()
     // Idempotent if already master for same session
     if (s.role === "master" && s.bridgeID === input.sessionID) return s.info!
-    // Clean up any existing bridge membership before establishing new one
-    if (s.bridgeID) await leave()
+    if (s.inProgress) return s.inProgress
+    s.inProgress = (async () => {
+      if (s.bridgeID) await leave()
 
-    const id = input.sessionID
-    const k = keys(id)
-    // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
-    const limit = input.limit ?? parseInt(process.env.BRIDGE_MAX_NODES ?? "3", 10)
+      const id = input.sessionID
+      const k = keys(id)
+      // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
+      const limit = input.limit ?? parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10)
 
-    const pub = makeClient(input.coordinator)
-    const sub = makeClient(input.coordinator)
-    await pub.connect()
-    await sub.connect()
+      const pub = makeClient(input.coordinator)
+      const sub = makeClient(input.coordinator)
+      await pub.connect()
+      await sub.connect()
 
-    try {
-      const node: NodeInfo = {
-        nodeID: input.sessionID,
-        role: "master",
-        sessionID: input.sessionID,
-        slug: input.slug,
-        title: input.title,
-        directory: input.directory,
-        nodeURL: input.nodeURL,
-        heartbeat: Date.now(),
-        status: "active",
-      }
-
-      await Promise.all([
-        pub.hset(k.master, {
+      try {
+        const node: NodeInfo = {
+          nodeID: input.sessionID,
+          role: "master",
           sessionID: input.sessionID,
           slug: input.slug,
           title: input.title,
           directory: input.directory,
           nodeURL: input.nodeURL,
-          heartbeat: String(Date.now()),
-        }),
-        pub.hset(k.nodes, input.sessionID, JSON.stringify(node)),
-        pub.set(k.session(input.sessionID), id),
-        pub.set(`bridge:${id}:limit`, String(limit)),
-      ])
+          heartbeat: Date.now(),
+          status: "active",
+        }
 
-      await sub.subscribe(k.channel)
-      sub.on("message", (_, msg) => {
-        handleMessage(msg).catch((e) => log.warn("bridge: message handler error", { error: String(e) }))
-      })
-
-      const inf = await buildInfo(pub, id, limit)
-
-      s.bridgeID = id
-      s.role = "master"
-      s.sessionID = input.sessionID
-      s.pubClient = pub
-      s.subClient = sub
-      s.info = inf
-      s.inputLocked = false
-      s.coordinator = input.coordinator
-
-      startHeartbeat(id, input.sessionID)
-
-      await pub
-        .publish(k.channel, JSON.stringify({ type: "node.joined", node }))
-        .catch((e) => log.warn("bridge: publish join failed", { error: String(e) }))
-
-      Database.use((db) =>
-        db
-          .insert(BridgeNodeTable)
-          .values({
-            session_id: input.sessionID,
-            bridge_id: id,
-            role: "master",
+        await Promise.all([
+          pub.hset(k.master, {
+            sessionID: input.sessionID,
+            slug: input.slug,
+            title: input.title,
             directory: input.directory,
-            node_url: input.nodeURL,
-            status: "active",
-            limit: limit,
-            coordinator: input.coordinator ?? null,
-          })
-          .onConflictDoUpdate({
-            target: BridgeNodeTable.session_id,
-            set: {
+            nodeURL: input.nodeURL,
+            heartbeat: String(Date.now()),
+          }),
+          pub.hset(k.nodes, input.sessionID, JSON.stringify(node)),
+          pub.set(k.session(input.sessionID), id),
+          pub.set(`bridge:${id}:limit`, String(limit)),
+        ])
+
+        await sub.subscribe(k.channel)
+        sub.on("message", (_, msg) => {
+          handleMessage(msg).catch((e) => log.warn("bridge: message handler error", { error: String(e) }))
+        })
+
+        const inf = await buildInfo(pub, id, limit)
+
+        Database.use((db) =>
+          db
+            .insert(BridgeNodeTable)
+            .values({
+              session_id: input.sessionID,
               bridge_id: id,
               role: "master",
-              status: "active",
+              directory: input.directory,
               node_url: input.nodeURL,
+              status: "active",
               limit: limit,
               coordinator: input.coordinator ?? null,
-            },
-          })
-          .run(),
-      )
+            })
+            .onConflictDoUpdate({
+              target: BridgeNodeTable.session_id,
+              set: {
+                bridge_id: id,
+                role: "master",
+                status: "active",
+                node_url: input.nodeURL,
+                limit: limit,
+                coordinator: input.coordinator ?? null,
+              },
+            })
+            .run(),
+        )
 
-      Bus.publish(Event.StateChanged, inf)
-      log.info("bridge: became master", { bridgeID: id })
-      return inf
-    } catch (e) {
-      await pub.quit().catch(() => {})
-      await sub.quit().catch(() => {})
-      throw e
-    }
+        s.bridgeID = id
+        s.role = "master"
+        s.sessionID = input.sessionID
+        s.pubClient = pub
+        s.subClient = sub
+        s.info = inf
+        s.inputLocked = false
+        s.coordinator = input.coordinator
+
+        startHeartbeat(id, input.sessionID)
+
+        await pub
+          .publish(k.channel, JSON.stringify({ type: "node.joined", node }))
+          .catch((e) => log.warn("bridge: publish join failed", { error: String(e) }))
+
+        Bus.publish(Event.StateChanged, inf)
+        log.info("bridge: became master", { bridgeID: id })
+        return inf
+      } catch (e) {
+        await pub.quit().catch(() => {})
+        await sub.quit().catch(() => {})
+        throw e
+      }
+    })().finally(() => {
+      s.inProgress = null
+    })
+    return s.inProgress
   }
 
   export async function setFriend(input: {
@@ -400,147 +410,154 @@ export namespace Bridge {
     const s = state()
     // Idempotent if already friend in same bridge for same session
     if (s.role === "friend" && s.bridgeID && s.sessionID === input.sessionID) return s.info!
-    // Clean up any existing bridge membership before joining
-    if (s.bridgeID) await leave()
+    if (s.inProgress) return s.inProgress
+    s.inProgress = (async () => {
+      if (s.bridgeID) await leave()
 
-    const pub = makeClient(input.coordinator)
-    const sub = makeClient(input.coordinator)
-    await pub.connect()
-    await sub.connect()
+      const pub = makeClient(input.coordinator)
+      const sub = makeClient(input.coordinator)
+      await pub.connect()
+      await sub.connect()
 
-    try {
-      // Resolve master ID
-      let masterID = input.masterIDOrSlug
-      if (!masterID.startsWith("ses_")) {
-        // It's a slug — scan bridge:sessions:* to find the master
-        let cursor = "0"
-        let found = false
-        do {
-          const [next, batch] = await pub.scan(cursor, "MATCH", "bridge:sessions:*", "COUNT", "100")
-          cursor = next
-          for (const k of batch) {
-            const id = await pub.get(k)
-            if (!id) continue
-            const mraw = await pub.hgetall(`bridge:${id}:master`)
-            if (mraw?.slug === input.masterIDOrSlug) {
-              masterID = id
-              found = true
-              break
+      try {
+        // Resolve master ID
+        let masterID = input.masterIDOrSlug
+        if (!masterID.startsWith("ses_")) {
+          // It's a slug — scan bridge:sessions:* to find the master
+          let cursor = "0"
+          let found = false
+          do {
+            const [next, batch] = await pub.scan(cursor, "MATCH", "bridge:sessions:*", "COUNT", "100")
+            cursor = next
+            for (const k of batch) {
+              const id = await pub.get(k)
+              if (!id) continue
+              const mraw = await pub.hgetall(`bridge:${id}:master`)
+              if (mraw?.slug === input.masterIDOrSlug) {
+                masterID = id
+                found = true
+                break
+              }
             }
-          }
-          if (found) break
-        } while (cursor !== "0")
-        if (!found) throw new Error(`Bridge master not found for slug: ${input.masterIDOrSlug}`)
-      }
+            if (found) break
+          } while (cursor !== "0")
+          if (!found) throw new Error(`Bridge master not found for slug: ${input.masterIDOrSlug}`)
+        }
 
-      const k = keys(masterID)
-      const masterRaw = await pub.hgetall(k.master)
-      if (!masterRaw?.sessionID) throw new Error(`Bridge ${masterID} does not exist or has no master.`)
+        const k = keys(masterID)
+        const masterRaw = await pub.hgetall(k.master)
+        if (!masterRaw?.sessionID) throw new Error(`Bridge ${masterID} does not exist or has no master.`)
 
-      // Validate directory uniqueness and limit
-      const nodesRaw = await pub.hgetall(k.nodes)
-      const nodes = Object.values(nodesRaw ?? {})
-        .map((v) => {
-          try {
-            return NodeInfo.safeParse(JSON.parse(v))
-          } catch {
-            return { success: false as const, error: null }
-          }
-        })
-        .filter((r): r is { success: true; data: NodeInfo } => r.success)
-        .map((r) => r.data)
-        .filter((n) => Date.now() - n.heartbeat < 60_000)
-      const limitRaw = await pub.get(`bridge:${masterID}:limit`)
-      // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
-      const limit = limitRaw ? parseInt(limitRaw) : parseInt(process.env.BRIDGE_MAX_NODES ?? "3", 10)
-      if (nodes.length >= limit) throw new Error(`Bridge ${masterID} is full (limit: ${limit}).`)
-      if (nodes.some((n) => n.directory === input.directory))
-        throw new Error(`A node with directory ${input.directory} is already in this bridge.`)
-
-      const node: NodeInfo = {
-        nodeID: input.sessionID,
-        role: "friend",
-        sessionID: input.sessionID,
-        slug: input.slug,
-        title: input.title,
-        directory: input.directory,
-        nodeURL: input.nodeURL,
-        heartbeat: Date.now(),
-        status: "active",
-      }
-
-      await Promise.all([
-        pub.hset(k.nodes, input.sessionID, JSON.stringify(node)),
-        pub.set(k.session(input.sessionID), masterID),
-      ])
-
-      await sub.subscribe(k.channel)
-      sub.on("message", (_, msg) => {
-        handleMessage(msg).catch((e) => log.warn("bridge: message handler error", { error: String(e) }))
-      })
-
-      const inf = await buildInfo(pub, masterID, limit)
-
-      s.bridgeID = masterID
-      s.role = "friend"
-      s.sessionID = input.sessionID
-      s.pubClient = pub
-      s.subClient = sub
-      s.info = inf
-      s.inputLocked = false
-      s.coordinator = input.coordinator
-
-      startHeartbeat(masterID, input.sessionID)
-
-      await pub
-        .publish(k.channel, JSON.stringify({ type: "node.joined", node }))
-        .catch((e) => log.warn("bridge: publish join failed", { error: String(e) }))
-
-      Database.use((db) =>
-        db
-          .insert(BridgeNodeTable)
-          .values({
-            session_id: input.sessionID,
-            bridge_id: masterID,
-            role: "friend",
-            directory: input.directory,
-            node_url: input.nodeURL,
-            status: "active",
-            limit: limit,
-            coordinator: input.coordinator ?? null,
+        // Validate directory uniqueness and limit
+        const nodesRaw = await pub.hgetall(k.nodes)
+        const nodes = Object.values(nodesRaw ?? {})
+          .map((v) => {
+            try {
+              return NodeInfo.safeParse(JSON.parse(v))
+            } catch {
+              return { success: false as const, error: null }
+            }
           })
-          .onConflictDoUpdate({
-            target: BridgeNodeTable.session_id,
-            set: {
+          .filter((r): r is { success: true; data: NodeInfo } => r.success)
+          .map((r) => r.data)
+          .filter((n) => Date.now() - n.heartbeat < 60_000)
+        const limitRaw = await pub.get(`bridge:${masterID}:limit`)
+        // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
+        const limit = limitRaw ? parseInt(limitRaw) : parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10)
+        if (nodes.length >= limit) throw new Error(`Bridge ${masterID} is full (limit: ${limit}).`)
+        if (nodes.some((n) => n.directory === input.directory))
+          throw new Error(`A node with directory ${input.directory} is already in this bridge.`)
+
+        const node: NodeInfo = {
+          nodeID: input.sessionID,
+          role: "friend",
+          sessionID: input.sessionID,
+          slug: input.slug,
+          title: input.title,
+          directory: input.directory,
+          nodeURL: input.nodeURL,
+          heartbeat: Date.now(),
+          status: "active",
+        }
+
+        await Promise.all([
+          pub.hset(k.nodes, input.sessionID, JSON.stringify(node)),
+          pub.set(k.session(input.sessionID), masterID),
+        ])
+
+        await sub.subscribe(k.channel)
+        sub.on("message", (_, msg) => {
+          handleMessage(msg).catch((e) => log.warn("bridge: message handler error", { error: String(e) }))
+        })
+
+        const inf = await buildInfo(pub, masterID, limit)
+
+        Database.use((db) =>
+          db
+            .insert(BridgeNodeTable)
+            .values({
+              session_id: input.sessionID,
               bridge_id: masterID,
               role: "friend",
-              status: "active",
+              directory: input.directory,
               node_url: input.nodeURL,
+              status: "active",
               limit: limit,
               coordinator: input.coordinator ?? null,
-            },
-          })
-          .run(),
-      )
+            })
+            .onConflictDoUpdate({
+              target: BridgeNodeTable.session_id,
+              set: {
+                bridge_id: masterID,
+                role: "friend",
+                status: "active",
+                node_url: input.nodeURL,
+                limit: limit,
+                coordinator: input.coordinator ?? null,
+              },
+            })
+            .run(),
+        )
 
-      Bus.publish(Event.StateChanged, inf)
-      log.info("bridge: joined as friend", { bridgeID: masterID, sessionID: input.sessionID })
-      return inf
-    } catch (e) {
-      await pub.quit().catch(() => {})
-      await sub.quit().catch(() => {})
-      throw e
-    }
+        s.bridgeID = masterID
+        s.role = "friend"
+        s.sessionID = input.sessionID
+        s.pubClient = pub
+        s.subClient = sub
+        s.info = inf
+        s.inputLocked = false
+        s.coordinator = input.coordinator
+
+        startHeartbeat(masterID, input.sessionID)
+
+        await pub
+          .publish(k.channel, JSON.stringify({ type: "node.joined", node }))
+          .catch((e) => log.warn("bridge: publish join failed", { error: String(e) }))
+
+        Bus.publish(Event.StateChanged, inf)
+        log.info("bridge: joined as friend", { bridgeID: masterID, sessionID: input.sessionID })
+        return inf
+      } catch (e) {
+        await pub.quit().catch(() => {})
+        await sub.quit().catch(() => {})
+        throw e
+      }
+    })().finally(() => {
+      s.inProgress = null
+    })
+    return s.inProgress
   }
 
   export async function leave(): Promise<void> {
     const s = state()
     if (!s.bridgeID) return
 
+    // Capture and atomically clear bridgeID to prevent re-entrant leave() calls
     const id = s.bridgeID
     const sessionID = s.sessionID
     const k = keys(id)
-    const role = s.role
+    const prevRole = s.role
+    s.bridgeID = null // ← close re-entrancy window immediately
 
     if (s.heartbeatTimer) {
       clearInterval(s.heartbeatTimer)
@@ -556,7 +573,7 @@ export namespace Bridge {
     const pub = s.pubClient
 
     if (pub && sessionID) {
-      if (s.role === "master") {
+      if (prevRole === "master") {
         await pub
           .publish(k.channel, JSON.stringify({ type: "bridge.closed" }))
           .catch((e) => log.warn("bridge: publish closed failed", { error: String(e) }))
@@ -578,7 +595,6 @@ export namespace Bridge {
       s.pubClient = null
     }
 
-    s.bridgeID = null
     s.role = null
     s.sessionID = null
     s.info = null
@@ -594,7 +610,7 @@ export namespace Bridge {
       }
     }
 
-    log.info("bridge: left", { bridgeID: id, role })
+    log.info("bridge: left", { bridgeID: id, role: prevRole })
   }
 
   export async function shareContext(entry: Omit<ContextEntry, "nodeID" | "timestamp">): Promise<void> {
@@ -653,7 +669,7 @@ export namespace Bridge {
     const inf = await buildInfo(
       s.pubClient,
       s.bridgeID,
-      s.info?.limit ?? parseInt(process.env.BRIDGE_MAX_NODES ?? "3", 10),
+      s.info?.limit ?? parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10),
     )
     s.info = inf
     return inf
@@ -661,7 +677,7 @@ export namespace Bridge {
 
   export async function setInputLocked(targetNodeID: string, locked: boolean): Promise<void> {
     const s = state()
-    if (!s.bridgeID || !s.pubClient) return
+    if (!s.bridgeID || !s.pubClient || s.role !== "master") return
     const k = keys(s.bridgeID)
     const raw = await s.pubClient.hget(k.nodes, targetNodeID)
     if (!raw) return
@@ -679,7 +695,17 @@ export namespace Bridge {
       .catch((e) => log.warn("bridge: publish input.locked failed", { error: String(e) }))
   }
 
+  let initPromise: Promise<void> | null = null
+
   export async function init() {
+    if (initPromise) return initPromise
+    initPromise = _init().finally(() => {
+      initPromise = null
+    })
+    return initPromise
+  }
+
+  async function _init() {
     const row = Database.use((db) =>
       db.select().from(BridgeNodeTable).where(eq(BridgeNodeTable.directory, Instance.directory)).get(),
     )

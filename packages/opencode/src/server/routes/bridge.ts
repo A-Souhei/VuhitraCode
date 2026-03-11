@@ -82,7 +82,7 @@ export const BridgeRoutes = lazy(() =>
         "query",
         z.object({
           bridgeID: z.string(),
-          limit: z.coerce.number().max(200).optional(),
+          limit: z.coerce.number().min(1).max(200).optional(),
         }),
       ),
       async (c) => {
@@ -113,7 +113,7 @@ export const BridgeRoutes = lazy(() =>
           slug: z.string(),
           title: z.string(),
           directory: z.string(),
-          limit: z.number().optional(),
+          limit: z.number().int().min(1).max(100).optional(),
           coordinator: z
             .string()
             .url()
@@ -205,10 +205,19 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          400: {
+            description: "Not in an active bridge",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator("json", Bridge.ContextEntry.omit({ nodeID: true, timestamp: true })),
       async (c) => {
+        if (!Bridge.isActive()) return c.json({ error: "Not in an active bridge" }, 400)
         const entry = c.req.valid("json")
         await Bridge.shareContext(entry)
         return c.json({ success: true as const })
