@@ -72,7 +72,9 @@ export namespace Agent {
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
-        "*": "deny",
+        "*": "ask",
+        [Truncate.GLOB]: "allow",
+        ...Object.fromEntries(skillDirs.map((dir) => [path.join(dir, "*"), "allow"])),
       },
       question: "deny",
       plan_enter: "deny",
@@ -794,7 +796,7 @@ export namespace Agent {
       return agent.name
     }
 
-    const primaryVisible = Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
+    const primaryVisible = Object.values(agents).find((a) => a.mode === "primary" && a.hidden !== true)
     if (!primaryVisible) throw new Error("no primary visible agent found")
     return primaryVisible.name
   }
