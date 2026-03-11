@@ -72,9 +72,7 @@ export namespace Agent {
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
-        "*": "ask",
-        [Truncate.GLOB]: "allow",
-        ...Object.fromEntries(skillDirs.map((dir) => [path.join(dir, "*"), "allow"])),
+        "*": "deny",
       },
       question: "deny",
       plan_enter: "deny",
@@ -599,7 +597,7 @@ export namespace Agent {
               "*": "deny",
             },
             external_directory: {
-              "*": "ask",
+              "*": "deny",
             },
           }),
           user,

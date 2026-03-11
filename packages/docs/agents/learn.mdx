@@ -5,7 +5,7 @@ description: Agent that explores codebases and builds knowledge
 
 import { Card } from "@mintlify/components"
 
-The Learn agent is an exploration and knowledge-building agent that deeply investigates codebases and stores actionable knowledge in the biblion database for future reference.
+The Learn agent is an exploration and knowledge-building agent that deeply investigates codebases and stores actionable knowledge in the biblion database for future reference. It can be invoked directly by users (e.g., `@learn Explore the authentication module`) or dispatched by Alice during the context-gathering phase.
 
 ## Overview
 
@@ -71,7 +71,7 @@ When storing findings, the Learn agent uses appropriate entry types:
 
 ## Documentation Lookup
 
-When exploring unfamiliar libraries or frameworks, the Learn agent uses context7 MCP tools as the first choice:
+When exploring unfamiliar libraries or frameworks and the context7 MCP tool is configured, the Learn agent prefers it for documentation lookup:
 
 1. **context7_resolve-library-id** - Find the library ID for a package
 2. **context7_query-docs** - Query documentation for specific information
@@ -80,11 +80,11 @@ This provides accurate, up-to-date documentation without relying on potentially 
 
 ## Memory Integration
 
-The Learn agent has read-only memory access:
+The Learn agent has read-only memory access via context injection:
 
 - Checks for past exploration results that may overlap
 - Builds upon existing knowledge rather than duplicating effort
-- Can write significant findings to memory for persistence beyond biblion
+- Cannot write to memory (memory_write is denied) — all persistent findings go to biblion instead
 
 ## Usage Example
 

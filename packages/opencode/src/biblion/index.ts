@@ -295,8 +295,13 @@ export namespace Biblion {
       })
       if (!response.ok) throw new Error(`Failed to list points: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { points: { id: string; payload: { type: string; tags: string; content: string } }[] }
+        result: {
+          points: { id: string; payload: { type: string; tags: string; content: string } }[]
+          next_page_offset?: unknown
+        }
       }
+      if (data.result.next_page_offset != null)
+        log.warn("biblion list truncated at 1000 entries; not all entries returned")
       return data.result.points.map((p) => ({ id: String(p.id), ...p.payload }))
     },
   }
@@ -305,7 +310,7 @@ export namespace Biblion {
 
   const redis = {
     keyPrefix() {
-      return `biblion:point:`
+      return `${collectionName()}:point:`
     },
 
     encodeVector(vec: number[]): Buffer {
@@ -476,15 +481,22 @@ export namespace Biblion {
       do {
         const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
         cursor = next
-        for (const key of keys) {
-          const fields = (await client.hgetall(key)) as Record<string, string>
-          const id = key.replace(prefix, "")
-          entries.push({
-            id,
-            type: fields.type ?? "",
-            tags: fields.tags ?? "",
-            content: fields.content ?? "",
-          })
+        if (keys.length > 0) {
+          const pipeline = client.pipeline()
+          for (const key of keys) pipeline.hgetall(key)
+          const results = ((await pipeline.exec()) ?? []) as ([Error | null, Record<string, string>] | null)[]
+          for (let i = 0; i < keys.length; i++) {
+            const res = results[i]
+            if (!res || res[0]) continue
+            const fields = res[1]
+            const id = keys[i].startsWith(prefix) ? keys[i].slice(prefix.length) : keys[i]
+            entries.push({
+              id,
+              type: fields.type ?? "",
+              tags: fields.tags ?? "",
+              content: fields.content ?? "",
+            })
+          }
         }
       } while (cursor !== "0")
       return entries
@@ -614,12 +626,11 @@ export namespace Biblion {
     if (s.status.type !== "ready") return
     await store.delete(id)
     if (state() !== s) return // disposed mid-flight
-    // Re-acquire state after awaits to avoid mutating orphaned state on disposal mid-flight
-    const s2 = state()
-    if (s2.status.type !== "ready") return
-    s2.entryCount = Math.max(0, s2.entryCount - 1)
-    s2.status = { ...s2.status, entry_count: s2.entryCount }
-    Bus.publish(Event.Updated, s2.status)
+    if (s.status.type !== "ready") return // status changed mid-flight
+    s.entryCount = Math.max(0, s.entryCount - 1)
+    // note: per-entry token_count is not stored in state, so token_count may drift slightly after individual deletes
+    s.status = { ...s.status, entry_count: s.entryCount }
+    Bus.publish(Event.Updated, s.status)
   }
 
   export async function clear(): Promise<void> {
