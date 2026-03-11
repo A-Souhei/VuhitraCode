@@ -603,14 +603,23 @@ export function Prompt(props: PromptProps) {
                 value: a.name,
                 onSelect: async () => {
                   ctx.clear()
+                  const dir = sync.data.path.directory || process.cwd()
                   await VuHitraSettings.setSubagentModel(
                     a.name,
                     {
                       providerID: model.providerID,
                       modelID: model.modelID,
                     },
-                    sync.data.path.directory || process.cwd(),
+                    dir,
                   )
+                  // Reload the TUI store if it's scout or sentinel
+                  // Use activeProfile(dir) to get the profile name from disk (same source as write)
+                  const activeProfile = VuHitraSettings.activeProfile(dir)
+                  if (a.name === "sentinel") {
+                    local.sentinelModel.reload(activeProfile)
+                  } else if (a.name === "scout") {
+                    local.scoutModel.reload(activeProfile)
+                  }
                   toast.show({
                     variant: "success",
                     message: `${model.providerID}/${model.modelID} set as default for @${a.name}`,

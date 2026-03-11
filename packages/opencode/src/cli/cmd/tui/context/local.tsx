@@ -1,4 +1,4 @@
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { batch, createEffect, createMemo, onMount } from "solid-js"
 import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
@@ -156,9 +156,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
+      let seq = 0
       function load(profileName: string) {
+        const mine = ++seq
+        setStore({ enabled: false, model: undefined })
         Filesystem.readJson(profilePath(profileName))
           .then((x: any) => {
+            if (mine !== seq) return
             const entry = x?.subagent_models?.[agentName]
             if (
               typeof entry?.modelID === "string" &&
@@ -206,10 +210,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
+      let seq = 0
       function loadFromProfile(profileName: string) {
+        const mine = ++seq
+        setStore(reconcile({}))
         Filesystem.readJson(profilePath(profileName))
           .then((x: any) => {
+            if (mine !== seq) return
             const models = x?.agent_models
+            const next: Record<string, { providerID: string; modelID: string }> = {}
             if (models && typeof models === "object") {
               for (const [name, entry] of Object.entries(models)) {
                 const e = entry as any
@@ -217,12 +226,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
                   typeof e?.modelID === "string" &&
                   typeof e?.providerID === "string" &&
                   modelFieldPattern.test(e.modelID) &&
-                  modelFieldPattern.test(e.providerID)
+                  modelFieldPattern.test(e.providerID) &&
+                  modelFieldPattern.test(name)
                 ) {
-                  if (modelFieldPattern.test(name)) setStore(name, { providerID: e.providerID, modelID: e.modelID })
+                  next[name] = { providerID: e.providerID, modelID: e.modelID }
                 }
               }
             }
+            setStore(reconcile(next))
           })
           .catch(() => {})
       }
