@@ -6,7 +6,7 @@ import { existsSync } from "fs"
 import path from "path"
 import { Filesystem } from "../../util/filesystem"
 
-const DEFAULT_INDEX_IGNORE = `# VuHitra index-ignore
+export const DEFAULT_INDEX_IGNORE = `# VuHitra index-ignore
 # Files and directories excluded from semantic indexing
 # Uses .gitignore syntax
 

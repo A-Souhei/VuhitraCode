@@ -21,9 +21,9 @@ Files that match any layer are excluded from the index.
 
 ## Default `.vuhitra/index-ignore` Patterns
 
-When you run `opencode init` in your project, a default `.vuhitra/index-ignore` file is created with comprehensive patterns to reduce indexed files.
+When you run `opencode init` in your project, a default `.vuhitra/index-ignore` file is created with a focused set of patterns for common JS/TS projects.
 
-### Dependencies & lock files
+### Dependencies & build output
 
 ```
 node_modules/
@@ -31,63 +31,41 @@ dist/
 build/
 .git/
 out/
-*.lock
-*.lockb
 ```
 
-Excludes dependency folders and lock files that don't need semantic indexing.
+Excludes dependency folders and build directories that don't need semantic indexing.
 
-### Node/npm
+### Framework build output
 
 ```
 .next/
 .nuxt/
 .output/
-*.tsbuildinfo
 ```
 
-Excludes framework build output and TypeScript incremental build metadata.
+Excludes framework-specific build directories (Next.js, Nuxt, Nitro).
 
-### Python virtual environments
-
-```
-venv/
-.venv/
-env/
-*.egg-info/
-.eggs/
-.tox/
-.nox/
-```
-
-Excludes Python virtual environments and testing frameworks. These patterns catch common venv naming conventions and build artifacts that shouldn't be indexed even if not in `.gitignore`.
-
-:::tip
-Virtual environments can be large (hundreds of MB) and don't need semantic search. Adding these patterns significantly reduces indexing time.
-:::
-
-### Python caches & tests
+### Lock files & minified assets
 
 ```
-.coverage
-htmlcov/
-```
-
-Excludes Python coverage reports and HTML coverage directories.
-
-### Misc patterns
-
-```
-coverage/
 *.log
+*.lock
+*.lockb
 *.min.js
 *.min.css
+```
+
+Excludes lock files, log files, and minified assets that are rarely useful for semantic search.
+
+### Environment & config
+
+```
 .env
 .env.*
 .vuhitra/
 ```
 
-Excludes test coverage, logs, minified files, environment files, and VuHitra's own configuration.
+Excludes environment files (which may contain secrets) and VuHitra's own configuration directory.
 
 ---
 

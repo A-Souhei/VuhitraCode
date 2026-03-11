@@ -48,7 +48,14 @@ export const BiblionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(500),
+          500: {
+            description: "Internal server error",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(false), error: z.string() })),
+              },
+            },
+          },
         },
       }),
       async (c) => {
@@ -74,7 +81,14 @@ export const BiblionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(500),
+          500: {
+            description: "Internal server error",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(false), error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
@@ -116,7 +130,14 @@ export const BiblionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(500),
+          500: {
+            description: "Internal server error",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(false), error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
@@ -166,7 +187,14 @@ export const BiblionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(500),
+          500: {
+            description: "Internal server error",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(false), error: z.string() })),
+              },
+            },
+          },
         },
       }),
       async (c) => {
@@ -192,7 +220,14 @@ export const BiblionRoutes = lazy(() =>
               },
             },
           },
-          ...errors(500),
+          500: {
+            description: "Internal server error",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ success: z.literal(false), error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
