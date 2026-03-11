@@ -1,8 +1,9 @@
 .PHONY: dev docs setup test-privacy install-dev install
 
 setup:
+	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
 	npm i -g mintlify
-	bun install
+	@$$(command -v bun 2>/dev/null || echo "$$HOME/.bun/bin/bun") install
 
 dev:
 	bun run --cwd packages/opencode --conditions=browser src/index.ts
