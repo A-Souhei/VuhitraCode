@@ -608,7 +608,7 @@ export namespace Agent {
           "Agent that explores codebases to understand architecture, patterns, and structure, storing knowledge in the biblion database for future reference",
         prompt: PROMPT_LEARN,
         options: {},
-        mode: "subagent",
+        mode: "all",
         native: true,
       },
       question: {
