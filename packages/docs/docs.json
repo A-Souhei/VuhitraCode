@@ -24,7 +24,7 @@
           },
           {
             "group": "Integrations",
-            "pages": ["memory", "indexer"]
+            "pages": ["memory", "indexer", "biblion"]
           }
         ]
       },
@@ -33,7 +33,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": ["agents/alice", "agents/sentinel", "agents/scout", "agents/audit"]
+            "pages": ["agents/alice", "agents/sentinel", "agents/scout", "agents/audit", "agents/learn"]
           }
         ]
       }

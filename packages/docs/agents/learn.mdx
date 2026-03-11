@@ -1,0 +1,143 @@
+---
+title: Learn Agent
+description: Agent that explores codebases and builds knowledge
+---
+
+import { Card } from "@mintlify/components"
+
+The Learn agent is an exploration and knowledge-building agent that deeply investigates codebases and stores actionable knowledge in the biblion database for future reference. It can be invoked directly by users (e.g., `@learn Explore the authentication module`) or dispatched by Alice during the context-gathering phase.
+
+## Overview
+
+The Learn agent excels at:
+
+- **Codebase exploration** - Systematically investigate code structure and organization
+- **Pattern recognition** - Identify recurring patterns, conventions, and idioms
+- **Knowledge capture** - Store meaningful findings in biblion for future reference
+- **Documentation lookup** - Use context7 to understand unfamiliar libraries
+
+## How It Works
+
+When dispatched, the Learn agent:
+
+1. **Receives objective** - Gets a learning goal or area to investigate
+2. **Explores codebase** - Uses explore subagent and tools to investigate
+3. **Stores knowledge** - Writes findings to biblion with appropriate types and tags
+4. **Reports results** - Summarizes what was learned and stored
+
+### Focus Areas
+
+The Learn agent prioritizes:
+
+- Architecture decisions and their rationale
+- Key patterns that appear repeatedly
+- Important dependencies and their roles
+- Core APIs and their contracts
+- Configuration mechanisms
+- Development and build workflows
+
+## Tools
+
+The Learn agent has access to:
+
+<Card icon="search" title="Explore Subagent">
+  Launch via the Task tool to investigate specific areas in parallel. Can dispatch multiple explores for broad coverage.
+</Card>
+
+<Card icon="book" title="biblion_write">
+  Store knowledge entries in the biblion database. Entries are categorized by type and tagged for retrieval.
+</Card>
+
+<Card icon="file" title="File Tools">
+  Standard exploration tools: Glob for finding files, Grep for searching content, Read for examining files.
+</Card>
+
+<Card icon="terminal" title="Bash">
+  Run commands for build processes, dependency analysis, and system exploration.
+</Card>
+
+## Biblion Entry Types
+
+When storing findings, the Learn agent uses appropriate entry types:
+
+| Type         | When to Use                                                   |
+| ------------ | ------------------------------------------------------------- |
+| `structure`  | Code organization, directory layout, module relationships     |
+| `pattern`    | Recurring coding patterns, conventions, idioms                |
+| `dependency` | External packages, internal dependencies, version constraints |
+| `api`        | Public interfaces, function signatures, contract details      |
+| `config`     | Configuration files, environment variables, settings          |
+| `workflow`   | Build processes, deployment pipelines, development flows      |
+
+## Documentation Lookup
+
+When exploring unfamiliar libraries or frameworks and the context7 MCP tool is configured, the Learn agent prefers it for documentation lookup:
+
+1. **context7_resolve-library-id** - Find the library ID for a package
+2. **context7_query-docs** - Query documentation for specific information
+
+This provides accurate, up-to-date documentation without relying on potentially stale training data.
+
+## Memory Integration
+
+The Learn agent has read-only memory access via context injection:
+
+- Checks for past exploration results that may overlap
+- Builds upon existing knowledge rather than duplicating effort
+- Cannot write to memory (memory_write is denied) — all persistent findings go to biblion instead
+
+## Usage Example
+
+```
+User: "Learn about the authentication system"
+
+Learn Agent:
+1. Dispatches explore subagent to investigate src/auth/
+2. Examines authentication flow, middleware, and session handling
+3. Stores findings in biblion:
+   - [structure] Auth module layout and component relationships
+   - [api] Login, logout, token refresh endpoints
+   - [pattern] Authentication middleware pattern
+   - [config] Auth configuration options
+4. Reports summary of discovered architecture and patterns
+```
+
+## Best Practices
+
+<Card icon="target" title="Focused Objectives">
+  Provide specific learning objectives for better results. "Learn the API layer" is better than "explore everything".
+</Card>
+
+<Card icon="layers" title="Multiple Explores">
+  For broad objectives, the agent dispatches multiple explore subagents in parallel for comprehensive coverage.
+</Card>
+
+<Card icon="check-circle" title="Quality Over Quantity">
+  The agent prioritizes meaningful knowledge over exhaustive cataloging. It captures the "why" behind decisions.
+</Card>
+
+<Card icon="tags" title="Consistent Tags">
+  Use consistent tagging conventions so future agents can retrieve knowledge effectively.
+</Card>
+
+## Integration with Other Agents
+
+- **Alice** → May dispatch Learn agent during Phase 1 (Gather Context) to understand codebase
+- **Sentinel/Scout** → Can read biblion entries to understand codebase before implementing changes
+- **All Agents** → Benefit from biblion knowledge stored by Learn agent
+
+## Typical Workflow
+
+```
+Alice Phase 1 (Gather Context):
+1. Complex feature request received
+2. Alice dispatches Learn agent to understand relevant areas
+3. Learn agent explores and stores knowledge in biblion
+
+[Later in Phase 3]
+
+Sentinel receives task:
+- Checks biblion for relevant context
+- Uses stored knowledge to understand patterns and APIs
+- Implements feature with proper context
+```

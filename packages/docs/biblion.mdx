@@ -1,0 +1,169 @@
+---
+title: "Biblion"
+description: "Persistent knowledge base for codebase understanding"
+icon: "book"
+---
+
+OpenCode's biblion system provides a persistent knowledge base for storing and retrieving codebase knowledge using vector embeddings. It captures architecture decisions, patterns, dependencies, APIs, configurations, and workflows for future reference.
+
+## How It Works
+
+The biblion system uses vector embeddings to store and retrieve codebase knowledge semantically. When the Learn agent explores a codebase, it stores findings in biblion. Later, agents can search biblion to quickly understand relevant context without re-exploring the entire codebase.
+
+### Entry Types
+
+Biblion entries are categorized by type:
+
+| Type         | Description                                                   |
+| ------------ | ------------------------------------------------------------- |
+| `structure`  | Code organization, directory layout, module relationships     |
+| `pattern`    | Recurring coding patterns, conventions, idioms                |
+| `dependency` | External packages, internal dependencies, version constraints |
+| `api`        | Public interfaces, function signatures, contract details      |
+| `config`     | Configuration files, environment variables, settings          |
+| `workflow`   | Build processes, deployment pipelines, development flows      |
+
+### Tags
+
+Each entry can be tagged for easier retrieval. Tags help organize knowledge by feature, component, or any relevant category.
+
+## Backend Options
+
+<CardGroup cols={2}>
+
+<Card icon="database" title="Qdrant (Default)" href="#qdrant">
+  Self-hosted or cloud vector database. Configure via QDRANT_URL environment variable.
+</Card>
+
+<Card icon="server" title="Redis Stack" href="#redis-stack">
+  Use Redis for vector storage. Configure via REDIS_URL or REDIS_HOST. Takes priority over Qdrant when configured.
+</Card>
+
+</CardGroup>
+
+## Configuration
+
+Biblion is configured in `.vuhitra/settings.json`:
+
+```json title=".vuhitra/settings.json"
+{
+  "biblion": {
+    "enabled": true
+  }
+}
+```
+
+Set `enabled` to `false` to disable biblion entirely.
+
+<Note>
+  Biblion requires an embedding model to be configured. The default embedding model is `nomic-embed-text:latest`.
+</Note>
+
+## Learn Agent
+
+The [Learn Agent](/agents/learn) is the primary way to populate biblion with codebase knowledge. When dispatched, it explores the codebase and stores meaningful findings in biblion for future reference.
+
+## API
+
+Biblion can be managed via the HTTP API:
+
+| Method   | Endpoint          | Description              |
+| -------- | ----------------- | ------------------------ |
+| `GET`    | `/biblion/status` | Get biblion status       |
+| `GET`    | `/biblion/list`   | List all biblion entries |
+| `POST`   | `/biblion/search` | Search biblion entries   |
+| `POST`   | `/biblion/write`  | Write a biblion entry    |
+| `DELETE` | `/biblion/clear`  | Clear all entries        |
+| `DELETE` | `/biblion/{id}`   | Delete a specific entry  |
+
+### Get Biblion Status
+
+```bash
+curl http://localhost:4096/biblion/status
+```
+
+Response:
+
+```json
+{
+  "type": "ready",
+  "entry_count": 42,
+  "token_count": 15000,
+  "backend": "qdrant",
+  "embedding_url": "http://localhost:11434",
+  "embedding_model": "nomic-embed-text:latest",
+  "backend_url": "http://localhost:6333"
+}
+```
+
+### Search Biblion
+
+```bash
+curl -X POST http://localhost:4096/biblion/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "authentication flow", "limit": 5}'
+```
+
+Response:
+
+```json
+[
+  "[structure] tags: auth,security\nAuthentication module located in src/auth/...",
+  "[api] tags: auth,api\nLogin endpoint POST /api/auth/login..."
+]
+```
+
+### Write Entry
+
+```bash
+curl -X POST http://localhost:4096/biblion/write \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "pattern",
+    "content": "Error handling pattern: wrap all async operations in try-catch and log with context",
+    "tags": ["error-handling", "async"]
+  }'
+```
+
+<Note>Content is automatically sanitized before storage. Credentials, API keys, and secrets are redacted.</Note>
+
+### Clear All Entries
+
+```bash
+curl -X DELETE http://localhost:4096/biblion/clear
+```
+
+<Warning>This action cannot be undone. All biblion entries will be permanently deleted.</Warning>
+
+## Environment Variables
+
+Configure biblion backends using environment variables:
+
+| Variable          | Description                                | Default                   |
+| ----------------- | ------------------------------------------ | ------------------------- |
+| `QDRANT_URL`      | Qdrant server URL                          | `http://localhost:6333`   |
+| `REDIS_URL`       | Redis connection URL                       | -                         |
+| `REDIS_HOST`      | Redis host (fallback if REDIS_URL not set) | `localhost`               |
+| `REDIS_PORT`      | Redis port                                 | `6379`                    |
+| `EMBEDDING_URL`   | Embedding server URL                       | `http://localhost:11434`  |
+| `EMBEDDING_MODEL` | Embedding model name                       | `nomic-embed-text:latest` |
+
+<Note>When Redis is configured (via REDIS_URL or REDIS_HOST), it takes priority over Qdrant.</Note>
+
+## Best Practices
+
+<CardGroup cols={3}>
+
+<Card icon="lightbulb" title="Use the Learn Agent">
+  Let the Learn agent populate biblion with high-quality, structured knowledge about your codebase.
+</Card>
+
+<Card icon="tags" title="Consistent Tagging">
+  Use consistent tags across entries for easier retrieval. Tag by feature, component, or domain.
+</Card>
+
+<Card icon="refresh" title="Clear When Switching">
+  Clear biblion when switching to a different project to avoid stale knowledge.
+</Card>
+
+</CardGroup>

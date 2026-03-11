@@ -19,6 +19,7 @@ import type {
   VcsInfo,
   IndexerStatus,
   MemoryStatus,
+  BiblionStatus,
 } from "@opencode-ai/sdk/v2"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
@@ -77,6 +78,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       path: Path
       indexer_status: IndexerStatus | undefined
       memory_status: MemoryStatus | undefined
+      biblion_status: BiblionStatus | undefined
     }>({
       provider_next: {
         all: [],
@@ -106,6 +108,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       path: { state: "", config: "", worktree: "", directory: "" },
       indexer_status: undefined,
       memory_status: undefined,
+      biblion_status: undefined,
     })
 
     const sdk = useSDK()
@@ -356,6 +359,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("memory_status", event.properties)
           break
         }
+
+        case "biblion.updated": {
+          setStore("biblion_status", event.properties)
+          break
+        }
       }
     })
 
@@ -449,6 +457,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   error: e instanceof Error ? e.message : String(e),
                 })
                 setStore("memory_status", { type: "disabled" })
+              }),
+            sdk.client.biblion
+              .status()
+              .then((x) => {
+                setStore("biblion_status", x.data ?? { type: "disabled" })
+              })
+              .catch((e) => {
+                Log.Default.error("failed to fetch biblion status", {
+                  error: e instanceof Error ? e.message : String(e),
+                })
+                setStore("biblion_status", { type: "disabled" })
               }),
           ])
             .then(() => {

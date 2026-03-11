@@ -1,0 +1,343 @@
+---
+title: Semantic Indexing
+description: Configure semantic indexing with .vuhitra/index-ignore to optimize code search.
+---
+
+OpenCode uses semantic indexing to understand your codebase and provide better context for AI agents. The indexer automatically excludes certain files based on multiple layers of filtering to keep the index clean and fast.
+
+---
+
+## Overview
+
+The semantic indexer uses a **three-tier filtering system** to determine which files to include:
+
+1. **Built-in patterns** - Automatically excludes common build artifacts, caches, and dependencies
+2. **`.vuhitra/index-ignore`** - User-configurable, project-specific exclusions (uses `.gitignore` syntax)
+3. **`.gitignore`** - Automatically respects your git ignore rules
+
+Files that match any layer are excluded from the index.
+
+---
+
+## Default `.vuhitra/index-ignore` Patterns
+
+When you run `opencode init` in your project, a default `.vuhitra/index-ignore` file is created with a focused set of patterns for common JS/TS projects.
+
+### Dependencies & build output
+
+```
+node_modules/
+dist/
+build/
+.git/
+out/
+```
+
+Excludes dependency folders and build directories that don't need semantic indexing.
+
+### Framework build output
+
+```
+.next/
+.nuxt/
+.output/
+```
+
+Excludes framework-specific build directories (Next.js, Nuxt, Nitro).
+
+### Lock files & minified assets
+
+```
+*.log
+*.lock
+*.lockb
+*.min.js
+*.min.css
+```
+
+Excludes lock files, log files, and minified assets that are rarely useful for semantic search.
+
+### Environment & config
+
+```
+.env
+.env.*
+.vuhitra/
+```
+
+Excludes environment files (which may contain secrets) and VuHitra's own configuration directory.
+
+---
+
+## Why These Patterns Matter
+
+### Performance
+
+- **Venv directories**: Can contain thousands of files (Python packages). Excluding them speeds up indexing by 2-10x.
+- **node_modules**: Can have 100k+ files. Always excluded by built-in patterns.
+- **Build artifacts**: `dist/`, `build/`, `.next/` are regenerated on every build and don't need indexing.
+
+### Accuracy
+
+- **Minified files**: `.min.js`, `.min.css` are difficult for semantic search and rarely needed.
+- **Generated files**: Timestamps in build metadata (`.tsbuildinfo`) create unnecessary diffs.
+- **Environment files**: `.env` files often contain secrets and shouldn't be indexed.
+
+### Relevance
+
+- **Test artifacts**: Coverage reports and cache files don't contribute useful context.
+- **Config**: `.vuhitra/` itself is excluded to keep your indexer config out of the index.
+
+---
+
+## Customization
+
+You can customize the index-ignore patterns for your project by editing `.vuhitra/index-ignore`:
+
+```bash title=".vuhitra/index-ignore"
+# VuHitra index-ignore
+# Add your project-specific exclusions here
+
+node_modules/
+venv/
+.venv/
+dist/
+
+# Add custom patterns
+migrations/
+__pycache__/
+*.generated.ts
+build-output/
+temp/
+```
+
+Patterns follow `.gitignore` syntax:
+
+- `dir/` — exclude entire directories
+- `*.ext` — exclude by file extension
+- `path/to/file` — exclude specific paths
+- `!pattern` — negation (include previously excluded pattern)
+
+:::note
+Changes to `.vuhitra/index-ignore` take effect the next time indexing runs. Existing index entries for excluded files are automatically cleaned up.
+:::
+
+---
+
+## File Ignore Layers
+
+### Layer 1: Built-in FileIgnore
+
+These patterns are always applied and cannot be customized:
+
+**Directories**: `node_modules`, `bower_components`, `.pnpm-store`, `vendor`, `.npm`, `dist`, `build`, `out`, `.next`, `target`, `bin`, `obj`, `.git`, `.svn`, `.hg`, `.vscode`, `.idea`, `.turbo`, `.output`, `desktop`, `.sst`, `.cache`, `.webkit-cache`, `__pycache__`, `.pytest_cache`, `mypy_cache`, `.history`, `.gradle`
+
+**Files**: `*.swp`, `*.swo`, `*.pyc`, `.DS_Store`, `Thumbs.db`, `logs/**`, `tmp/**`, `temp/**`, `*.log`, `coverage/**`, `.nyc_output/**`
+
+### Layer 2: `.vuhitra/index-ignore`
+
+User-customizable patterns with `.gitignore` syntax. Loaded from your project's `.vuhitra/` directory.
+
+### Layer 3: `.gitignore`
+
+Your project's git ignore rules are automatically respected via `git check-ignore`.
+
+---
+
+## Project Setup
+
+### Using `opencode init`
+
+The easiest way to set up index-ignore patterns is to run:
+
+```bash
+cd /path/to/your/project
+opencode init
+```
+
+This creates `.vuhitra/index-ignore` with sensible defaults for most projects.
+
+### Manual Setup
+
+If you need to customize before initialization:
+
+```bash
+mkdir -p .vuhitra
+cat > .vuhitra/index-ignore << 'EOF'
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Build
+build/
+dist/
+.output/
+
+# Misc
+.env
+.env.*
+.vuhitra/
+EOF
+```
+
+---
+
+## Common Scenarios
+
+### Python project with venv
+
+```bash title=".vuhitra/index-ignore"
+venv/
+.venv/
+env/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+dist/
+build/
+```
+
+### Node.js / TypeScript project
+
+```bash title=".vuhitra/index-ignore"
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+*.tsbuildinfo
+*.log
+coverage/
+.env
+.env.*
+```
+
+### Monorepo (mixing Python and Node)
+
+```bash title=".vuhitra/index-ignore"
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.egg-info/
+.tox/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Build & misc
+.coverage
+htmlcov/
+*.log
+.env
+.env.*
+```
+
+### Full stack (Next.js + Python API)
+
+```bash title=".vuhitra/index-ignore"
+# Python backend
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/dist/
+backend/.tox/
+
+# Next.js frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.coverage/
+
+# Shared
+.env
+.env.*
+*.log
+```
+
+---
+
+## Checking What's Indexed
+
+To see which files are being indexed in your project:
+
+```bash
+# View indexing status (requires opencode server or indexing to be enabled)
+opencode run "Show me which files are being indexed"
+```
+
+The indexer respects all three layers, so files matching any pattern won't appear in search results or agent context.
+
+---
+
+## Performance Tips
+
+1. **Large venv directories**: Always exclude `venv/`, `.venv/`, `env/` patterns
+2. **Generated code**: Add patterns for any generated files that get rebuilt
+3. **Test coverage**: Exclude `coverage/`, `htmlcov/`, `.coverage`
+4. **Build outputs**: Exclude `dist/`, `build/`, `.next/`, `.output/`
+5. **Temporary files**: Add any project-specific temp directories
+
+A smaller index means:
+
+- **Faster semantic search** — fewer files to search through
+- **More relevant results** — less noise from generated files
+- **Smaller memory usage** — index stays compact in RAM/Redis
+
+---
+
+## Troubleshooting
+
+### Files I want indexed are being excluded
+
+Check if they match:
+
+1. Built-in patterns (see Layer 1 above)
+2. Your `.vuhitra/index-ignore` patterns
+3. Your `.gitignore` rules
+
+Use `git check-ignore -v` to debug `.gitignore` conflicts:
+
+```bash
+git check-ignore -v path/to/file
+```
+
+### Index is taking too long to build
+
+Try these:
+
+1. Check for large `venv/` or `node_modules/` directories that should be excluded
+2. Add patterns for any generated code directories
+3. Exclude large test output or build artifact folders
+
+### Pattern not working
+
+Remember `.gitignore` syntax rules:
+
+- `dir/` excludes a directory and all its contents
+- `*.ext` matches files ending with `.ext` anywhere
+- `/dir` anchors to root; `dir` matches anywhere
+- `!pattern` negates (re-includes) a previously excluded pattern
+
+---
+
+## Related
+
+- [Semantic Search](/docs/semantic-search) — Use the indexed codebase for search
+- [Project Configuration](/docs/config) — Other `.vuhitra/` settings
+- [Memory](/docs/memory) — Long-term memory configuration

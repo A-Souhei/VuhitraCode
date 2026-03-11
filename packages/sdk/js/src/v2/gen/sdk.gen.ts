@@ -13,6 +13,13 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  BiblionClearResponses,
+  BiblionDeleteResponses,
+  BiblionListResponses,
+  BiblionSearchResponses,
+  BiblionStatusResponses,
+  BiblionWriteErrors,
+  BiblionWriteResponses,
   CommandListResponses,
   Config as Config3,
   ConfigGetResponses,
@@ -793,6 +800,163 @@ export class Memory extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).delete<MemoryDeleteResponses, unknown, ThrowOnError>({
       url: "/memory",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Biblion extends HeyApiClient {
+  /**
+   * Get biblion status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<BiblionStatusResponses, unknown, ThrowOnError>({
+      url: "/biblion/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List all biblion entries
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<BiblionListResponses, unknown, ThrowOnError>({
+      url: "/biblion/list",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search biblion entries
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      query?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "query" },
+            { in: "body", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BiblionSearchResponses, unknown, ThrowOnError>({
+      url: "/biblion/search",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Write a biblion entry
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      type?: "structure" | "pattern" | "dependency" | "api" | "config" | "workflow"
+      content?: string
+      tags?: Array<string>
+      session_id?: string
+      branch?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "type" },
+            { in: "body", key: "content" },
+            { in: "body", key: "tags" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "branch" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BiblionWriteResponses, BiblionWriteErrors, ThrowOnError>({
+      url: "/biblion/write",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Clear all biblion entries
+   */
+  public clear<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).delete<BiblionClearResponses, unknown, ThrowOnError>({
+      url: "/biblion/clear",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Delete a specific biblion entry
+   */
+  public delete<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<BiblionDeleteResponses, unknown, ThrowOnError>({
+      url: "/biblion/{id}",
       ...options,
       ...params,
     })
@@ -3351,6 +3515,11 @@ export class OpencodeClient extends HeyApiClient {
   private _memory?: Memory
   get memory(): Memory {
     return (this._memory ??= new Memory({ client: this.client }))
+  }
+
+  private _biblion?: Biblion
+  get biblion(): Biblion {
+    return (this._biblion ??= new Biblion({ client: this.client }))
   }
 
   private _tool?: Tool

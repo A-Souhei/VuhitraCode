@@ -14,6 +14,7 @@ import { Snapshot } from "../snapshot"
 import { Truncate } from "../tool/truncation"
 import { Indexer } from "../indexer"
 import { Memory } from "../memory"
+import { Biblion } from "../biblion"
 import { Profiles } from "./profiles"
 
 export async function InstanceBootstrap() {
@@ -31,6 +32,7 @@ export async function InstanceBootstrap() {
   Truncate.init()
   Indexer.init()
   Memory.init()
+  Biblion.init()
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {

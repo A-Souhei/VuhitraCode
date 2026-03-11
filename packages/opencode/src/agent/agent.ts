@@ -11,6 +11,7 @@ import { ProviderTransform } from "../provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_LEARN from "./prompt/learn.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_SECRET from "./prompt/secret.txt"
@@ -571,6 +572,45 @@ export namespace Agent {
         mode: "subagent",
         native: true,
       },
+      learn: {
+        name: "learn",
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            edit: "deny",
+            write: "deny",
+            todowrite: "deny",
+            todoread: "deny",
+            grep: "allow",
+            glob: "allow",
+            list: "allow",
+            bash: "allow",
+            webfetch: "allow",
+            websearch: "allow",
+            codesearch: "allow",
+            read: "allow",
+            memory_read: "allow",
+            memory_write: "deny",
+            biblion_read: "allow",
+            biblion_write: "allow",
+            task: {
+              explore: "allow",
+              "*": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+            },
+          }),
+          user,
+        ),
+        description:
+          "Agent that explores codebases to understand architecture, patterns, and structure, storing knowledge in the biblion database for future reference",
+        prompt: PROMPT_LEARN,
+        options: {},
+        mode: "all",
+        native: true,
+      },
       question: {
         name: "question",
         description:
@@ -756,7 +796,7 @@ export namespace Agent {
       return agent.name
     }
 
-    const primaryVisible = Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
+    const primaryVisible = Object.values(agents).find((a) => a.mode === "primary" && a.hidden !== true)
     if (!primaryVisible) throw new Error("no primary visible agent found")
     return primaryVisible.name
   }
