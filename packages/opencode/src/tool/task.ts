@@ -86,11 +86,11 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-bridge-id": bid },
             body: JSON.stringify({ taskID, prompt, description: params.description }),
-            signal: AbortSignal.timeout(10_000),
+            signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(10_000)]),
           }).catch(() => null)
           if (res?.ok) {
             const data = await res.json().catch(() => null)
-            if (!data?.success) {
+            if (!data?.success || typeof data.sessionID !== "string") {
               return {
                 title: params.description,
                 metadata: {} as { [key: string]: any },

@@ -9,6 +9,7 @@ import { Session } from "../../session"
 import { SessionPrompt } from "../../session/prompt"
 import { Identifier } from "../../id/id"
 import { Bus } from "../../bus"
+import { Instance } from "../../project/instance"
 
 // Set BRIDGE_NODE_URL to your machine's reachable IP/hostname for cross-machine bridge
 function nodeURL() {
@@ -363,9 +364,22 @@ export const BridgeRoutes = lazy(() =>
         if (!Bridge.isFriend() || !bid || c.req.header("x-bridge-id") !== bid)
           return c.json({ error: "Unauthorized" }, 401)
         const { taskID, prompt, description } = c.req.valid("json")
+        const dir = Instance.directory
         const session = await Session.create({
           title: description,
-          permission: [{ permission: "external_directory", pattern: "*", action: "deny" }],
+          permission: [
+            { permission: "external_directory", pattern: "*", action: "deny" },
+            { permission: "read", pattern: "*", action: "deny" },
+            { permission: "read", pattern: `${dir}/**`, action: "allow" },
+            { permission: "edit", pattern: "*", action: "deny" },
+            { permission: "edit", pattern: `${dir}/**`, action: "allow" },
+            { permission: "glob", pattern: "*", action: "deny" },
+            { permission: "glob", pattern: `${dir}/**`, action: "allow" },
+            { permission: "grep", pattern: "*", action: "deny" },
+            { permission: "grep", pattern: `${dir}/**`, action: "allow" },
+            { permission: "bash", pattern: "*", action: "deny" },
+            { permission: "bash", pattern: `${dir}/**`, action: "allow" },
+          ],
         })
         Bus.publish(Bridge.Event.TaskDispatched, {
           targetNodeID: bid,
