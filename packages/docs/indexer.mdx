@@ -4,7 +4,7 @@ description: "Semantic code search with vector embeddings"
 icon: "search"
 ---
 
-OpenCode's indexer provides semantic code search capabilities by indexing your codebase with vector embeddings. This allows agents to find relevant code based on meaning, not just keyword matching.
+vuhitracode's indexer provides semantic code search capabilities by indexing your codebase with vector embeddings. This allows agents to find relevant code based on meaning, not just keyword matching.
 
 ## How It Works
 
@@ -13,7 +13,7 @@ The indexer scans your project files, chunks the code into manageable pieces, an
 ### Indexing Process
 
 1. **File Discovery** - Scans all files in the project directory
-2. **Filtering** - Respects `.gitignore` and `.opencodeignore` patterns
+2. **Filtering** - Respects `.gitignore` and `.vuhitracodeignore` patterns
 3. **Chunking** - Splits files into chunks for embedding
 4. **Embedding** - Generates vector embeddings via configured embedding server
 5. **Storage** - Stores vectors in Qdrant or Redis
