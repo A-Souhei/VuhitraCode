@@ -48,6 +48,19 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
+      // Permission gate — must run for ALL paths, including bridge dispatch
+      if (!ctx.extra?.bypassAgentCheck) {
+        await ctx.ask({
+          permission: "task",
+          patterns: [params.subagent_type],
+          always: ["*"],
+          metadata: {
+            description: params.description,
+            subagent_type: params.subagent_type,
+          },
+        })
+      }
+
       const bridgeMatch = params.prompt.match(/^\[bridge_node:\s*([^\]]+)\]\s*/)
       if (bridgeMatch && Bridge.isActive() && Bridge.isMaster()) {
         const nodeID = bridgeMatch[1].trim()
@@ -57,7 +70,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           const taskID = crypto.randomUUID()
           const res = await fetch(`${node.nodeURL}/bridge/dispatch-task`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-bridge-id": Bridge.bridgeID() ?? "" },
             body: JSON.stringify({ taskID, prompt, description: params.description }),
           }).catch(() => null)
           if (res?.ok) {
@@ -92,19 +105,6 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       }
 
       const config = await Config.get()
-
-      // Skip permission check when user explicitly invoked via @ or command subtask
-      if (!ctx.extra?.bypassAgentCheck) {
-        await ctx.ask({
-          permission: "task",
-          patterns: [params.subagent_type],
-          always: ["*"],
-          metadata: {
-            description: params.description,
-            subagent_type: params.subagent_type,
-          },
-        })
-      }
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)

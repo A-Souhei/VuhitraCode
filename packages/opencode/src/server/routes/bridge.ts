@@ -152,11 +152,7 @@ export const BridgeRoutes = lazy(() =>
           title: z.string().max(500),
           directory: z.string().max(500),
           limit: z.number().int().min(1).max(100).optional(),
-          coordinator: z
-            .string()
-            .url()
-            .regex(/^rediss?:\/\//)
-            .optional(),
+          coordinator: z.string().min(1).optional(),
         }),
       ),
       async (c) => {
@@ -201,11 +197,7 @@ export const BridgeRoutes = lazy(() =>
           slug: z.string().max(200),
           title: z.string().max(500),
           directory: z.string().max(500),
-          coordinator: z
-            .string()
-            .url()
-            .regex(/^rediss?:\/\//)
-            .optional(),
+          coordinator: z.string().min(1).optional(),
         }),
       ),
       async (c) => {
@@ -368,10 +360,10 @@ export const BridgeRoutes = lazy(() =>
       ),
       async (c) => {
         if (!Bridge.isFriend()) return c.json({ error: "Only callable on a friend node" }, 403)
+        const bid = Bridge.bridgeID()
+        if (!bid || c.req.header("x-bridge-id") !== bid) return c.json({ error: "Unauthorized" }, 401)
         const { taskID, prompt, description } = c.req.valid("json")
         const session = await Session.create({ title: description })
-        const bid = Bridge.bridgeID()
-        if (!bid) return c.json({ error: "Bridge ID unavailable" }, 500)
         Bus.publish(Bridge.Event.TaskDispatched, {
           targetNodeID: bid,
           taskID,

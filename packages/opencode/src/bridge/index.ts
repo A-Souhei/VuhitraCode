@@ -151,7 +151,7 @@ export namespace Bridge {
   }
 
   export function available(): boolean {
-    return !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST") || state().coordinator)
+    return !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST") || Env.get("REDIS_PORT") || state().coordinator)
   }
 
   // ─── State accessors ──────────────────────────────────────────────────────────
@@ -610,13 +610,15 @@ export namespace Bridge {
         await pub
           .publish(k.channel, JSON.stringify({ type: "bridge.closed" }))
           .catch((e) => log.warn("bridge: publish closed failed", { error: String(e) }))
+        const nodeIDs = await pub.hkeys(k.nodes).catch(() => [] as string[])
         await Promise.all([
           pub.del(k.master),
           pub.del(k.nodes),
           pub.del(k.context),
           pub.del(`bridge:${id}:limit`),
         ]).catch((e) => log.warn("bridge: cleanup failed", { error: String(e) }))
-        await pub.del(k.session(sessionID)).catch(() => {})
+        const sessionKeys = [...nodeIDs, sessionID].map((sid) => k.session(sid))
+        await pub.del(...sessionKeys).catch(() => {})
         if (slug) await pub.del(`bridge:slug:${slug}`).catch(() => {})
       } else {
         await pub.hdel(k.nodes, sessionID).catch((e) => log.warn("bridge: hdel node failed", { error: String(e) }))
@@ -641,10 +643,10 @@ export namespace Bridge {
     if (sessionID) {
       try {
         Database.use((db) =>
-          db.update(BridgeNodeTable).set({ status: "left" }).where(eq(BridgeNodeTable.session_id, sessionID)).run(),
+          db.update(BridgeNodeTable).set({ status: "inactive" }).where(eq(BridgeNodeTable.session_id, sessionID)).run(),
         )
       } catch (e) {
-        log.warn("bridge: failed to update status to left", { error: String(e) })
+        log.warn("bridge: failed to update status to inactive", { error: String(e) })
       }
     }
 
