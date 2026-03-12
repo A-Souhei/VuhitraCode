@@ -1,0 +1,53 @@
+# Docker Compose configuration for opencode Bridge Mode
+# This configuration provides Redis as a coordination layer for opencode's Bridge Mode feature
+# Bridge Mode allows multiple opencode instances to coordinate via Redis
+
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: opencode-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+# Optional: Example configuration for exposing opencode node ports for cross-machine bridge mode
+# Uncomment and customize the following service if you want to run multiple opencode instances
+# and expose their ports for cross-machine bridge communication via BRIDGE_NODE_URL
+#
+# services:
+#   opencode-node-1:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     environment:
+#       - BRIDGE_NODE_URL=http://opencode-node-1:3000
+#       - REDIS_URL=redis://redis:6379
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#
+#   opencode-node-2:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     environment:
+#       - BRIDGE_NODE_URL=http://opencode-node-2:3000
+#       - REDIS_URL=redis://redis:6379
+#     ports:
+#       - "3001:3000"
+#     depends_on:
+#       redis:
+#         condition: service_healthy

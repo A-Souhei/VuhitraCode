@@ -40,6 +40,7 @@ import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
+import { BridgeProvider, useBridge } from "./context/bridge"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -157,7 +158,9 @@ export function tui(input: {
                                       <FrecencyProvider>
                                         <PromptHistoryProvider>
                                           <PromptRefProvider>
-                                            <App />
+                                            <BridgeProvider>
+                                              <App />
+                                            </BridgeProvider>
                                           </PromptRefProvider>
                                         </PromptHistoryProvider>
                                       </FrecencyProvider>
@@ -252,6 +255,7 @@ function App() {
     renderer.clearSelection()
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+  const bridge = useBridge()
 
   // Update terminal window title based on current route and session
   createEffect(() => {
@@ -279,6 +283,7 @@ function App() {
   onMount(() => {
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
+      else if (args.bridge) local.agent.set("alice")
       if (args.model) {
         const { providerID, modelID } = Provider.parseModel(args.model)
         if (!providerID || !modelID)
@@ -297,6 +302,81 @@ function App() {
         })
       }
     })
+  })
+
+  let bridgeInited = false
+  createEffect(() => {
+    if (bridgeInited || sync.status === "loading" || !args.bridge || sync.data.session.length === 0) return
+    const session = untrack(() => {
+      const current = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
+      return current ?? sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)[0]
+    })
+    if (args.bridge === "master") {
+      bridgeInited = true
+      sdk
+        .fetch(`${sdk.url}/bridge/set-master`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionID: session.id,
+            slug: session.slug,
+            title: session.title,
+            directory: session.directory,
+            coordinator: args.coordinator,
+          }),
+        })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            toast.show({ message: data?.error ?? "Failed to set bridge master", variant: "error" })
+            return
+          }
+          const id = data?.bridgeID ?? null
+          if (!id) {
+            toast.show({ message: "Bridge active! (no ID returned)", variant: "warning", duration: 8000 })
+          } else {
+            toast.show({ message: `Bridge active! Share this ID with friends: ${id}`, variant: "info", duration: 8000 })
+          }
+          bridge.setRole("master")
+          bridge.setBridgeID(id)
+        })
+        .catch(() => toast.show({ message: "Failed to start bridge", variant: "error" }))
+    } else if (args.bridge === "friend") {
+      bridgeInited = true
+      if (!args.bridgeID) {
+        toast.show({
+          message: "Bridge ID is required for friend mode. Use --bridge-id <master-session-id>",
+          variant: "error",
+          duration: 6000,
+        })
+        return
+      }
+      sdk
+        .fetch(`${sdk.url}/bridge/set-friend`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            masterIDOrSlug: args.bridgeID,
+            sessionID: session.id,
+            slug: session.slug,
+            title: session.title,
+            directory: session.directory,
+            coordinator: args.coordinator,
+          }),
+        })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            toast.show({ message: data?.error ?? "Failed to join bridge", variant: "error" })
+            return
+          }
+          const id = data?.bridgeID ?? data?.id ?? null
+          toast.show({ message: "Joined bridge as friend", variant: "info", duration: 4000 })
+          bridge.setRole("friend")
+          bridge.setBridgeID(id)
+        })
+        .catch(() => toast.show({ message: "Failed to join bridge", variant: "error" }))
+    }
   })
 
   const [userSkipped, setUserSkipped] = createSignal(false)
@@ -757,8 +837,8 @@ function App() {
       if (!error) return "An error occurred"
 
       if (typeof error === "object") {
-        const data = error.data
-        if ("message" in data && typeof data.message === "string") {
+        const data = (error as any).data
+        if (data && "message" in data && typeof data.message === "string") {
           return data.message
         }
       }
@@ -779,6 +859,70 @@ function App() {
       message: `OpenCode v${evt.properties.version} is available. Run 'opencode upgrade' to update manually.`,
       duration: 10000,
     })
+  })
+
+  sdk.event.on(
+    "bridge.state.changed" as any,
+    (evt: {
+      properties?: { bridgeID?: string; nodes?: Array<{ nodeID?: string; role?: string }>; masterID?: string }
+    }) => {
+      const id = evt.properties?.bridgeID ?? null
+      if (!id) {
+        // Only clear state if we have no locally confirmed bridgeID, to avoid
+        // transient null events overwriting optimistic state set at init time.
+        if (!bridge.state.bridgeID) bridge.setRole(null)
+        return
+      }
+      bridge.setBridgeID(id)
+      bridge.setNodeCount(evt.properties?.nodes?.length ?? 0)
+      // If role is unknown (e.g. after init() restore), infer it from nodes list
+      if (!bridge.state.role) {
+        const nodeList = evt.properties?.nodes ?? []
+        const match = nodeList.find(
+          (n) => sync.session.get(n.nodeID ?? "") && (n.role === "master" || n.role === "friend"),
+        )
+        if (match?.role === "master" || match?.role === "friend") bridge.setRole(match.role)
+      }
+    },
+  )
+
+  sdk.event.on("bridge.task.dispatched" as any, (evt: { properties?: { sessionID?: string } }) => {
+    const id = evt.properties?.sessionID
+    if (!id || !id.startsWith("ses_")) return
+    if (bridge.state.role !== "friend") return
+    route.navigate({ type: "session", sessionID: id })
+  })
+
+  sdk.event.on(
+    "bridge.context.shared" as any,
+    (evt: {
+      properties?: {
+        nodeID?: string
+        role?: string
+        type?: string
+        content: string
+        directory?: string
+        timestamp?: number
+      }
+    }) => {
+      const p = evt.properties
+      if (!p) return
+      if (bridge.state.role !== "master") return
+      const strip = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "")
+      const VALID_TYPES = ["finding", "work_summary", "task_result", "status"]
+      const label = VALID_TYPES.includes(p.type ?? "") ? p.type : "context"
+      const preview = strip(p.content.slice(0, 120))
+      toast.show({
+        variant: "info",
+        title: `Friend update [${label}]`,
+        message: preview,
+        duration: 8000,
+      })
+    },
+  )
+
+  sdk.event.on("bridge.input.locked" as any, (evt: { properties?: { locked?: boolean } }) => {
+    bridge.setInputLocked(evt.properties?.locked ?? false)
   })
 
   return (

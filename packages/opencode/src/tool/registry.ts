@@ -23,11 +23,13 @@ import { WebSearchTool } from "./websearch"
 import { CodeSearchTool } from "./codesearch"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
+import { Bridge } from "@/bridge"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
 import { PassOverTool } from "./pass-over"
+import { PingBridgeSessionTool } from "./ping_bridge_session"
 import { Glob } from "../util/glob"
 import { Memory } from "@/memory"
 import { Biblion } from "@/biblion"
@@ -116,6 +118,7 @@ export namespace ToolRegistry {
       WriteTool,
       TaskTool,
       PassOverTool,
+      ...(Bridge.isActive() ? [PingBridgeSessionTool] : []),
       WebFetchTool,
       TodoWriteTool,
       // TodoReadTool,

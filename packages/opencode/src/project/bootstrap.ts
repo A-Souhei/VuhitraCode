@@ -16,6 +16,11 @@ import { Indexer } from "../indexer"
 import { Memory } from "../memory"
 import { Biblion } from "../biblion"
 import { Profiles } from "./profiles"
+import { Bridge } from "../bridge"
+import { SessionStatus } from "../session/status"
+import { Question } from "../question"
+import { Session } from "../session"
+import { notify } from "../util/slack"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
@@ -33,10 +38,36 @@ export async function InstanceBootstrap() {
   Indexer.init()
   Memory.init()
   Biblion.init()
+  Bridge.init()
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {
       await Project.setInitialized(Instance.project.id)
     }
+  })
+
+  Bus.subscribe(SessionStatus.Event.Status, async ({ properties }) => {
+    try {
+      if (properties.status.type !== "idle") return
+      const session = await Session.get(properties.sessionID).catch(() => undefined)
+      if (!session || session.parentID) return
+      notify(`✅ Agent turn complete (session: ${properties.sessionID})`)
+    } catch {}
+  })
+
+  Bus.subscribe(Question.Event.Asked, async ({ properties }) => {
+    try {
+      const session = await Session.get(properties.sessionID).catch(() => undefined)
+      if (!session || session.parentID) return
+      const questions = properties.questions.map((q) => q.question).join("\n")
+      notify(`❓ Agent is asking:\n${questions}\n_(session: ${properties.sessionID})_`)
+    } catch {}
+  })
+
+  Bus.subscribe(Bridge.Event.StateChanged, ({ properties }) => {
+    try {
+      if (!Bridge.isMaster()) return
+      notify(`🌉 Bridge Mode active — this terminal is the master (bridgeID: ${properties.bridgeID})`)
+    } catch {}
   })
 }

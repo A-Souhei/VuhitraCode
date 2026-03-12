@@ -14,6 +14,7 @@ import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
+import { Bridge } from "../bridge"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -47,9 +48,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
-
-      // Skip permission check when user explicitly invoked via @ or command subtask
+      // Permission gate — must run for ALL paths, including bridge dispatch
       if (!ctx.extra?.bypassAgentCheck) {
         await ctx.ask({
           permission: "task",
@@ -61,6 +60,65 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           },
         })
       }
+
+      const bridgeMatch = params.prompt.match(/^\[bridge_node:\s*([^\]]+)\]\s*/)
+      if (bridgeMatch && Bridge.isActive() && Bridge.isMaster()) {
+        const nodeID = bridgeMatch[1].trim()
+        const prompt = params.prompt.slice(bridgeMatch[0].length)
+        const node = Bridge.info()?.nodes.find((n) => n.nodeID === nodeID || n.slug === nodeID)
+        if (node?.nodeURL) {
+          const parsedURL = new URL(node.nodeURL)
+          if (!["http:", "https:"].includes(parsedURL.protocol))
+            return {
+              title: params.description,
+              metadata: {} as { [key: string]: any },
+              output: `Error: invalid nodeURL scheme for bridge node ${node.nodeID}`,
+            }
+          const bid = Bridge.bridgeID()
+          if (!bid)
+            return {
+              title: params.description,
+              metadata: {} as { [key: string]: any },
+              output: `Error: bridge session ended before task could be dispatched`,
+            }
+          const taskID = crypto.randomUUID()
+          const res = await fetch(`${node.nodeURL}/bridge/dispatch-task`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-bridge-id": bid },
+            body: JSON.stringify({ taskID, prompt, description: params.description }),
+          }).catch(() => null)
+          if (res?.ok) {
+            const data = (await res.json()) as { taskID: string; sessionID: string; success: boolean }
+            let abortReject!: () => void
+            const aborted = new Promise<never>((_, reject) => {
+              abortReject = () => reject(new Error("Aborted"))
+              ctx.abort.addEventListener("abort", abortReject, { once: true })
+            })
+            let result: string | null
+            try {
+              result = await Promise.race([Bridge.pollTaskResult(taskID), aborted])
+            } catch {
+              result = null
+            } finally {
+              ctx.abort.removeEventListener("abort", abortReject)
+            }
+            const output = [
+              `task_id: ${taskID} (bridge node: ${node.nodeID}, friend session: ${data.sessionID})`,
+              "",
+              "<task_result>",
+              result ?? "Friend task timed out or was aborted before returning a result.",
+              "</task_result>",
+            ].join("\n")
+            return {
+              title: params.description,
+              metadata: { nodeID: node.nodeID, taskID, sessionID: data.sessionID } as { [key: string]: any },
+              output,
+            }
+          }
+        }
+      }
+
+      const config = await Config.get()
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)

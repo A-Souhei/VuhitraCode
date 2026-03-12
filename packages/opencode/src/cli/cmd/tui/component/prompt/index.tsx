@@ -34,6 +34,7 @@ import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
+import { useBridge } from "../../context/bridge"
 import { DialogSkill } from "../dialog-skill"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
@@ -81,6 +82,7 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+  const bridge = useBridge()
 
   function promptModelWarning() {
     toast.show({
@@ -1193,6 +1195,21 @@ export function Prompt(props: PromptProps) {
               <text fg={highlight()}>
                 {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
               </text>
+              <Show when={bridge.state.role}>
+                <text>
+                  <span
+                    style={{
+                      fg: bridge.state.role === "master" ? theme.warning : theme.textMuted,
+                      bold: bridge.state.role === "master",
+                    }}
+                  >
+                    {`⚡${bridge.state.role}`}
+                  </span>
+                  <Show when={bridge.state.role === "master" && bridge.state.bridgeID}>
+                    <span style={{ fg: theme.textMuted }}>{` · ${bridge.state.bridgeID}`}</span>
+                  </Show>
+                </text>
+              </Show>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
                   <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
