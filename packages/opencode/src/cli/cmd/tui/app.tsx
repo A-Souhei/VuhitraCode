@@ -887,6 +887,13 @@ function App() {
     },
   )
 
+  sdk.event.on("bridge.task.dispatched" as any, (evt: { properties?: { sessionID?: string } }) => {
+    const id = evt.properties?.sessionID
+    if (!id || !id.startsWith("ses_")) return
+    if (bridge.state.role !== "friend") return
+    route.navigate({ type: "session", sessionID: id })
+  })
+
   sdk.event.on("bridge.input.locked" as any, (evt: { properties?: { locked?: boolean } }) => {
     bridge.setInputLocked(evt.properties?.locked ?? false)
   })

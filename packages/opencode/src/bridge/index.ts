@@ -65,7 +65,7 @@ export namespace Bridge {
       z.object({
         targetNodeID: z.string(),
         taskID: z.string(),
-        prompt: z.string(),
+        sessionID: z.string(),
         agentName: z.string(),
       }),
     ),
@@ -219,7 +219,7 @@ export namespace Bridge {
       }
     } else if (msg.type === "task.dispatched") {
       const parsed = z
-        .object({ targetNodeID: z.string(), taskID: z.string(), prompt: z.string(), agentName: z.string() })
+        .object({ targetNodeID: z.string(), taskID: z.string(), sessionID: z.string(), agentName: z.string() })
         .safeParse(msg)
       if (parsed.success) Bus.publish(Event.TaskDispatched, parsed.data)
     } else if (msg.type === "task.result") {

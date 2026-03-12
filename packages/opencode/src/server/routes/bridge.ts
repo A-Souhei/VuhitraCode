@@ -8,6 +8,7 @@ import { lazy } from "../../util/lazy"
 import { Session } from "../../session"
 import { SessionPrompt } from "../../session/prompt"
 import { Identifier } from "../../id/id"
+import { Bus } from "../../bus"
 
 // Set BRIDGE_NODE_URL to your machine's reachable IP/hostname for cross-machine bridge
 function nodeURL() {
@@ -369,6 +370,14 @@ export const BridgeRoutes = lazy(() =>
         if (!Bridge.isFriend()) return c.json({ error: "Only callable on a friend node" }, 403)
         const { taskID, prompt, description } = c.req.valid("json")
         const session = await Session.create({ title: description })
+        const bid = Bridge.bridgeID()
+        if (!bid) return c.json({ error: "Bridge ID unavailable" }, 500)
+        Bus.publish(Bridge.Event.TaskDispatched, {
+          targetNodeID: bid,
+          taskID,
+          sessionID: session.id,
+          agentName: "alice",
+        })
         const parts = await SessionPrompt.resolvePromptParts(prompt)
         const messageID = Identifier.ascending("message")
 
