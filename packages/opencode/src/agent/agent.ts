@@ -587,14 +587,22 @@ export namespace Agent {
       },
       explore: {
         name: "explore",
+        // user overrides are applied before the read-only restriction so a permissive
+        // user config cannot grant explore agents write or edit access.
         permission: PermissionNext.merge(
           defaults,
+          user,
           PermissionNext.fromConfig({
             "*": "deny",
             grep: "allow",
             glob: "allow",
             list: "allow",
-            bash: "allow",
+            bash: "deny",
+            edit: "deny",
+            write: "deny",
+            todowrite: "deny",
+            todoread: "deny",
+            task: "deny",
             webfetch: "allow",
             websearch: "allow",
             codesearch: "allow",
@@ -605,7 +613,6 @@ export namespace Agent {
               "*": "ask",
             },
           }),
-          user,
         ),
         description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
         prompt: PROMPT_EXPLORE,
