@@ -69,6 +69,8 @@ export type State = {
   memory_status?: MemoryStatus
   biblion_status?: BiblionStatus
   indexer_status?: IndexerStatus
+  profiles?: string[]
+  active_profile?: string
   limit: number
   message: {
     [sessionID: string]: Message[]

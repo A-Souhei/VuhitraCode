@@ -1,9 +1,13 @@
-import { Match, Show, Switch } from "solid-js"
+import { Match, Show, Switch, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Button } from "@opencode-ai/ui/button"
+import { showToast } from "@opencode-ai/ui/toast"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { useBridge } from "@/context/bridge"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import { useParams } from "@solidjs/router"
 
@@ -23,6 +27,72 @@ export default function SessionInfoPanel() {
   const todos = () => (params.id ? (sync.data.todo[params.id] ?? []) : [])
 
   const [deleting, setDeleting] = createStore({ mem: false, bib: false })
+
+  const bridge = useBridge()
+  const globalSDK = useGlobalSDK()
+  const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
+  const [isMaster, setIsMaster] = createSignal(false)
+
+  async function becomeMaster() {
+    const id = params.id
+    if (!id) return
+    const dir = sync.data.path.directory
+    if (!dir) return
+    const title = dir.split("/").pop() ?? dir
+    setBridgeLoading("master", true)
+    try {
+      const res = await fetch(`${globalSDK.url}/bridge/set-master`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-opencode-directory": dir,
+        },
+        body: JSON.stringify({
+          sessionID: id,
+          slug: title,
+          title,
+          directory: dir,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
+      }
+      showToast({ variant: "success", title: "Bridge master mode enabled" })
+      setIsMaster(true)
+    } catch (e) {
+      showToast({
+        variant: "error",
+        title: "Failed to enable bridge master",
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setBridgeLoading("master", false)
+    }
+  }
+
+  async function leaveBridge() {
+    const dir = sync.data.path.directory
+    if (!dir) return
+    setBridgeLoading("leave", true)
+    try {
+      const res = await fetch(`${globalSDK.url}/bridge/leave`, {
+        method: "POST",
+        headers: { "x-opencode-directory": dir },
+      })
+      if (!res.ok) throw new Error(await res.text())
+      showToast({ variant: "success", title: "Left bridge" })
+      setIsMaster(false)
+    } catch (e) {
+      showToast({
+        variant: "error",
+        title: "Failed to leave bridge",
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setBridgeLoading("leave", false)
+    }
+  }
 
   async function deleteMem() {
     setDeleting("mem", true)
@@ -132,6 +202,56 @@ export default function SessionInfoPanel() {
             <Show when={!biblion()}>
               <span class="text-12-regular text-text-weaker">—</span>
             </Show>
+          </div>
+        </div>
+
+        {/* Bridge */}
+        <div class="px-4 py-3 border-b border-border-weak-base">
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <Icon name="link" size="small" class="text-icon-base shrink-0" />
+              <span class="text-12-medium text-text-strong flex-1 min-w-0">Bridge</span>
+              <Show when={bridge.role}>
+                <span class="text-12-regular text-text-weak shrink-0 capitalize">{bridge.role}</span>
+              </Show>
+              <Show when={!bridge.role}>
+                <span class="text-12-regular text-text-weaker shrink-0">—</span>
+              </Show>
+            </div>
+            <Show when={isMaster() && params.id}>
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-11-regular text-text-weaker font-mono truncate flex-1 min-w-0 select-all">
+                  {params.id}
+                </span>
+                <IconButton
+                  icon="copy"
+                  size="small"
+                  variant="ghost"
+                  aria-label="Copy session ID"
+                  onClick={() => {
+                    navigator.clipboard.writeText(params.id!)
+                    showToast({ variant: "success", title: "Session ID copied" })
+                  }}
+                />
+              </div>
+            </Show>
+            <div class="flex gap-2">
+              <Show when={!isMaster()}>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  disabled={bridgeLoading.master || !params.id}
+                  onClick={becomeMaster}
+                >
+                  Become Master
+                </Button>
+              </Show>
+              <Show when={bridge.role}>
+                <Button size="small" variant="ghost" disabled={bridgeLoading.leave} onClick={leaveBridge}>
+                  Leave
+                </Button>
+              </Show>
+            </div>
           </div>
         </div>
 

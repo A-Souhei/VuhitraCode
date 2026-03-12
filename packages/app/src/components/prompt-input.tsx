@@ -16,6 +16,7 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
@@ -28,6 +29,7 @@ import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Select } from "@opencode-ai/ui/select"
 import { RadioGroup } from "@opencode-ai/ui/radio-group"
+import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ModelSelectorPopover } from "@/components/dialog-select-model"
 import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid"
@@ -94,6 +96,7 @@ const NON_EMPTY_TEXT = /[^\s\u200B]/
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
   const sync = useSync()
+  const globalSDK = useGlobalSDK()
   const local = useLocal()
   const files = useFile()
   const prompt = usePrompt()
@@ -110,6 +113,30 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let fileInputRef: HTMLInputElement | undefined
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
+
+  const profiles = () => sync.data.profiles ?? ["default"]
+  const activeProfile = () => sync.data.active_profile ?? "default"
+  async function switchProfile(name: string) {
+    const dir = sync.data.path.directory
+    try {
+      const res = await fetch(`${globalSDK.url}/profile/switch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-opencode-directory": dir,
+        },
+        body: JSON.stringify({ name, directory: dir }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      showToast({ variant: "success", title: `Switched to profile "${name}"` })
+    } catch (e) {
+      showToast({
+        variant: "error",
+        title: "Failed to switch profile",
+        description: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
 
   const mirror = { input: false }
   const inset = 44
@@ -1427,14 +1454,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </TooltipKeybind>
                 <Select
                   size="normal"
-                  options={["default"]}
-                  current="default"
+                  options={profiles()}
+                  current={activeProfile()}
                   class="capitalize max-w-[160px]"
                   valueClass="truncate text-13-regular"
                   triggerStyle={{ height: "28px" }}
                   variant="ghost"
-                  disabled
-                  title="Profiles (coming soon)"
+                  onSelect={(name) => {
+                    if (name && name !== activeProfile()) switchProfile(name)
+                  }}
                 />
               </Show>
             </div>

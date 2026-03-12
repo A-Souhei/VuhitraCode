@@ -37,6 +37,7 @@ export const WebCommand = cmd({
       UI.println(UI.Style.TEXT_WARNING_BOLD + "!  " + "OPENCODE_SERVER_PASSWORD is not set; server is unsecured.")
     }
     const opts = await resolveNetworkOptions(args)
+    await Bun.write("/proc/sys/fs/inotify/max_user_watches", "524288\n").catch(() => {})
     const server = Server.listen(opts)
     UI.empty()
     UI.println(UI.logo("  "))

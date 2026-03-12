@@ -233,6 +233,7 @@ function createGlobalSync() {
       const sdk = sdkFor(directory)
       await bootstrapDirectory({
         directory,
+        url: globalSDK.url,
         sdk,
         store: child[0],
         setStore: child[1],

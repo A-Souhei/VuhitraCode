@@ -664,27 +664,34 @@ export function SessionHeader() {
                     </Button>
                   </TooltipKeybind>
 
-                  <Tooltip value="Session Info" placement="top" gutter={8}>
+                  <TooltipKeybind title="Session Info" keybind={command.keybind("sessionPanel.toggle")}>
                     <Button
                       variant="ghost"
-                      class="titlebar-icon w-8 h-6 p-0 box-border"
+                      class="group/session-panel-toggle titlebar-icon w-8 h-6 p-0 box-border"
                       onClick={() => view().sessionPanel.toggle()}
                       aria-label="Session Info"
                       aria-expanded={view().sessionPanel.opened()}
                       aria-controls="session-info-panel"
                     >
-                      <div class="relative flex items-center justify-center size-4">
+                      <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
                         <Icon
                           size="small"
-                          name="dot-grid"
-                          classList={{
-                            "text-icon-strong": view().sessionPanel.opened(),
-                            "text-icon-weak": !view().sessionPanel.opened(),
-                          }}
+                          name={view().sessionPanel.opened() ? "layout-right-partial" : "layout-right"}
+                          class="group-hover/session-panel-toggle:hidden"
+                        />
+                        <Icon
+                          size="small"
+                          name="layout-right-partial"
+                          class="hidden group-hover/session-panel-toggle:inline-block"
+                        />
+                        <Icon
+                          size="small"
+                          name={view().sessionPanel.opened() ? "layout-right" : "layout-right-partial"}
+                          class="hidden group-active/session-panel-toggle:inline-block"
                         />
                       </div>
                     </Button>
-                  </Tooltip>
+                  </TooltipKeybind>
                 </div>
               </div>
             </div>

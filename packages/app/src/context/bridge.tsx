@@ -28,7 +28,11 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
       if (inflight) return
       inflight = true
       try {
-        const res = await fetch(`${sdk.url}/bridge/info`, { signal })
+        const dirSegment = window.location.pathname.split("/")[1] ?? ""
+        const directory = dirSegment ? decodeURIComponent(dirSegment) : ""
+        const headers: Record<string, string> = {}
+        if (directory) headers["x-opencode-directory"] = directory
+        const res = await fetch(`${sdk.url}/bridge/info`, { signal, headers })
         if (!res.ok) {
           setState({ role: null, id: null, sessionID: null })
           return
