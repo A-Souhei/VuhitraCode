@@ -62,16 +62,24 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           }).catch(() => null)
           if (res?.ok) {
             const data = (await res.json()) as { taskID: string; sessionID: string; success: boolean }
+            let abortReject!: () => void
+            const aborted = new Promise<never>((_, reject) => {
+              abortReject = () => reject(new Error("Aborted"))
+              ctx.abort.addEventListener("abort", abortReject, { once: true })
+            })
+            let result: string | null
+            try {
+              result = await Promise.race([Bridge.pollTaskResult(taskID), aborted])
+            } catch {
+              result = null
+            } finally {
+              ctx.abort.removeEventListener("abort", abortReject)
+            }
             const output = [
               `task_id: ${taskID} (bridge node: ${nodeID}, friend session: ${data.sessionID})`,
               "",
               "<task_result>",
-              `Friend Alice has started working on this task in her repo (${node.directory}).`,
-              `Task ID: ${taskID}`,
-              `Session: ${data.sessionID}`,
-              "",
-              "Results will appear in shared bridge context. Master Alice should check shared context",
-              "between phases and poll for completion using the task_id above.",
+              result ?? "Friend task timed out or was aborted before returning a result.",
               "</task_result>",
             ].join("\n")
             return {
