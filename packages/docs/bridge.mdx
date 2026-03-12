@@ -1,10 +1,10 @@
 ---
 title: "Bridge Mode"
-description: "Link multiple opencode instances into a coordinated multi-agent session"
+description: "Link multiple vuhitracode instances into a coordinated multi-agent session"
 icon: "link"
 ---
 
-Bridge Mode lets you connect multiple `opencode` CLI instances — on the same machine or across different machines — into a single coordinated session. One instance acts as **master** (where you type prompts), and one or more act as **friends** (input disabled; they receive and execute tasks dispatched by master's Alice agent).
+Bridge Mode lets you connect multiple `vuhitracode` CLI instances — on the same machine or across different machines — into a single coordinated session. One instance acts as **master** (where you type prompts), and one or more act as **friends** (input disabled; they receive and execute tasks dispatched by master's Alice agent).
 
 ## How It Works
 
@@ -110,16 +110,16 @@ redis-server
 </Step>
 
 <Step title="Start the master instance">
-  Open a terminal, navigate to your primary project directory, and launch opencode with the `--bridge master` flag:
+  Open a terminal, navigate to your primary project directory, and launch vuhitracode with the `--bridge master` flag:
 
 ```bash
-opencode --bridge master
+vuhitracode --bridge master
 ```
 
 To specify a Redis coordinator explicitly (e.g., a remote server):
 
 ```bash
-opencode --bridge master --coordinator redis://192.168.1.5:6379
+vuhitracode --bridge master --coordinator redis://192.168.1.5:6379
 ```
 
 If `--coordinator` is omitted, the coordinator defaults to `localhost:<auto-port>`.
@@ -127,12 +127,12 @@ If `--coordinator` is omitted, the coordinator defaults to `localhost:<auto-port
 </Step>
 
 <Step title="Start a friend instance">
-  Open a **second terminal**, navigate to a **different directory**, and launch opencode with the `--bridge friend`
+  Open a **second terminal**, navigate to a **different directory**, and launch vuhitracode with the `--bridge friend`
   flag. Provide `--coordinator` pointing to the same Redis instance, and `--bridge-id` set to the master's session ID
   (displayed in the master terminal after startup):
 
 ```bash
-opencode --bridge friend --coordinator redis://192.168.1.5:6379 --bridge-id <master-session-id>
+vuhitracode --bridge friend --coordinator redis://192.168.1.5:6379 --bridge-id <master-session-id>
 ```
 
 The friend's input is locked. It will display incoming tasks as Alice dispatches them.
@@ -164,7 +164,7 @@ To connect instances on different machines, point every node at the same Redis i
 On **Machine A** (master):
 
 ```bash
-opencode --bridge master --coordinator redis://192.168.1.10:6379
+vuhitracode --bridge master --coordinator redis://192.168.1.10:6379
 ```
 
 ```json title=".vuhitra/env.json"
@@ -176,7 +176,7 @@ opencode --bridge master --coordinator redis://192.168.1.10:6379
 On **Machine B** (friend):
 
 ```bash
-opencode --bridge friend --coordinator redis://192.168.1.10:6379 --bridge-id <master-session-id>
+vuhitracode --bridge friend --coordinator redis://192.168.1.10:6379 --bridge-id <master-session-id>
 ```
 
 ```json title=".vuhitra/env.json"
@@ -185,7 +185,7 @@ opencode --bridge friend --coordinator redis://192.168.1.10:6379 --bridge-id <ma
 }
 ```
 
-Replace `192.168.1.10` with the IP or hostname of your Redis server, and set `BRIDGE_NODE_URL` to the address that **other machines on your network can reach** for each node. The default opencode server port is `4096`.
+Replace `192.168.1.10` with the IP or hostname of your Redis server, and set `BRIDGE_NODE_URL` to the address that **other machines on your network can reach** for each node. The default vuhitracode server port is `4096`.
 
 <Warning>
   Both machines must be able to reach each other's `BRIDGE_NODE_URL`. Ensure your firewall allows inbound connections on
@@ -202,7 +202,7 @@ version: "3.8"
 services:
   redis:
     image: redis:7-alpine
-    container_name: opencode-redis
+    container_name: vuhitracode-redis
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -224,7 +224,7 @@ Start it with:
 docker compose up -d redis
 ```
 
-For cross-machine Docker setups, uncomment the `opencode-node` service examples in the file and adjust `BRIDGE_NODE_URL` to each container's reachable address. Pass `--coordinator redis://<host>:6379` when launching each node.
+For cross-machine Docker setups, uncomment the `vuhitracode-node` service examples in the file and adjust `BRIDGE_NODE_URL` to each container's reachable address. Pass `--coordinator redis://<host>:6379` when launching each node.
 
 ## Context Sharing
 
@@ -264,7 +264,7 @@ For production or shared-network setups:
    Then include the password in your coordinator URL:
 
    ```bash
-   opencode --bridge master --coordinator redis://:your-strong-password@localhost:6379
+   vuhitracode --bridge master --coordinator redis://:your-strong-password@localhost:6379
    ```
 
    Or set it via `.vuhitra/env.json`:

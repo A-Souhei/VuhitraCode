@@ -237,10 +237,10 @@ ping_bridge_session({ nodeID: "friend-node-abc123" })
 
 ```bash
 # Master (Alice orchestrates here)
-opencode --bridge master --coordinator redis://host:6379
+vuhitracode --bridge master --coordinator redis://host:6379
 
 # Friend (requires --bridge-id flag pointing to master's session ID)
-opencode --bridge friend --bridge-id <master-session-id> --coordinator redis://host:6379
+vuhitracode --bridge friend --bridge-id <master-session-id> --coordinator redis://host:6379
 ```
 
 Friend terminals show `⚡friend` in the prompt bar; Master Alice shows `⚡master`.
