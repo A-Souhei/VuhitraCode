@@ -86,22 +86,18 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-bridge-id": bid },
             body: JSON.stringify({ taskID, prompt, description: params.description }),
+            signal: AbortSignal.timeout(10_000),
           }).catch(() => null)
           if (res?.ok) {
-            const data = (await res.json()) as { taskID: string; sessionID: string; success: boolean }
-            let abortReject!: () => void
-            const aborted = new Promise<never>((_, reject) => {
-              abortReject = () => reject(new Error("Aborted"))
-              ctx.abort.addEventListener("abort", abortReject, { once: true })
-            })
-            let result: string | null
-            try {
-              result = await Promise.race([Bridge.pollTaskResult(taskID), aborted])
-            } catch {
-              result = null
-            } finally {
-              ctx.abort.removeEventListener("abort", abortReject)
+            const data = await res.json().catch(() => null)
+            if (!data?.success) {
+              return {
+                title: params.description,
+                metadata: {} as { [key: string]: any },
+                output: `Error: bridge node ${node.nodeID} rejected task dispatch`,
+              }
             }
+            const result = await Bridge.pollTaskResult(taskID, node.nodeID, ctx.abort)
             const output = [
               `task_id: ${taskID} (bridge node: ${node.nodeID}, friend session: ${data.sessionID})`,
               "",

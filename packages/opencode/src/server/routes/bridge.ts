@@ -363,7 +363,10 @@ export const BridgeRoutes = lazy(() =>
         if (!Bridge.isFriend() || !bid || c.req.header("x-bridge-id") !== bid)
           return c.json({ error: "Unauthorized" }, 401)
         const { taskID, prompt, description } = c.req.valid("json")
-        const session = await Session.create({ title: description })
+        const session = await Session.create({
+          title: description,
+          permission: [{ permission: "external_directory", pattern: "*", action: "deny" }],
+        })
         Bus.publish(Bridge.Event.TaskDispatched, {
           targetNodeID: bid,
           taskID,
