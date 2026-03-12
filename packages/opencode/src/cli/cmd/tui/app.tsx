@@ -306,11 +306,13 @@ function App() {
 
   let bridgeInited = false
   createEffect(() => {
-    if (bridgeInited || sync.status === "loading" || !args.bridge) return
-    if (sync.data.session.length === 0) return
-    const current = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
-    const session = current ?? sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)[0]
+    if (bridgeInited || sync.status === "loading" || !args.bridge || sync.data.session.length === 0) return
+    const session = untrack(() => {
+      const current = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
+      return current ?? sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)[0]
+    })
     if (args.bridge === "master") {
+      bridgeInited = true
       fetch(`${sdk.url}/bridge/set-master`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -323,19 +325,23 @@ function App() {
         }),
       })
         .then(async (res) => {
+          const data = await res.json().catch(() => ({}))
           if (!res.ok) {
-            toast.show({ message: "Failed to set bridge master", variant: "error" })
+            toast.show({ message: data?.error ?? "Failed to set bridge master", variant: "error" })
             return
           }
-          const data = await res.json().catch(() => ({}))
-          const id = data?.id ?? data?.bridgeID ?? "unknown"
-          toast.show({ message: `Bridge active! Share this ID with friends: ${id}`, variant: "info", duration: 8000 })
+          const id = data?.bridgeID ?? null
+          if (!id) {
+            toast.show({ message: "Bridge active! (no ID returned)", variant: "warning", duration: 8000 })
+          } else {
+            toast.show({ message: `Bridge active! Share this ID with friends: ${id}`, variant: "info", duration: 8000 })
+          }
           bridge.setRole("master")
           bridge.setBridgeID(id)
-          bridgeInited = true
         })
         .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
     } else if (args.bridge === "friend") {
+      bridgeInited = true
       if (!args.bridgeID) {
         toast.show({
           message: "Bridge ID is required for friend mode. Use --bridge-id <master-session-id>",
@@ -357,17 +363,15 @@ function App() {
         }),
       })
         .then(async (res) => {
+          const data = await res.json().catch(() => ({}))
           if (!res.ok) {
-            toast.show({ message: "Failed to join bridge", variant: "error" })
+            toast.show({ message: data?.error ?? "Failed to join bridge", variant: "error" })
             return
           }
-          const data = await res.json().catch(() => ({}))
-          const id = data?.id ?? data?.bridgeID ?? args.bridgeID ?? "unknown"
+          const id = data?.bridgeID ?? data?.id ?? null
           toast.show({ message: "Joined bridge as friend", variant: "info", duration: 4000 })
           bridge.setRole("friend")
           bridge.setBridgeID(id)
-          bridge.setInputLocked(true)
-          bridgeInited = true
         })
         .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
     }
@@ -855,10 +859,30 @@ function App() {
     })
   })
 
-  sdk.event.on("bridge.state.changed" as any, (evt: { properties?: { bridgeID?: string; nodes?: unknown[] } }) => {
-    bridge.setBridgeID(evt.properties?.bridgeID ?? null)
-    bridge.setNodeCount(evt.properties?.nodes?.length ?? 0)
-  })
+  sdk.event.on(
+    "bridge.state.changed" as any,
+    (evt: {
+      properties?: { bridgeID?: string; nodes?: Array<{ nodeID?: string; role?: string }>; masterID?: string }
+    }) => {
+      const id = evt.properties?.bridgeID ?? null
+      if (!id) {
+        // Only clear state if we have no locally confirmed bridgeID, to avoid
+        // transient null events overwriting optimistic state set at init time.
+        if (!bridge.state.bridgeID) bridge.setRole(null)
+        return
+      }
+      bridge.setBridgeID(id)
+      bridge.setNodeCount(evt.properties?.nodes?.length ?? 0)
+      // If role is unknown (e.g. after init() restore), infer it from nodes list
+      if (!bridge.state.role) {
+        const nodeList = evt.properties?.nodes ?? []
+        const match = nodeList.find(
+          (n) => sync.session.get(n.nodeID ?? "") && (n.role === "master" || n.role === "friend"),
+        )
+        if (match?.role === "master" || match?.role === "friend") bridge.setRole(match.role)
+      }
+    },
+  )
 
   sdk.event.on("bridge.input.locked" as any, (evt: { properties?: { locked?: boolean } }) => {
     bridge.setInputLocked(evt.properties?.locked ?? false)

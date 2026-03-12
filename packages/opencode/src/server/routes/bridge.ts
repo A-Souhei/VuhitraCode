@@ -10,7 +10,13 @@ import { lazy } from "../../util/lazy"
 function nodeURL() {
   const override = Env.get("BRIDGE_NODE_URL")
   if (!override) return Server.url().toString()
-  return override.startsWith("http") ? override : `http://${override}`
+  const raw = override.startsWith("http") ? override : `http://${override}`
+  try {
+    return new URL(raw).toString()
+  } catch {
+    // Invalid BRIDGE_NODE_URL — fall back to local server URL
+    return Server.url().toString()
+  }
 }
 
 export const BridgeRoutes = lazy(() =>
@@ -49,16 +55,26 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          403: {
+            description: "Bridge not active or bridgeID mismatch",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
         "query",
         z.object({
-          bridgeID: z.string(),
+          bridgeID: z.string().max(200),
         }),
       ),
       async (c) => {
         const { bridgeID } = c.req.valid("query")
+        if (!Bridge.isActive() || Bridge.bridgeID() !== bridgeID)
+          return c.json({ error: "Bridge not active or bridgeID mismatch" }, 403)
         return c.json(await Bridge.getNodes(bridgeID))
       },
     )
@@ -76,17 +92,27 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          403: {
+            description: "Bridge not active or bridgeID mismatch",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
         "query",
         z.object({
-          bridgeID: z.string(),
+          bridgeID: z.string().max(200),
           limit: z.coerce.number().min(1).max(200).optional(),
         }),
       ),
       async (c) => {
         const { bridgeID, limit } = c.req.valid("query")
+        if (!Bridge.isActive() || Bridge.bridgeID() !== bridgeID)
+          return c.json({ error: "Bridge not active or bridgeID mismatch" }, 403)
         return c.json(await Bridge.getContext(bridgeID, limit))
       },
     )
@@ -104,15 +130,23 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          400: {
+            description: "Invalid input or bridge full",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
         "json",
         z.object({
-          sessionID: z.string(),
-          slug: z.string(),
-          title: z.string(),
-          directory: z.string(),
+          sessionID: z.string().max(200),
+          slug: z.string().max(200),
+          title: z.string().max(500),
+          directory: z.string().max(500),
           limit: z.number().int().min(1).max(100).optional(),
           coordinator: z
             .string()
@@ -123,11 +157,12 @@ export const BridgeRoutes = lazy(() =>
       ),
       async (c) => {
         const body = c.req.valid("json")
-        const result = await Bridge.setMaster({
-          ...body,
-          nodeURL: nodeURL(),
-        })
-        return c.json(result)
+        try {
+          const result = await Bridge.setMaster({ ...body, nodeURL: nodeURL() })
+          return c.json(result)
+        } catch (e) {
+          return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+        }
       },
     )
     .post(
@@ -144,16 +179,24 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          400: {
+            description: "Invalid input or bridge full",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
         "json",
         z.object({
-          masterIDOrSlug: z.string(),
-          sessionID: z.string(),
-          slug: z.string(),
-          title: z.string(),
-          directory: z.string(),
+          masterIDOrSlug: z.string().max(200),
+          sessionID: z.string().max(200),
+          slug: z.string().max(200),
+          title: z.string().max(500),
+          directory: z.string().max(500),
           coordinator: z
             .string()
             .url()
@@ -163,11 +206,12 @@ export const BridgeRoutes = lazy(() =>
       ),
       async (c) => {
         const body = c.req.valid("json")
-        const result = await Bridge.setFriend({
-          ...body,
-          nodeURL: nodeURL(),
-        })
-        return c.json(result)
+        try {
+          const result = await Bridge.setFriend({ ...body, nodeURL: nodeURL() })
+          return c.json(result)
+        } catch (e) {
+          return c.json({ error: e instanceof Error ? e.message : String(e) }, 400)
+        }
       },
     )
     .post(
@@ -184,9 +228,25 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          403: {
+            description: "bridgeID mismatch",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
+      validator(
+        "json",
+        z.object({
+          bridgeID: z.string().max(200).optional(),
+        }),
+      ),
       async (c) => {
+        const { bridgeID } = c.req.valid("json")
+        if (bridgeID && Bridge.bridgeID() !== bridgeID) return c.json({ error: "bridgeID mismatch" }, 403)
         await Bridge.leave()
         return c.json({ success: true as const })
       },
@@ -245,19 +305,28 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
+          404: {
+            description: "Target node not found",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
         },
       }),
       validator(
         "json",
         z.object({
-          targetNodeID: z.string(),
+          targetNodeID: z.string().min(1),
           locked: z.boolean(),
         }),
       ),
       async (c) => {
         if (!Bridge.isMaster()) return c.json({ error: "Only master can lock input" }, 403)
         const { targetNodeID, locked } = c.req.valid("json")
-        await Bridge.setInputLocked(targetNodeID, locked)
+        const ok = await Bridge.setInputLocked(targetNodeID, locked)
+        if (!ok) return c.json({ error: "Target node not found" }, 404)
         return c.json({ success: true as const })
       },
     ),

@@ -11,6 +11,4 @@ CREATE TABLE `bridge_node` (
 	CONSTRAINT `fk_bridge_node_session_id_session_id_fk` FOREIGN KEY (`session_id`) REFERENCES `session`(`id`) ON DELETE CASCADE
 );
 --> statement-breakpoint
-ALTER TABLE `todo` ADD `assigned_to` text;--> statement-breakpoint
-ALTER TABLE `todo` ADD `scout_id` text;--> statement-breakpoint
 CREATE INDEX `bridge_node_bridge_idx` ON `bridge_node` (`bridge_id`);

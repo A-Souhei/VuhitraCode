@@ -86,14 +86,17 @@ export namespace Bridge {
     bridgeID: string | null
     role: Role | null
     sessionID: string | null
+    slug: string | null
+    masterInput: string | null
     pubClient: Redis | null
     subClient: Redis | null
     heartbeatTimer: ReturnType<typeof setInterval> | null
     info: Info | null
     inputLocked: boolean
-    coordinator?: string
+    coordinator: string | null
     lastRefresh: number
     inProgress: Promise<Info> | null
+    pendingSessionID: string | null
   }
 
   const state = Instance.state<State>(
@@ -101,15 +104,20 @@ export namespace Bridge {
       bridgeID: null,
       role: null,
       sessionID: null,
+      slug: null,
+      masterInput: null,
       pubClient: null,
       subClient: null,
       heartbeatTimer: null,
       info: null,
       inputLocked: false,
+      coordinator: null,
       lastRefresh: 0,
       inProgress: null,
+      pendingSessionID: null,
     }),
     async () => {
+      initPromise = null
       await leave()
     },
   )
@@ -137,13 +145,13 @@ export namespace Bridge {
     const url = Env.get("REDIS_URL")
     if (url) return new Redis(url, { lazyConnect: true, enableReadyCheck: false })
     const host = Env.get("REDIS_HOST") || "localhost"
-    const port = parseInt(Env.get("REDIS_PORT") || "6379")
+    const port = parseInt(Env.get("REDIS_PORT") || "6379", 10) || 6379
     const password = Env.get("REDIS_PASSWORD")
     return new Redis({ host, port, ...(password ? { password } : {}), lazyConnect: true, enableReadyCheck: false })
   }
 
   export function available(): boolean {
-    return !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST"))
+    return !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST") || state().coordinator)
   }
 
   // ─── State accessors ──────────────────────────────────────────────────────────
@@ -195,9 +203,9 @@ export namespace Bridge {
     } else if (msg.type === "input.locked") {
       const parsed = z.object({ nodeID: z.string(), locked: z.boolean() }).safeParse(msg)
       if (parsed.success) {
-        const cs = state()
-        if (cs.bridgeID && cs.sessionID && parsed.data.nodeID === cs.sessionID) {
-          cs.inputLocked = parsed.data.locked
+        const ls = state()
+        if (ls.bridgeID && ls.sessionID && parsed.data.nodeID === ls.sessionID) {
+          state().inputLocked = parsed.data.locked
           Bus.publish(Event.InputLocked, { locked: parsed.data.locked })
         }
       }
@@ -212,19 +220,18 @@ export namespace Bridge {
         .safeParse(msg)
       if (parsed.success) Bus.publish(Event.TaskResult, parsed.data)
     } else if (msg.type === "bridge.closed") {
-      if (s.role === "friend") {
-        await leave()
-        return
-      }
+      if (state().role === "friend") await leave()
+      return // always skip refresh on bridge.closed
     }
 
-    // Refresh info after most events
-    if (msg.type !== "bridge.closed") {
-      const now = Date.now()
-      if (now - s.lastRefresh >= 1000) {
-        s.lastRefresh = now
-        const updated = await refreshInfo()
-        if (updated) Bus.publish(Event.StateChanged, updated)
+    // Refresh info after all other events
+    const now = Date.now()
+    const cs = state()
+    if (now - cs.lastRefresh >= 1000) {
+      cs.lastRefresh = now // pessimistically claim slot to prevent concurrent double-refresh
+      const updated = await refreshInfo().catch(() => null)
+      if (updated) {
+        Bus.publish(Event.StateChanged, updated)
       }
     }
   }
@@ -257,10 +264,11 @@ export namespace Bridge {
 
   // ─── Build Info ───────────────────────────────────────────────────────────────
 
-  async function buildInfo(pub: Redis, id: string, limit: number): Promise<Info> {
+  async function buildInfo(pub: Redis, id: string, limit: number): Promise<Info | null> {
     const k = keys(id)
     const [masterRaw, nodesRaw] = await Promise.all([pub.hgetall(k.master), pub.hgetall(k.nodes)])
-    const masterSlug = masterRaw?.slug ?? ""
+    if (!masterRaw || !masterRaw.slug) return null
+    const masterSlug = masterRaw.slug
     const now = Date.now()
     const nodes = Object.values(nodesRaw ?? {})
       .map((v) => {
@@ -290,16 +298,20 @@ export namespace Bridge {
     if (!available() && !input.coordinator) throw new Error("Bridge mode requires Redis. Set REDIS_URL or REDIS_HOST.")
 
     const s = state()
-    // Idempotent if already master for same session
-    if (s.role === "master" && s.bridgeID === input.sessionID) return s.info!
-    if (s.inProgress) return s.inProgress
-    s.inProgress = (async () => {
+    // Idempotent if already master for same session — refresh info before returning
+    if (s.role === "master" && s.bridgeID === input.sessionID && s.info) return (await refreshInfo()) ?? s.info
+    if (s.inProgress) {
+      if (s.pendingSessionID === input.sessionID) return s.inProgress
+      throw new Error("Bridge operation already in progress for a different session")
+    }
+    s.pendingSessionID = input.sessionID
+    const pending = (async () => {
       if (s.bridgeID) await leave()
 
       const id = input.sessionID
       const k = keys(id)
       // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
-      const limit = input.limit ?? parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10)
+      const limit = input.limit ?? (parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10) || 3)
 
       const pub = makeClient(input.coordinator)
       const sub = makeClient(input.coordinator)
@@ -331,6 +343,7 @@ export namespace Bridge {
           pub.hset(k.nodes, input.sessionID, JSON.stringify(node)),
           pub.set(k.session(input.sessionID), id),
           pub.set(`bridge:${id}:limit`, String(limit)),
+          pub.set(`bridge:slug:${input.slug}`, id),
         ])
 
         await sub.subscribe(k.channel)
@@ -339,6 +352,7 @@ export namespace Bridge {
         })
 
         const inf = await buildInfo(pub, id, limit)
+        if (!inf) throw new Error("Bridge master disappeared immediately after creation")
 
         Database.use((db) =>
           db
@@ -370,11 +384,12 @@ export namespace Bridge {
         s.bridgeID = id
         s.role = "master"
         s.sessionID = input.sessionID
+        s.slug = input.slug
         s.pubClient = pub
         s.subClient = sub
         s.info = inf
         s.inputLocked = false
-        s.coordinator = input.coordinator
+        s.coordinator = input.coordinator ?? null
 
         startHeartbeat(id, input.sessionID)
 
@@ -392,8 +407,10 @@ export namespace Bridge {
       }
     })().finally(() => {
       s.inProgress = null
+      s.pendingSessionID = null
     })
-    return s.inProgress
+    s.inProgress = pending
+    return pending
   }
 
   export async function setFriend(input: {
@@ -409,9 +426,19 @@ export namespace Bridge {
 
     const s = state()
     // Idempotent if already friend in same bridge for same session
-    if (s.role === "friend" && s.bridgeID && s.sessionID === input.sessionID) return s.info!
-    if (s.inProgress) return s.inProgress
-    s.inProgress = (async () => {
+    if (
+      s.role === "friend" &&
+      s.info !== null &&
+      s.sessionID === input.sessionID &&
+      (s.bridgeID === input.masterIDOrSlug || s.masterInput === input.masterIDOrSlug)
+    )
+      return (await refreshInfo()) ?? s.info
+    if (s.inProgress) {
+      if (s.pendingSessionID === input.sessionID) return s.inProgress
+      throw new Error("Bridge operation already in progress for a different session")
+    }
+    s.pendingSessionID = input.sessionID
+    const pending = (async () => {
       if (s.bridgeID) await leave()
 
       const pub = makeClient(input.coordinator)
@@ -420,28 +447,12 @@ export namespace Bridge {
       await sub.connect()
 
       try {
-        // Resolve master ID
+        // Resolve master ID via slug reverse-index
         let masterID = input.masterIDOrSlug
         if (!masterID.startsWith("ses_")) {
-          // It's a slug — scan bridge:sessions:* to find the master
-          let cursor = "0"
-          let found = false
-          do {
-            const [next, batch] = await pub.scan(cursor, "MATCH", "bridge:sessions:*", "COUNT", "100")
-            cursor = next
-            for (const k of batch) {
-              const id = await pub.get(k)
-              if (!id) continue
-              const mraw = await pub.hgetall(`bridge:${id}:master`)
-              if (mraw?.slug === input.masterIDOrSlug) {
-                masterID = id
-                found = true
-                break
-              }
-            }
-            if (found) break
-          } while (cursor !== "0")
-          if (!found) throw new Error(`Bridge master not found for slug: ${input.masterIDOrSlug}`)
+          const direct = await pub.get(`bridge:slug:${input.masterIDOrSlug}`)
+          if (!direct) throw new Error(`Bridge master not found for slug: ${input.masterIDOrSlug}`)
+          masterID = direct
         }
 
         const k = keys(masterID)
@@ -463,7 +474,12 @@ export namespace Bridge {
           .filter((n) => Date.now() - n.heartbeat < 60_000)
         const limitRaw = await pub.get(`bridge:${masterID}:limit`)
         // Configurable via BRIDGE_MAX_NODES env var, defaults to 3
-        const limit = limitRaw ? parseInt(limitRaw) : parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10)
+        const parsed = limitRaw ? parseInt(limitRaw, 10) : NaN
+        const limit =
+          Number.isFinite(parsed) && parsed > 0 ? parsed : parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10) || 3
+        // NOTE: limit and directory-uniqueness checks are non-atomic against concurrent joins.
+        // A Redis Lua script could enforce atomicity, but this is acceptable for the
+        // expected small node counts (BRIDGE_MAX_NODES default: 3).
         if (nodes.length >= limit) throw new Error(`Bridge ${masterID} is full (limit: ${limit}).`)
         if (nodes.some((n) => n.directory === input.directory))
           throw new Error(`A node with directory ${input.directory} is already in this bridge.`)
@@ -491,6 +507,7 @@ export namespace Bridge {
         })
 
         const inf = await buildInfo(pub, masterID, limit)
+        if (!inf) throw new Error("Bridge master disappeared after joining")
 
         Database.use((db) =>
           db
@@ -522,11 +539,13 @@ export namespace Bridge {
         s.bridgeID = masterID
         s.role = "friend"
         s.sessionID = input.sessionID
+        s.masterInput = input.masterIDOrSlug
+        // s.slug intentionally not set for friends — master owns the bridge:slug: key
         s.pubClient = pub
         s.subClient = sub
         s.info = inf
         s.inputLocked = false
-        s.coordinator = input.coordinator
+        s.coordinator = input.coordinator ?? null
 
         startHeartbeat(masterID, input.sessionID)
 
@@ -544,8 +563,10 @@ export namespace Bridge {
       }
     })().finally(() => {
       s.inProgress = null
+      s.pendingSessionID = null
     })
-    return s.inProgress
+    s.inProgress = pending
+    return pending
   }
 
   export async function leave(): Promise<void> {
@@ -555,9 +576,11 @@ export namespace Bridge {
     // Capture and atomically clear bridgeID to prevent re-entrant leave() calls
     const id = s.bridgeID
     const sessionID = s.sessionID
+    const slug = s.slug
     const k = keys(id)
     const prevRole = s.role
     s.bridgeID = null // ← close re-entrancy window immediately
+    s.role = null // ← close isMaster()/isFriend() window
 
     if (s.heartbeatTimer) {
       clearInterval(s.heartbeatTimer)
@@ -565,22 +588,28 @@ export namespace Bridge {
     }
 
     if (s.subClient) {
+      s.subClient.removeAllListeners("message")
       await s.subClient.unsubscribe().catch(() => {})
       await s.subClient.quit().catch(() => {})
       s.subClient = null
     }
 
     const pub = s.pubClient
+    s.pubClient = null
 
     if (pub && sessionID) {
       if (prevRole === "master") {
         await pub
           .publish(k.channel, JSON.stringify({ type: "bridge.closed" }))
           .catch((e) => log.warn("bridge: publish closed failed", { error: String(e) }))
-        await Promise.all([pub.del(k.master), pub.del(k.nodes), pub.del(k.context)]).catch((e) =>
-          log.warn("bridge: cleanup failed", { error: String(e) }),
-        )
+        await Promise.all([
+          pub.del(k.master),
+          pub.del(k.nodes),
+          pub.del(k.context),
+          pub.del(`bridge:${id}:limit`),
+        ]).catch((e) => log.warn("bridge: cleanup failed", { error: String(e) }))
         await pub.del(k.session(sessionID)).catch(() => {})
+        if (slug) await pub.del(`bridge:slug:${slug}`).catch(() => {})
       } else {
         await pub.hdel(k.nodes, sessionID).catch((e) => log.warn("bridge: hdel node failed", { error: String(e) }))
         await pub.del(k.session(sessionID)).catch(() => {})
@@ -590,15 +619,16 @@ export namespace Bridge {
       }
     }
 
-    if (s.pubClient) {
-      await s.pubClient.quit().catch(() => {})
-      s.pubClient = null
+    if (pub) {
+      await pub.quit().catch(() => {})
     }
 
-    s.role = null
     s.sessionID = null
+    s.slug = null
+    s.masterInput = null
     s.info = null
     s.inputLocked = false
+    s.pendingSessionID = null
 
     if (sessionID) {
       try {
@@ -631,8 +661,8 @@ export namespace Bridge {
 
   export async function getContext(id: string, limit = 50): Promise<ContextEntry[]> {
     const s = state()
-    if (!s.pubClient) return []
-    const raw = await s.pubClient.lrange(keys(id).context, 0, limit - 1)
+    if (!s.pubClient || !s.bridgeID || s.bridgeID !== id) return []
+    const raw = await s.pubClient.lrange(keys(s.bridgeID).context, 0, limit - 1)
     return raw
       .map((v) => {
         try {
@@ -669,30 +699,33 @@ export namespace Bridge {
     const inf = await buildInfo(
       s.pubClient,
       s.bridgeID,
-      s.info?.limit ?? parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10),
+      s.info?.limit ?? (parseInt(Env.get("BRIDGE_MAX_NODES") ?? "3", 10) || 3),
     )
     s.info = inf
+    s.lastRefresh = Date.now()
     return inf
   }
 
-  export async function setInputLocked(targetNodeID: string, locked: boolean): Promise<void> {
+  export async function setInputLocked(targetNodeID: string, locked: boolean): Promise<boolean> {
     const s = state()
-    if (!s.bridgeID || !s.pubClient || s.role !== "master") return
+    if (!s.bridgeID || !s.pubClient || s.role !== "master") return false
     const k = keys(s.bridgeID)
     const raw = await s.pubClient.hget(k.nodes, targetNodeID)
-    if (!raw) return
+    if (!raw) return false
     let node
     try {
       node = NodeInfo.safeParse(JSON.parse(raw))
     } catch {
-      return
+      return false
     }
-    if (!node.success) return
+    if (!node.success) return false
+    if (node.data.role !== "friend") return false
     const updated: NodeInfo = { ...node.data, status: locked ? "locked" : "active" }
     await s.pubClient.hset(k.nodes, targetNodeID, JSON.stringify(updated))
     await s.pubClient
       .publish(k.channel, JSON.stringify({ type: "input.locked", nodeID: targetNodeID, locked }))
       .catch((e) => log.warn("bridge: publish input.locked failed", { error: String(e) }))
+    return true
   }
 
   let initPromise: Promise<void> | null = null
