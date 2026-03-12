@@ -192,7 +192,15 @@ export namespace Bridge {
 
     if (msg.type === "node.joined") {
       const node = NodeInfo.safeParse(msg.node)
-      if (node.success) Bus.publish(Event.NodeJoined, node.data)
+      if (node.success) {
+        Bus.publish(Event.NodeJoined, node.data)
+        // Auto-lock the joining friend's input if we are the master
+        if (s.role === "master" && node.data.role === "friend") {
+          setInputLocked(node.data.nodeID, true).catch((e) =>
+            log.warn("bridge: auto-lock failed", { error: String(e) }),
+          )
+        }
+      }
     } else if (msg.type === "node.left") {
       const parsed = z.object({ nodeID: z.string() }).safeParse(msg)
       if (parsed.success && s.bridgeID)
@@ -704,6 +712,19 @@ export namespace Bridge {
     s.info = inf
     s.lastRefresh = Date.now()
     return inf
+  }
+
+  export async function pollTaskResult(taskID: string, timeoutMs = 300_000): Promise<string | null> {
+    const s = state()
+    if (!s.pubClient || !s.bridgeID) return null
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const entries = await getContext(s.bridgeID, 50)
+      const match = entries.find((e) => e.content.includes(taskID) && e.type === "task_result")
+      if (match) return match.content
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    return null
   }
 
   export async function setInputLocked(targetNodeID: string, locked: boolean): Promise<boolean> {

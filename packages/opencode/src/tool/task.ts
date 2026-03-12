@@ -14,6 +14,7 @@ import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
+import { Bridge } from "../bridge"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -47,6 +48,41 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
+      const bridgeMatch = params.prompt.match(/^\[bridge_node:\s*([^\]]+)\]\s*/)
+      if (bridgeMatch && Bridge.isActive() && Bridge.isMaster()) {
+        const nodeID = bridgeMatch[1].trim()
+        const prompt = params.prompt.slice(bridgeMatch[0].length)
+        const node = Bridge.info()?.nodes.find((n) => n.nodeID === nodeID || n.slug === nodeID)
+        if (node?.nodeURL) {
+          const taskID = crypto.randomUUID()
+          const res = await fetch(`${node.nodeURL}/bridge/dispatch-task`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskID, prompt, description: params.description }),
+          }).catch(() => null)
+          if (res?.ok) {
+            const data = (await res.json()) as { taskID: string; sessionID: string; success: boolean }
+            const output = [
+              `task_id: ${taskID} (bridge node: ${nodeID}, friend session: ${data.sessionID})`,
+              "",
+              "<task_result>",
+              `Friend Alice has started working on this task in her repo (${node.directory}).`,
+              `Task ID: ${taskID}`,
+              `Session: ${data.sessionID}`,
+              "",
+              "Results will appear in shared bridge context. Master Alice should check shared context",
+              "between phases and poll for completion using the task_id above.",
+              "</task_result>",
+            ].join("\n")
+            return {
+              title: params.description,
+              metadata: { nodeID, taskID, sessionID: data.sessionID } as { [key: string]: any },
+              output,
+            }
+          }
+        }
+      }
+
       const config = await Config.get()
 
       // Skip permission check when user explicitly invoked via @ or command subtask

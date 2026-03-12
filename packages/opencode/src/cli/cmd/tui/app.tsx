@@ -284,6 +284,7 @@ function App() {
   onMount(() => {
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
+      else if (args.bridge) local.agent.set("alice")
       if (args.model) {
         const { providerID, modelID } = Provider.parseModel(args.model)
         if (!providerID || !modelID)
@@ -313,17 +314,18 @@ function App() {
     })
     if (args.bridge === "master") {
       bridgeInited = true
-      fetch(`${sdk.url}/bridge/set-master`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sessionID: session.id,
-          slug: session.slug,
-          title: session.title,
-          directory: session.directory,
-          coordinator: args.coordinator,
-        }),
-      })
+      sdk
+        .fetch(`${sdk.url}/bridge/set-master`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionID: session.id,
+            slug: session.slug,
+            title: session.title,
+            directory: session.directory,
+            coordinator: args.coordinator,
+          }),
+        })
         .then(async (res) => {
           const data = await res.json().catch(() => ({}))
           if (!res.ok) {
@@ -339,7 +341,7 @@ function App() {
           bridge.setRole("master")
           bridge.setBridgeID(id)
         })
-        .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
+        .catch(() => toast.show({ message: "Failed to start bridge", variant: "error" }))
     } else if (args.bridge === "friend") {
       bridgeInited = true
       if (!args.bridgeID) {
@@ -350,18 +352,19 @@ function App() {
         })
         return
       }
-      fetch(`${sdk.url}/bridge/set-friend`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          masterIDOrSlug: args.bridgeID,
-          sessionID: session.id,
-          slug: session.slug,
-          title: session.title,
-          directory: session.directory,
-          coordinator: args.coordinator,
-        }),
-      })
+      sdk
+        .fetch(`${sdk.url}/bridge/set-friend`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            masterIDOrSlug: args.bridgeID,
+            sessionID: session.id,
+            slug: session.slug,
+            title: session.title,
+            directory: session.directory,
+            coordinator: args.coordinator,
+          }),
+        })
         .then(async (res) => {
           const data = await res.json().catch(() => ({}))
           if (!res.ok) {
@@ -373,7 +376,7 @@ function App() {
           bridge.setRole("friend")
           bridge.setBridgeID(id)
         })
-        .catch(() => toast.show({ message: "Failed to connect to bridge coordinator", variant: "error" }))
+        .catch(() => toast.show({ message: "Failed to join bridge", variant: "error" }))
     }
   })
 

@@ -5,6 +5,9 @@ import { Bridge } from "../../bridge"
 import { Server } from "../server"
 import { Env } from "../../env"
 import { lazy } from "../../util/lazy"
+import { Session } from "../../session"
+import { SessionPrompt } from "../../session/prompt"
+import { Identifier } from "../../id/id"
 
 // Set BRIDGE_NODE_URL to your machine's reachable IP/hostname for cross-machine bridge
 function nodeURL() {
@@ -328,6 +331,66 @@ export const BridgeRoutes = lazy(() =>
         const ok = await Bridge.setInputLocked(targetNodeID, locked)
         if (!ok) return c.json({ error: "Target node not found" }, 404)
         return c.json({ success: true as const })
+      },
+    )
+    .post(
+      "/dispatch-task",
+      describeRoute({
+        summary: "Dispatch a task to this friend node (async fire-and-start)",
+        operationId: "bridge.dispatchTask",
+        responses: {
+          200: {
+            description: "Task accepted — friend Alice has started running",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ taskID: z.string(), sessionID: z.string(), success: z.literal(true) })),
+              },
+            },
+          },
+          403: {
+            description: "Only callable on a friend node",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ error: z.string() })),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          taskID: z.string(),
+          prompt: z.string(),
+          description: z.string(),
+        }),
+      ),
+      async (c) => {
+        if (!Bridge.isFriend()) return c.json({ error: "Only callable on a friend node" }, 403)
+        const { taskID, prompt, description } = c.req.valid("json")
+        const session = await Session.create({ title: description })
+        const parts = await SessionPrompt.resolvePromptParts(prompt)
+        const messageID = Identifier.ascending("message")
+
+        // Fire-and-forget: start friend Alice's orchestration without awaiting
+        SessionPrompt.prompt({
+          messageID,
+          sessionID: session.id,
+          agent: "alice",
+          parts,
+        })
+          .then((result) => {
+            const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
+            Bridge.shareContext({
+              role: "friend",
+              directory: session.directory ?? process.cwd(),
+              type: "task_result",
+              content: `task_id: ${taskID}\n${text}`,
+            }).catch(() => {})
+          })
+          .catch(() => {})
+
+        return c.json({ taskID, sessionID: session.id, success: true as const })
       },
     ),
 )

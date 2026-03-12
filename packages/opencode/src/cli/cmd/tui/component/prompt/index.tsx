@@ -1205,6 +1205,9 @@ export function Prompt(props: PromptProps) {
                   >
                     {`⚡${bridge.state.role}`}
                   </span>
+                  <Show when={bridge.state.role === "master" && bridge.state.bridgeID}>
+                    <span style={{ fg: theme.textMuted }}>{` · ${bridge.state.bridgeID}`}</span>
+                  </Show>
                 </text>
               </Show>
               <Show when={store.mode === "normal"}>
