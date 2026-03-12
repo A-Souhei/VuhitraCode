@@ -45,13 +45,28 @@ export async function getBridgeSettings(): Promise<string> {
   if (Bridge.isMaster()) {
     const ctx = await Bridge.getContext(info.bridgeID, 50)
     const friends = info.nodes.filter((n) => n.role === "friend")
+    const sanitize = (s: string) =>
+      s
+        .replace(/[^\x20-\x7E]/g, "")
+        .replace(/[()[\]{}\n\r`]/g, "")
+        .slice(0, 200)
     const friendList = friends
-      .map((n) => `- Node: ${n.slug} | Directory: ${n.directory} | Status: ${n.status}\n  Server URL: ${n.nodeURL}`)
+      .map(
+        (n) =>
+          `- Node: ${sanitize(n.slug)} | Directory: ${sanitize(n.directory)} | Status: ${sanitize(n.status)}\n  Server URL: ${sanitize(n.nodeURL)}`,
+      )
       .join("\n")
     const ctxLines = ctx
-      .map((e) => `[${new Date(e.timestamp).toISOString()}] [${e.role}@${e.directory}] [${e.type}]: ${e.content}`)
+      .map(
+        (e) =>
+          `[${new Date(e.timestamp).toISOString()}] [${e.role}@${sanitize(e.directory)}] [${e.type}]: ${sanitize(e.content).slice(0, 500)}`,
+      )
       .join("\n")
-    return `\n\n## Bridge Mode (MASTER)\n\nYou are running in Bridge Mode as the MASTER Alice. You coordinate ${friends.length} friend terminal(s):\n\n### Friend Nodes\n${friendList || "(none yet)"}\n\n### Shared Context (from friends)\n${ctxLines || "(empty)"}\n\n### How to dispatch to friends\n- Use the task tool with prompt starting with [bridge_node: <nodeID>] to dispatch work to a friend Alice\n- Friend Alice will run autonomously in her own repo and share results via bridge context\n- After dispatching, continue your own work or dispatch to other friends in parallel\n- Check "Shared Context" above for friend progress updates on subsequent turns\n- Friend results appear as type "task_result" entries in shared context\n\n### When to dispatch (contextual auto-dispatch)\n- When the user's request is clearly about a friend's directory or codebase, dispatch it to that friend immediately as your FIRST action — do not answer it yourself\n- Treat dispatching like calling a Scout: just do it, no need to ask the user first\n- If only one friend is connected, prefer dispatching to them when the task could reasonably apply to their codebase\n- If the task is about YOUR directory (${Instance.directory}), handle it yourself\n- If ambiguous, dispatch to the friend and also note what you're doing\n\n### Bridge Mode Rules\n- You are the ONLY Alice that accepts user input. Friends have input disabled.\n- Dispatch tasks to friends via the task tool, prefixing prompts with [bridge_node: {nodeID}].\n- Friends will share their findings back via shared context.\n- You CANNOT see friends' indexer, memory, or biblion — only shared context.\n- Your directory: ${Instance.directory}. Friends' directories are listed above.`
+    const friendDirs = friends.map((n) => sanitize(n.directory)).join(", ")
+    const neverReadLine = friendDirs.trim()
+      ? `NEVER use Read, Glob, Grep, Bash, or any other tool to access files under friend directories (e.g. ${friendDirs}). Always dispatch via the task tool instead.`
+      : `NEVER use Read, Glob, Grep, Bash, or any other tool to access files in friend directories. Always dispatch via the task tool instead.`
+    return `\n\n## Bridge Mode (MASTER)\n\nYou are running in Bridge Mode as the MASTER Alice. You coordinate ${friends.length} friend terminal(s):\n\n### Friend Nodes\n${friendList || "(none yet)"}\n\n### Shared Context (from friends)\n${ctxLines || "(empty)"}\n\n### How to dispatch to friends\n- Use the task tool with prompt starting with [bridge_node: <nodeID>] to dispatch work to a friend Alice\n- Friend Alice will run autonomously in her own repo and share results via bridge context\n- After dispatching, continue your own work or dispatch to other friends in parallel\n- Check "Shared Context" above for friend progress updates on subsequent turns\n- Friend results appear as type "task_result" entries in shared context\n\n### When to dispatch (contextual auto-dispatch)\n- When the user's request is clearly about a friend's directory or codebase, dispatch it to that friend immediately as your FIRST action — do not answer it yourself\n- Treat dispatching like calling a Scout: just do it, no need to ask the user first\n- If only one friend is connected, prefer dispatching to them when the task could reasonably apply to their codebase\n- If the task is about YOUR directory (${Instance.directory}), handle it yourself\n- If ambiguous, dispatch to the friend and also note what you're doing\n\n### Bridge Mode Rules\n- ${neverReadLine}\n- You are the ONLY Alice that accepts user input. Friends have input disabled.\n- Dispatch tasks to friends via the task tool, prefixing prompts with [bridge_node: {nodeID}].\n- Friends will share their findings back via shared context.\n- You CANNOT see friends' indexer, memory, or biblion — only shared context.\n- Your directory: ${Instance.directory}. Friends' directories are listed above.`
   }
 
   if (Bridge.isFriend()) {

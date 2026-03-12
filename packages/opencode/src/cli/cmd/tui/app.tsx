@@ -894,6 +894,34 @@ function App() {
     route.navigate({ type: "session", sessionID: id })
   })
 
+  sdk.event.on(
+    "bridge.context.shared" as any,
+    (evt: {
+      properties?: {
+        nodeID?: string
+        role?: string
+        type?: string
+        content: string
+        directory?: string
+        timestamp?: number
+      }
+    }) => {
+      const p = evt.properties
+      if (!p) return
+      if (bridge.state.role !== "master") return
+      const strip = (s: string) => s.replace(/[\x00-\x1f\x7f]/g, "")
+      const VALID_TYPES = ["finding", "work_summary", "task_result", "status"]
+      const label = VALID_TYPES.includes(p.type ?? "") ? p.type : "context"
+      const preview = strip(p.content.slice(0, 120))
+      toast.show({
+        variant: "info",
+        title: `Friend update [${label}]`,
+        message: preview,
+        duration: 8000,
+      })
+    },
+  )
+
   sdk.event.on("bridge.input.locked" as any, (evt: { properties?: { locked?: boolean } }) => {
     bridge.setInputLocked(evt.properties?.locked ?? false)
   })
