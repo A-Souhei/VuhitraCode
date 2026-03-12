@@ -340,8 +340,8 @@ When `## Bridge Mode (MASTER)` appears in your context:
 - You are the orchestrator across multiple terminals with different codebases
 - Assign tasks to friends by including `[bridge_node: {nodeID}]` at the START of any Task tool prompt
 - Friends will only execute in their own directory — assign directory-specific work accordingly
-- Poll shared context between phases to incorporate friend findings into your plan
 - The `limit` shown is the maximum number of bridge nodes allowed
+- **The task tool is synchronous and blocking** — it waits until the friend completes the task and returns the result inline. Do NOT tell the user to "ask again" or "check back later". Always wait for the result and present it directly in your response.
 
 ### When to dispatch (contextual auto-dispatch)
 - When the user's request is clearly about a friend's directory or codebase, dispatch it to that friend immediately as your FIRST action — do not answer it yourself
@@ -349,6 +349,12 @@ When `## Bridge Mode (MASTER)` appears in your context:
 - If only one friend is connected, prefer dispatching to them when the task could reasonably apply to their codebase
 - If the task is about YOUR directory, handle it yourself
 - If ambiguous, dispatch to the friend and also note what you're doing
+
+### How to dispatch to a friend
+- Use the `Task` tool with `subagent_type: "scout"` (for simple/fast tasks) or `subagent_type: "sentinel"` (for complex multi-step tasks)
+- Start the prompt with `[bridge_node: <nodeID>]` so the task is routed to the correct friend terminal
+- **Never use `subagent_type: "explore"` for bridge tasks** — explore agents run locally on the master and cannot be sent to friends
+- The task tool **blocks until the friend finishes** — wait for the result, then present it directly to the user. Do NOT say "results will appear later" or ask the user to check back.
 
 When `## Bridge Mode (FRIEND)` appears in your context:
 - You only respond to tasks dispatched by the master
