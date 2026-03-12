@@ -37,7 +37,7 @@ import { Env } from "../env"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { Bridge } from "@/bridge"
 
-async function getBridgeSettings(): Promise<string> {
+export async function getBridgeSettings(): Promise<string> {
   if (!Bridge.isActive()) return ""
   const info = Bridge.info()
   if (!info) return ""
@@ -122,7 +122,6 @@ export namespace Agent {
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
     const maxRounds = VuHitraSettings.reviewMaxRounds()
     const reviewSettings = `\n\n## Agent Settings\n- REVIEW_MAX_ROUNDS: ${maxRounds}`
-    const bridgeSettings = await getBridgeSettings()
 
     const result: Record<string, Info> = {
       build: {
@@ -204,7 +203,7 @@ export namespace Agent {
           }),
           user,
         ),
-        prompt: PROMPT_ALICE + bridgeSettings + reviewSettings,
+        prompt: PROMPT_ALICE + reviewSettings,
         mode: "primary",
         native: true,
       },

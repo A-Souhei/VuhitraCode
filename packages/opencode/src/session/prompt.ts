@@ -8,7 +8,7 @@ import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
 import { SessionRevert } from "./revert"
 import { Session } from "."
-import { Agent } from "../agent/agent"
+import { Agent, getBridgeSettings } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema } from "ai"
 import { SessionCompaction } from "./compaction"
@@ -653,7 +653,12 @@ export namespace SessionPrompt {
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
       // Build system prompt, adding structured output instruction if needed
-      const system = [...(await SystemPrompt.environment(model, sessionID)), ...(await InstructionPrompt.system())]
+      const bridgeCtx = agent.name === "alice" ? await getBridgeSettings() : ""
+      const system = [
+        ...(await SystemPrompt.environment(model, sessionID)),
+        ...(await InstructionPrompt.system()),
+        ...(bridgeCtx ? [bridgeCtx] : []),
+      ]
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {
         system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
