@@ -17,6 +17,10 @@ import { Memory } from "../memory"
 import { Biblion } from "../biblion"
 import { Profiles } from "./profiles"
 import { Bridge } from "../bridge"
+import { SessionStatus } from "../session/status"
+import { Question } from "../question"
+import { Session } from "../session"
+import { notify } from "../util/slack"
 
 export async function InstanceBootstrap() {
   Log.Default.info("bootstrapping", { directory: Instance.directory })
@@ -40,5 +44,19 @@ export async function InstanceBootstrap() {
     if (payload.properties.name === Command.Default.INIT) {
       await Project.setInitialized(Instance.project.id)
     }
+  })
+
+  Bus.subscribe(SessionStatus.Event.Status, async ({ properties }) => {
+    if (properties.status.type !== "idle") return
+    const session = await Session.get(properties.sessionID).catch(() => undefined)
+    if (session?.parentID) return
+    await notify(`✅ Agent turn complete (session: ${properties.sessionID})`)
+  })
+
+  Bus.subscribe(Question.Event.Asked, async ({ properties }) => {
+    const session = await Session.get(properties.sessionID).catch(() => undefined)
+    if (session?.parentID) return
+    const questions = properties.questions.map((q) => q.question).join("\n")
+    await notify(`❓ Agent is asking:\n${questions}\n_(session: ${properties.sessionID})_`)
   })
 }
