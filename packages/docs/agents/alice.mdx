@@ -200,14 +200,38 @@ See [Pass Over](/features#pass-over) for advanced agent coordination workflows.
 
 ## Bridge Mode
 
-When Bridge Mode is active, Alice on the master instance is bridge-aware: she knows how many friend nodes are connected and can dispatch TODO items to them as additional workers.
+When Bridge Mode is active, Alice on the master instance can dispatch tasks to connected friend nodes as additional workers. This enables distributed task execution across multiple machines.
 
-### How Alice Behaves in Bridge Mode
+### Dispatching Tasks to Friends
 
-- **Friend instances appear as additional workers** in Alice's pool
-- **Alice dispatches tasks to friends** via the same Sentinel/Scout mechanism
-- **Friends execute tasks** in their own directory with isolated memory and indexer context
-- **Master/Friend badges** — Master Alice shows `⚡master` in the TUI prompt bar; friend terminals show `⚡friend`
+Alice dispatches tasks to friend nodes using the **`[bridge_node: nodeID]`** tag at the **START** of any Task tool prompt:
+
+```
+[bridge_node: friend-node-abc123]
+Refactor the payment module to support Stripe webhooks.
+```
+
+When Alice includes this tag:
+
+1. **Blocking dispatch** — The Task tool POSTs the work to the friend node and then blocks (polling Redis every 2 seconds)
+2. **Synchronous result** — The friend's result is returned inline within up to 5 minutes; it does NOT appear later in shared context
+3. **Worker selection** — Only **`scout`** and **`sentinel`** subagents may be dispatched to friends; **`explore` is strictly forbidden** for bridge dispatch (explore is only for Alice's own local codebase exploration)
+
+### Checking Friend Health
+
+Alice can call the **`ping_bridge_session`** tool (only available when Bridge Mode is active) to verify a friend node is still alive before dispatching work:
+
+```ts
+ping_bridge_session({ nodeID: "friend-node-abc123" })
+// Returns: true if heartbeat received within last 60 seconds (sent every 15 seconds)
+// Returns: false if no recent heartbeat
+```
+
+### When to Dispatch to Friends
+
+- **Dispatch to a friend** when the task clearly concerns the friend's directory/codebase
+- **Handle locally** if the task is about Alice's own directory
+- **If ambiguous**, dispatch to the friend and note what you're doing
 
 ### Launching Alice in Bridge Mode
 
@@ -215,8 +239,10 @@ When Bridge Mode is active, Alice on the master instance is bridge-aware: she kn
 # Master (Alice orchestrates here)
 opencode --bridge master --coordinator redis://host:6379
 
-# Friend (Alice executes here, input locked)
-opencode --bridge friend --coordinator redis://host:6379
+# Friend (requires --bridge-id flag pointing to master's session ID)
+opencode --bridge friend --bridge-id <master-session-id> --coordinator redis://host:6379
 ```
+
+Friend terminals show `⚡friend` in the prompt bar; Master Alice shows `⚡master`.
 
 See [Bridge Mode](/bridge) for full setup instructions.

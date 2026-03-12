@@ -8,18 +8,18 @@ Bridge Mode lets you connect multiple `opencode` CLI instances — on the same m
 
 ## How It Works
 
-In a Bridge session, Alice on the master instance can dispatch TODO items to friend instances, effectively extending her pool of workers beyond the current terminal. Each friend runs its own agent in a separate directory, so tasks can operate on different parts of a project (or different projects entirely) in parallel.
+In a Bridge session, Alice on the master instance can dispatch tasks to friend instances, extending her pool of workers to other terminals and directories. Each friend runs its own Alice agent in a separate directory, so tasks operate on different parts of a project — or different projects entirely — in parallel.
 
 <CardGroup cols={2}>
 
 <Card icon="crown" title="Master">
-  The instance where you type. Alice plans, delegates, and coordinates. Friend instances appear as additional workers
-  available for task dispatch.
+  The instance where you type. Alice plans, delegates, and coordinates. Friends appear as additional workers available
+  for task dispatch.
 </Card>
 
 <Card icon="users" title="Friends">
-  Input is locked — friends only execute tasks sent by the master's Alice. Each friend has its own directory, memory,
-  and indexer context.
+  Input is locked — friends only execute tasks sent by master's Alice. Each friend has its own directory, memory, and
+  indexer context.
 </Card>
 
 </CardGroup>
@@ -29,13 +29,66 @@ In a Bridge session, Alice on the master instance can dispatch TODO items to fri
   direct connections between instances are needed for task dispatch.
 </Note>
 
+## How Task Dispatch Works
+
+When Alice dispatches a task to a friend, the following happens end-to-end:
+
+1. **Alice prefixes the prompt** — the task tool prompt begins with `[bridge_node: <nodeID>]` to target a specific friend.
+2. **Master POSTs to the friend** — the task tool calls the friend's `/bridge/dispatch-task` HTTP endpoint.
+3. **Friend starts Alice asynchronously** — the friend creates a session, starts its Alice agent in the background, and immediately returns HTTP 200.
+4. **Master blocks and polls** — the master polls Redis every **2 seconds** (up to **5 minutes**) waiting for the friend's Alice to finish and write a `task_result` entry.
+5. **Result returned inline** — once the friend finishes, the result is returned directly to the caller. The task tool is **synchronous and blocking** from the caller's perspective.
+
+<Note>
+  Results are never deferred to a "check back later" step. The scout or sentinel that dispatched the task receives the
+  friend's output inline, exactly as if it ran a local subagent.
+</Note>
+
+## Monitoring Friend Liveness
+
+Each node heartbeats every **15 seconds** by writing a timestamp to Redis. Nodes whose heartbeat is more than **60 seconds** old are automatically removed from the active node list — no explicit disconnect signal is required.
+
+The built-in `ping_bridge_session` tool lets scouts and sentinels verify a friend is still alive during long-running tasks:
+
+```
+ping_bridge_session({ nodeID: "<friend-node-id>" })
+```
+
+Returns `{ alive: true }` if the node has a fresh heartbeat, or `{ alive: false, reason: "..." }` if the node has gone stale, disconnected, or Redis is unreachable. Call it periodically while waiting for a friend; if it returns `alive: false`, return failure immediately rather than hanging until the 5-minute timeout.
+
+## Dispatching to Friends
+
+Alice automatically detects when a task is about a friend's directory and dispatches it without being asked. Scouts and Sentinels dispatch to a friend by prefixing their `prompt` parameter with `[bridge_node: <nodeID>]`:
+
+```
+[bridge_node: stellar-falcon] Analyze the payment module and list all exported functions
+```
+
+The prefix is stripped before the prompt reaches the friend's Alice.
+
+<Warning>
+  Never use `subagent_type: "explore"` for bridge tasks. Explore agents run locally on the master and cannot reach
+  friend terminals. Use `scout` or `sentinel` only.
+</Warning>
+
 ## Prerequisites
 
-- **Redis** — a Redis server reachable by all instances. Set via `REDIS_URL` (e.g., `redis://localhost:6379`) or individually via `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`.
-- **Terminal sessions** — each instance must be started interactively in a terminal (not headless / backgrounded). Bridge Mode does not work with non-interactive sessions.
-- **Different directories** — each instance must be opened in a different working directory.
-- **`BRIDGE_NODE_URL`** — required for cross-machine setups (see [Cross-machine setup](#cross-machine-setup)).
-- **`BRIDGE_MAX_NODES`** — optional. Set in `.vuhitra/env.json` to control the maximum number of nodes in a bridge session (default: `3`, no upper bound enforced by the system — set as high as your infrastructure allows).
+- **Redis** — a Redis server reachable by all instances.
+- **Terminal sessions** — each instance must be started interactively. Bridge Mode does not work with headless or backgrounded processes.
+- **Different directories** — each instance must run in a distinct working directory.
+
+### Environment Variables
+
+Set these in `.vuhitra/env.json` or your shell environment:
+
+| Variable           | Default       | Description                                                                                                                   |
+| ------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `REDIS_URL`        | —             | Full Redis connection URL (e.g. `redis://localhost:6379`). Takes priority over `REDIS_HOST`/`REDIS_PORT`.                     |
+| `REDIS_HOST`       | `localhost`   | Redis hostname. Used when `REDIS_URL` is not set.                                                                             |
+| `REDIS_PORT`       | `6379`        | Redis port. Used when `REDIS_URL` is not set.                                                                                 |
+| `REDIS_PASSWORD`   | —             | Redis password for authenticated servers.                                                                                     |
+| `BRIDGE_NODE_URL`  | auto-detected | Public HTTP URL for this node. Required for cross-machine setups where the auto-detected URL is unreachable from other nodes. |
+| `BRIDGE_MAX_NODES` | `3`           | Maximum nodes in a bridge session (master + friends).                                                                         |
 
 ## Quick Start
 
@@ -74,11 +127,12 @@ If `--coordinator` is omitted, the coordinator defaults to `localhost:<auto-port
 </Step>
 
 <Step title="Start a friend instance">
-  Open a **second terminal**, navigate to a **different directory**, and launch opencode with the `--bridge friend` flag.
-  The `--coordinator` flag is required so the friend knows which Redis instance to connect to:
+  Open a **second terminal**, navigate to a **different directory**, and launch opencode with the `--bridge friend`
+  flag. Provide `--coordinator` pointing to the same Redis instance, and `--bridge-id` set to the master's session ID
+  (displayed in the master terminal after startup):
 
 ```bash
-opencode --bridge friend --coordinator redis://192.168.1.5:6379
+opencode --bridge friend --coordinator redis://192.168.1.5:6379 --bridge-id <master-session-id>
 ```
 
 The friend's input is locked. It will display incoming tasks as Alice dispatches them.
@@ -87,24 +141,25 @@ The friend's input is locked. It will display incoming tasks as Alice dispatches
 
 <Step title="Work normally in the master">
   Type prompts in the master terminal as usual. Alice automatically considers friend instances as additional workers and
-  may dispatch tasks to them based on availability and task requirements.
+  dispatches tasks to them based on the task's target directory and complexity.
 </Step>
 
 </Steps>
 
 ## CLI Flags Reference
 
-| Flag                  | Description                                                                                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--bridge master`     | Start opencode as the master node. You type prompts here; Alice coordinates and dispatches tasks to friends.                                                                         |
-| `--bridge friend`     | Start opencode as a friend node. Input is locked; the instance executes tasks sent by the master. `--coordinator` is required.                                                       |
-| `--coordinator <url>` | Redis URL used as the coordination layer (e.g., `redis://192.168.1.5:6379` or `localhost:6379`). Accepted by both master and friend. Defaults to `localhost:<auto-port>` if omitted. |
+| Flag                      | Description                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--bridge master`         | Start as the master node. You type prompts here; Alice coordinates and dispatches tasks to friends.                                                                           |
+| `--bridge friend`         | Start as a friend node. Input is locked; executes tasks sent by the master. Requires `--coordinator` and `--bridge-id`.                                                       |
+| `--coordinator <url>`     | Redis URL used as the coordination layer (e.g. `redis://192.168.1.5:6379`). Accepted by both master and friend. Defaults to `localhost:<auto-port>` if omitted on the master. |
+| `--bridge-id <sessionID>` | **Required for friends.** The master's session ID to join. Displayed in the master terminal after startup.                                                                    |
 
-Both master and friend accept `--coordinator`, which means the Redis coordinator can live on a remote machine, a Docker container, or anywhere reachable by all nodes. All nodes (master + friends) must point `--coordinator` to the **same** Redis instance.
+All nodes (master + friends) must point `--coordinator` to the **same** Redis instance.
 
 ## Cross-Machine Setup
 
-To connect instances on different machines, point every node at the same Redis instance using `--coordinator`, and set `BRIDGE_NODE_URL` in each machine's `.vuhitra/env.json` so nodes can advertise their reachable address.
+To connect instances on different machines, point every node at the same Redis instance using `--coordinator`, and set `BRIDGE_NODE_URL` in each machine's `.vuhitra/env.json` so nodes advertise their reachable address.
 
 On **Machine A** (master):
 
@@ -121,7 +176,7 @@ opencode --bridge master --coordinator redis://192.168.1.10:6379
 On **Machine B** (friend):
 
 ```bash
-opencode --bridge friend --coordinator redis://192.168.1.10:6379
+opencode --bridge friend --coordinator redis://192.168.1.10:6379 --bridge-id <master-session-id>
 ```
 
 ```json title=".vuhitra/env.json"
@@ -130,7 +185,7 @@ opencode --bridge friend --coordinator redis://192.168.1.10:6379
 }
 ```
 
-Replace `192.168.1.10` with the IP or hostname of your Redis server, and set `BRIDGE_NODE_URL` to the IP or hostname that **other machines on your network can reach** for each respective node. The default opencode server port is `4096`.
+Replace `192.168.1.10` with the IP or hostname of your Redis server, and set `BRIDGE_NODE_URL` to the address that **other machines on your network can reach** for each node. The default opencode server port is `4096`.
 
 <Warning>
   Both machines must be able to reach each other's `BRIDGE_NODE_URL`. Ensure your firewall allows inbound connections on
@@ -175,11 +230,11 @@ For cross-machine Docker setups, uncomment the `opencode-node` service examples 
 
 Friend instances run fully isolated — they have their own local memory, indexer, and biblion context. They **cannot** see the master's local memory, project index, or stored knowledge.
 
-Alice on the master can **explicitly share context entries** with friends when dispatching tasks. This is done by including relevant context in the task description sent to the friend instance. Friends treat shared context as part of their task instructions.
+Alice on the master includes relevant context in the task prompt when dispatching to a friend. Friends treat this shared context as part of their task instructions.
 
 <Note>
-  Context sharing is unidirectional: master → friends. Friends report results back to master, but do not push their
-  local memory or indexer state upstream.
+  Context sharing is unidirectional: master → friends. Friends report results back via the shared Redis context channel,
+  but do not push their local memory or indexer state upstream.
 </Note>
 
 ## Limitations
@@ -189,6 +244,7 @@ Alice on the master can **explicitly share context entries** with friends when d
 - **Master controls input** — only the master accepts user prompts. Friend terminals display task output only.
 - **Friends are locked** — once a friend joins a bridge, its input is disabled for the duration of the session. Stop the friend process to restore normal operation.
 - **Redis required** — there is no fallback coordination mechanism. If Redis becomes unavailable, bridge communication halts.
+- **5-minute task timeout** — if a friend does not return a result within 5 minutes, the task times out and the caller receives a timeout message.
 
 ## Security
 
@@ -228,3 +284,5 @@ For production or shared-network setups:
 - [Memory](/memory) — persistent agent memory used within each instance
 - [Indexer](/indexer) — codebase search and indexing, local to each instance
 - [Alice](/agents/alice) — the orchestrator that dispatches tasks to bridge friends
+- [Scout](/agents/scout) — lightweight worker used for simple bridge task dispatch
+- [Sentinel](/agents/sentinel) — full-featured worker used for complex bridge tasks
