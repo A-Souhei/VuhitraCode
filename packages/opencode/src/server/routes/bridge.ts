@@ -353,15 +353,15 @@ export const BridgeRoutes = lazy(() =>
       validator(
         "json",
         z.object({
-          taskID: z.string(),
-          prompt: z.string(),
-          description: z.string(),
+          taskID: z.string().max(200),
+          prompt: z.string().max(50000),
+          description: z.string().max(500),
         }),
       ),
       async (c) => {
-        if (!Bridge.isFriend()) return c.json({ error: "Only callable on a friend node" }, 403)
         const bid = Bridge.bridgeID()
-        if (!bid || c.req.header("x-bridge-id") !== bid) return c.json({ error: "Unauthorized" }, 401)
+        if (!Bridge.isFriend() || !bid || c.req.header("x-bridge-id") !== bid)
+          return c.json({ error: "Unauthorized" }, 401)
         const { taskID, prompt, description } = c.req.valid("json")
         const session = await Session.create({ title: description })
         Bus.publish(Bridge.Event.TaskDispatched, {

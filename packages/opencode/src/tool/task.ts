@@ -67,10 +67,24 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         const prompt = params.prompt.slice(bridgeMatch[0].length)
         const node = Bridge.info()?.nodes.find((n) => n.nodeID === nodeID || n.slug === nodeID)
         if (node?.nodeURL) {
+          const parsedURL = new URL(node.nodeURL)
+          if (!["http:", "https:"].includes(parsedURL.protocol))
+            return {
+              title: params.description,
+              metadata: {} as { [key: string]: any },
+              output: `Error: invalid nodeURL scheme for bridge node ${node.nodeID}`,
+            }
+          const bid = Bridge.bridgeID()
+          if (!bid)
+            return {
+              title: params.description,
+              metadata: {} as { [key: string]: any },
+              output: `Error: bridge session ended before task could be dispatched`,
+            }
           const taskID = crypto.randomUUID()
           const res = await fetch(`${node.nodeURL}/bridge/dispatch-task`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-bridge-id": Bridge.bridgeID() ?? "" },
+            headers: { "Content-Type": "application/json", "x-bridge-id": bid },
             body: JSON.stringify({ taskID, prompt, description: params.description }),
           }).catch(() => null)
           if (res?.ok) {
@@ -89,7 +103,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
               ctx.abort.removeEventListener("abort", abortReject)
             }
             const output = [
-              `task_id: ${taskID} (bridge node: ${nodeID}, friend session: ${data.sessionID})`,
+              `task_id: ${taskID} (bridge node: ${node.nodeID}, friend session: ${data.sessionID})`,
               "",
               "<task_result>",
               result ?? "Friend task timed out or was aborted before returning a result.",
@@ -97,7 +111,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             ].join("\n")
             return {
               title: params.description,
-              metadata: { nodeID, taskID, sessionID: data.sessionID } as { [key: string]: any },
+              metadata: { nodeID: node.nodeID, taskID, sessionID: data.sessionID } as { [key: string]: any },
               output,
             }
           }

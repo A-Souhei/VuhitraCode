@@ -47,16 +47,20 @@ export async function InstanceBootstrap() {
   })
 
   Bus.subscribe(SessionStatus.Event.Status, async ({ properties }) => {
-    if (properties.status.type !== "idle") return
-    const session = await Session.get(properties.sessionID).catch(() => undefined)
-    if (session?.parentID) return
-    await notify(`✅ Agent turn complete (session: ${properties.sessionID})`)
+    try {
+      if (properties.status.type !== "idle") return
+      const session = await Session.get(properties.sessionID).catch(() => undefined)
+      if (!session || session.parentID) return
+      notify(`✅ Agent turn complete (session: ${properties.sessionID})`)
+    } catch {}
   })
 
   Bus.subscribe(Question.Event.Asked, async ({ properties }) => {
-    const session = await Session.get(properties.sessionID).catch(() => undefined)
-    if (session?.parentID) return
-    const questions = properties.questions.map((q) => q.question).join("\n")
-    await notify(`❓ Agent is asking:\n${questions}\n_(session: ${properties.sessionID})_`)
+    try {
+      const session = await Session.get(properties.sessionID).catch(() => undefined)
+      if (!session || session.parentID) return
+      const questions = properties.questions.map((q) => q.question).join("\n")
+      notify(`❓ Agent is asking:\n${questions}\n_(session: ${properties.sessionID})_`)
+    } catch {}
   })
 }

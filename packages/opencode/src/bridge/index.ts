@@ -610,7 +610,10 @@ export namespace Bridge {
         await pub
           .publish(k.channel, JSON.stringify({ type: "bridge.closed" }))
           .catch((e) => log.warn("bridge: publish closed failed", { error: String(e) }))
-        const nodeIDs = await pub.hkeys(k.nodes).catch(() => [] as string[])
+        const nodeIDs = await pub.hkeys(k.nodes).catch((e) => {
+          log.warn("bridge: hkeys failed during leave, friend session keys may leak", { error: String(e) })
+          return [] as string[]
+        })
         await Promise.all([
           pub.del(k.master),
           pub.del(k.nodes),
@@ -774,9 +777,13 @@ export namespace Bridge {
     await pub.quit().catch(() => {})
 
     if (!alive) {
-      log.info("bridge: previous bridge gone, marking left", { bridgeID: row.bridge_id })
+      log.info("bridge: previous bridge gone, marking inactive", { bridgeID: row.bridge_id })
       Database.use((db) =>
-        db.update(BridgeNodeTable).set({ status: "left" }).where(eq(BridgeNodeTable.session_id, row.session_id)).run(),
+        db
+          .update(BridgeNodeTable)
+          .set({ status: "inactive" })
+          .where(eq(BridgeNodeTable.session_id, row.session_id))
+          .run(),
       )
       return
     }
