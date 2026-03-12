@@ -63,4 +63,11 @@ export async function InstanceBootstrap() {
       notify(`❓ Agent is asking:\n${questions}\n_(session: ${properties.sessionID})_`)
     } catch {}
   })
+
+  Bus.subscribe(Bridge.Event.StateChanged, ({ properties }) => {
+    try {
+      if (!Bridge.isMaster()) return
+      notify(`🌉 Bridge Mode active — this terminal is the master (bridgeID: ${properties.bridgeID})`)
+    } catch {}
+  })
 }
