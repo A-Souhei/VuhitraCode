@@ -725,6 +725,26 @@ export function Prompt(props: PromptProps) {
     },
   ])
 
+  command.register(() => [
+    {
+      title: "Reset Biblion",
+      value: "biblion.reset",
+      category: "Biblion",
+      description: "Delete all biblion entries for this project",
+      slash: { name: "biblion reset" },
+      enabled: sync.data.biblion_status?.type === "ready",
+      onSelect: async (ctx) => {
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          "Reset Biblion",
+          "Delete all biblion entries for this project? This cannot be undone.",
+        )
+        if (!confirmed) return
+        await sdk.client.biblion.clear()
+        ctx.clear()
+      },
+    },
+  ])
   async function submit() {
     if (props.disabled) return
     if (autocomplete?.visible) return
