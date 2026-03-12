@@ -719,15 +719,37 @@ export namespace Bridge {
     return inf
   }
 
-  export async function pollTaskResult(taskID: string, timeoutMs = 300_000): Promise<string | null> {
+  const POLL_INTERVAL = 2_000
+
+  export async function pollTaskResult(taskID: string, nodeID?: string, signal?: AbortSignal): Promise<string | null> {
     const s = state()
     if (!s.pubClient || !s.bridgeID) return null
-    const deadline = Date.now() + timeoutMs
+    if (nodeID !== undefined) {
+      while (true) {
+        if (signal?.aborted || !s.bridgeID || !s.pubClient) return null
+        try {
+          const entries = await getContext(s.bridgeID, 200)
+          const match = entries.find((e) => e.content.includes(taskID) && e.type === "task_result")
+          if (match) return match.content
+          const alive = await getNodes(s.bridgeID)
+          if (!alive.some((n) => n.nodeID === nodeID)) return null
+        } catch {
+          // transient Redis error — keep polling
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL))
+      }
+    }
+    const deadline = Date.now() + 300_000
     while (Date.now() < deadline) {
-      const entries = await getContext(s.bridgeID, 50)
-      const match = entries.find((e) => e.content.includes(taskID) && e.type === "task_result")
-      if (match) return match.content
-      await new Promise((r) => setTimeout(r, 2000))
+      if (signal?.aborted || !s.bridgeID || !s.pubClient) return null
+      try {
+        const entries = await getContext(s.bridgeID, 200)
+        const match = entries.find((e) => e.content.includes(taskID) && e.type === "task_result")
+        if (match) return match.content
+      } catch {
+        // transient Redis error — keep polling
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL))
     }
     return null
   }

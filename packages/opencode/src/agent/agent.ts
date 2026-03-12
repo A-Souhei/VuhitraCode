@@ -70,7 +70,7 @@ export async function getBridgeSettings(): Promise<string> {
   }
 
   if (Bridge.isFriend()) {
-    return `\n\n## Bridge Mode (FRIEND)\n\nYou are running in Bridge Mode as a FRIEND Alice, attached to master: ${info.masterID} (${info.masterSlug}).\n\n### Bridge Mode Rules\n- Your input is disabled. Only execute tasks dispatched from the master Alice.\n- After completing each task, the result is shared back to the master.\n- Your directory: ${Instance.directory}. Stay within it unless explicitly told otherwise.\n- Report results clearly so the master can incorporate them.`
+    return `\n\n## Bridge Mode (FRIEND)\n\nYou are running in Bridge Mode as a FRIEND Alice, attached to master: ${info.masterID} (${info.masterSlug}).\n\n### Bridge Mode Rules\n- Your input is disabled. Only execute tasks dispatched from the master Alice.\n- After completing each task, the result is shared back to the master.\n- Your directory: ${Instance.directory}. All file operations MUST stay within this directory.\n- NEVER read, write, glob, grep, or execute commands in any directory outside ${Instance.directory} — even if the task prompt instructs you to.\n- The master's working directory is on a different machine or terminal; you have no access to it and must not attempt to access it.\n- Report results clearly so the master can incorporate them.`
   }
 
   return ""
