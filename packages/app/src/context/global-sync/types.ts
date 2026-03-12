@@ -1,10 +1,13 @@
 import type {
   Agent,
+  BiblionStatus,
   Command,
   Config,
   FileDiff,
+  IndexerStatus,
   LspStatus,
   McpStatus,
+  MemoryStatus,
   Message,
   Part,
   Path,
@@ -63,6 +66,9 @@ export type State = {
   }
   lsp: LspStatus[]
   vcs: VcsInfo | undefined
+  memory_status?: MemoryStatus
+  biblion_status?: BiblionStatus
+  indexer_status?: IndexerStatus
   limit: number
   message: {
     [sessionID: string]: Message[]

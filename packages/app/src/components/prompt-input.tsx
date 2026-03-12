@@ -1425,6 +1425,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     variant="ghost"
                   />
                 </TooltipKeybind>
+                <Select
+                  size="normal"
+                  options={["default"]}
+                  current="default"
+                  class="capitalize max-w-[160px]"
+                  valueClass="truncate text-13-regular"
+                  triggerStyle={{ height: "28px" }}
+                  variant="ghost"
+                  disabled
+                  title="Profiles (coming soon)"
+                />
               </Show>
             </div>
             <div class="shrink-0">

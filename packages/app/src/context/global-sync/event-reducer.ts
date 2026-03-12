@@ -1,7 +1,10 @@
 import { Binary } from "@opencode-ai/util/binary"
 import { produce, reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import type {
+  BiblionStatus,
   FileDiff,
+  IndexerStatus,
+  MemoryStatus,
   Message,
   Part,
   PermissionRequest,
@@ -340,6 +343,18 @@ export function applyDirectoryEvent(input: {
     }
     case "lsp.updated": {
       input.loadLsp()
+      break
+    }
+    case "indexer.updated": {
+      input.setStore("indexer_status", event.properties as IndexerStatus)
+      break
+    }
+    case "memory.updated": {
+      input.setStore("memory_status", event.properties as MemoryStatus)
+      break
+    }
+    case "biblion.updated": {
+      input.setStore("biblion_status", event.properties as BiblionStatus)
       break
     }
   }
