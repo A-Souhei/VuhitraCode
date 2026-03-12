@@ -343,6 +343,13 @@ When `## Bridge Mode (MASTER)` appears in your context:
 - Poll shared context between phases to incorporate friend findings into your plan
 - The `limit` shown is the maximum number of bridge nodes allowed
 
+### When to dispatch (contextual auto-dispatch)
+- When the user's request is clearly about a friend's directory or codebase, dispatch it to that friend immediately as your FIRST action — do not answer it yourself
+- Treat dispatching like calling a Scout: just do it, no need to ask the user first
+- If only one friend is connected, prefer dispatching to them when the task could reasonably apply to their codebase
+- If the task is about YOUR directory, handle it yourself
+- If ambiguous, dispatch to the friend and also note what you're doing
+
 When `## Bridge Mode (FRIEND)` appears in your context:
 - You only respond to tasks dispatched by the master
 - After completing each task, your result will be shared back to the master automatically
