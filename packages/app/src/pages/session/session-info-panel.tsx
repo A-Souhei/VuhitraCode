@@ -5,6 +5,7 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useSDK } from "@/context/sdk"
+import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
 import { useBridge } from "@/context/bridge"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -19,6 +20,7 @@ function fmt(n: number) {
 
 export default function SessionInfoPanel() {
   const sdk = useSDK()
+  const server = useServer()
   const sync = useSync()
   const params = useParams()
 
@@ -32,6 +34,16 @@ export default function SessionInfoPanel() {
   const bridge = useBridge()
   const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
   const dialog = useDialog()
+
+  function authHeaders() {
+    const http = server.current?.http
+    if (!http?.password) return {} as Record<string, string>
+    const auth = `${http.username ?? "opencode"}:${http.password}`
+    const bytes = new TextEncoder().encode(auth)
+    let bin = ""
+    for (const b of bytes) bin += String.fromCharCode(b)
+    return { Authorization: `Basic ${btoa(bin)}` } as Record<string, string>
+  }
 
   const isMaster = () => bridge.state.role === "master"
   const isFriend = () => bridge.state.role === "friend"
@@ -47,6 +59,7 @@ export default function SessionInfoPanel() {
       const res = await fetch(`${sdk.url}/bridge/set-master`, {
         method: "POST",
         headers: {
+          ...authHeaders(),
           "Content-Type": "application/json",
           "x-opencode-directory": dir,
         },
@@ -61,8 +74,9 @@ export default function SessionInfoPanel() {
         const body = await res.json().catch(() => ({}))
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
       }
+      const data = await res.json().catch(() => ({}))
       showToast({ variant: "success", title: "Bridge master mode enabled" })
-      bridge.set({ role: "master", id: null, sessionID: id })
+      bridge.set({ role: "master", id: (data as { bridgeID?: string }).bridgeID ?? null, sessionID: id })
     } catch (e) {
       showToast({
         variant: "error",
@@ -81,7 +95,12 @@ export default function SessionInfoPanel() {
     try {
       const res = await fetch(`${sdk.url}/bridge/leave`, {
         method: "POST",
-        headers: { "x-opencode-directory": dir },
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+          "x-opencode-directory": dir,
+        },
+        body: JSON.stringify({}),
       })
       if (!res.ok) throw new Error(await res.text())
       showToast({ variant: "success", title: "Left bridge" })
@@ -247,8 +266,12 @@ export default function SessionInfoPanel() {
                   variant="ghost"
                   aria-label="Copy session ID"
                   onClick={() => {
-                    navigator.clipboard.writeText(bridge.state.sessionID!)
-                    showToast({ variant: "success", title: "Session ID copied" })
+                    const sid = bridge.state.sessionID
+                    if (!sid) return
+                    navigator.clipboard
+                      .writeText(sid)
+                      .then(() => showToast({ variant: "success", title: "Session ID copied" }))
+                      .catch(() => showToast({ variant: "error", title: "Failed to copy session ID" }))
                   }}
                 />
               </div>

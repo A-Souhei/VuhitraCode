@@ -2,6 +2,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "./global-sdk"
+import { useServer } from "./server"
 import { base64Decode } from "@opencode-ai/util/encode"
 
 const POLL_MS = 5_000
@@ -41,6 +42,7 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
   name: "Bridge",
   init: () => {
     const sdk = useGlobalSDK()
+    const server = useServer()
     const [state, setState] = createStore<State>({
       role: null,
       id: null,
@@ -52,6 +54,16 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
     let lastDir = ""
     let pollAbort: AbortController | null = null
 
+    function authHeaders() {
+      const http = server.current?.http
+      if (!http?.password) return {}
+      const auth = `${http.username ?? "opencode"}:${http.password}`
+      const bytes = new TextEncoder().encode(auth)
+      let bin = ""
+      for (const b of bytes) bin += String.fromCharCode(b)
+      return { Authorization: `Basic ${btoa(bin)}` }
+    }
+
     async function poll() {
       if (inflight || !mounted) return
       inflight = true
@@ -59,13 +71,17 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
       pollAbort = myAbort
       try {
         const directory = dirFromPath()
-        const headers: Record<string, string> = {}
+        const headers: Record<string, string> = { ...authHeaders() } as Record<string, string>
         if (directory) headers["x-opencode-directory"] = directory
         const res = await fetch(`${sdk.url}/bridge/info`, { signal: myAbort.signal, headers })
         if (!mounted) return
         if (!res.ok) return // keep last-known state on error
         const info = await res.json()
-        if (!mounted || !info) return
+        if (!mounted) return
+        if (!info) {
+          setState({ role: null, id: null, sessionID: null })
+          return
+        }
         const nodes: Array<{ nodeID: string; role: Role; sessionID: string; status: string }> = info.nodes ?? []
         const active = nodes.filter((n) => n.status !== "inactive")
         const master = active.find((n) => n.role === "master")

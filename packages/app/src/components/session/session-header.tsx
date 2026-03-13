@@ -544,25 +544,27 @@ export function SessionHeader() {
               </Show>
               <div class="flex items-center gap-1">
                 <div class="hidden md:flex items-center gap-1 shrink-0">
-                  <Show when={bridge.state.role === "master"}>
+                  <Show when={bridge.state.role === "master" && bridge.state.sessionID}>
                     <Button
                       variant="ghost"
                       class="titlebar-icon w-8 h-6 p-0 box-border"
                       title="Bridge master · click to copy session ID"
                       aria-label="Bridge master · click to copy session ID"
-                      onClick={() =>
+                      onClick={() => {
+                        const sid = bridge.state.sessionID
+                        if (!sid) return
                         navigator.clipboard
-                          .writeText(bridge.state.sessionID ?? "")
+                          .writeText(sid)
                           .then(() =>
                             showToast({
                               variant: "success",
                               icon: "circle-check",
                               title: "Copied bridge session ID",
-                              description: bridge.state.sessionID ?? "",
+                              description: sid,
                             }),
                           )
                           .catch((err: unknown) => showRequestError(language, err))
-                      }
+                      }}
                     >
                       <div class="flex items-center justify-center size-4">
                         <svg viewBox="0 0 20 20" fill="none" class="size-4 text-yellow-400" aria-hidden="true">
@@ -671,7 +673,6 @@ export function SessionHeader() {
                       onClick={() => view().sessionPanel.toggle()}
                       aria-label="Session Info"
                       aria-expanded={view().sessionPanel.opened()}
-                      aria-controls="session-info-panel"
                     >
                       <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
                         <Icon
