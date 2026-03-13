@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createSignal } from "solid-js"
+import { Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -33,8 +33,8 @@ export default function SessionInfoPanel() {
   const bridge = useBridge()
   const globalSDK = useGlobalSDK()
   const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
-  const [isMaster, setIsMaster] = createSignal(false)
-  const [isFriend, setIsFriend] = createSignal(false)
+  const isMaster = () => bridge.role === "master"
+  const isFriend = () => bridge.role === "friend"
   const dialog = useDialog()
 
   async function becomeMaster() {
@@ -63,7 +63,6 @@ export default function SessionInfoPanel() {
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
       }
       showToast({ variant: "success", title: "Bridge master mode enabled" })
-      setIsMaster(true)
     } catch (e) {
       showToast({
         variant: "error",
@@ -86,8 +85,6 @@ export default function SessionInfoPanel() {
       })
       if (!res.ok) throw new Error(await res.text())
       showToast({ variant: "success", title: "Left bridge" })
-      setIsMaster(false)
-      setIsFriend(false)
     } catch (e) {
       showToast({
         variant: "error",
@@ -103,7 +100,7 @@ export default function SessionInfoPanel() {
     const id = params.id
     const dir = sync.data.path.directory
     if (!id || !dir) return
-    dialog.show(() => <DialogBecomeFriend sessionID={id} directory={dir} onSuccess={() => setIsFriend(true)} />)
+    dialog.show(() => <DialogBecomeFriend sessionID={id} directory={dir} />)
   }
 
   async function deleteMem() {

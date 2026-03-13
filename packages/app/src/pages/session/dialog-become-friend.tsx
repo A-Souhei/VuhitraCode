@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store"
-import { Show } from "solid-js"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { Button } from "@opencode-ai/ui/button"
@@ -7,7 +6,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 
-export function DialogBecomeFriend(props: { sessionID: string; directory: string; onSuccess: () => void }) {
+export function DialogBecomeFriend(props: { sessionID: string; directory: string }) {
   const dialog = useDialog()
   const globalSDK = useGlobalSDK()
   const [store, setStore] = createStore({ masterID: "", error: "", submitting: false })
@@ -43,7 +42,6 @@ export function DialogBecomeFriend(props: { sessionID: string; directory: string
         return
       }
       showToast({ variant: "success", title: "Joined bridge as friend" })
-      props.onSuccess()
       dialog.close()
     } catch (e) {
       setStore("error", e instanceof Error ? e.message : String(e))
