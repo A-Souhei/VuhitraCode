@@ -166,6 +166,9 @@ export namespace Indexer {
     return path.join(Instance.directory, ".vuhitra", "indexer-cache.json")
   }
 
+  // Cache values: positive = indexed file mtime; negative = gitignored sentinel (-(mtime+1));
+  // absent key = no cached mtime (file not yet indexed, unindexable, or errored). Negative
+  // sentinels are persisted to disk so gitignored files are not re-embedded across restarts.
   function loadMtimeCacheFromDisk(): Map<string, number> | null {
     try {
       const raw = fs.readFileSync(mtimeCachePath(), "utf-8")
@@ -574,13 +577,14 @@ export namespace Indexer {
       }
     },
 
-    async getAllMtimes(): Promise<Map<string, number>> {
+    async getAllMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
       const client = getRedisClient()
       const mtimes = new Map<string, number>()
       const indexName = collectionName()
       let offset = 0
       const pageSize = 1000
       while (true) {
+        if (signal?.aborted) break
         const result = (await client.call(
           "FT.SEARCH",
           indexName,
@@ -694,7 +698,7 @@ export namespace Indexer {
       return useRedis() ? redis.deleteByPath(filePath) : qdrant.deleteByPath(filePath)
     },
     async getAllMtimes(signal?: AbortSignal): Promise<Map<string, number>> {
-      return useRedis() ? redis.getAllMtimes() : qdrant.getAllMtimes(signal)
+      return useRedis() ? redis.getAllMtimes(signal) : qdrant.getAllMtimes(signal)
     },
     async search(vector: number[], topK: number) {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
@@ -724,7 +728,7 @@ export namespace Indexer {
     return chunks
   }
 
-  /** Returns the file's mtimeMs if it was indexed, null if skipped or errored. */
+  /** Returns the file's mtimeMs if indexed, -(mtimeMs+1) (negative) if gitignored (cached as sentinel to skip content reads and embedding, but gitignore is always re-checked each run), null if skipped for other reasons or errored. */
   async function indexFile(
     filePath: string,
     skipIfUnchanged = false,
@@ -737,12 +741,13 @@ export namespace Indexer {
       if (!stat.isFile()) return null
       if (stat.size > maxFileSizeBytes()) return null
 
-      // Skip unchanged files for incremental indexing
-      if (skipIfUnchanged && indexedMtimes?.get(filePath) === stat.mtimeMs) return stat.mtimeMs
-
-      // Check if gitignored BEFORE reading the file
+      // Check gitignore BEFORE mtime skip — ensures files newly added to .gitignore
+      // are pruned from the index even if their mtime hasn't changed
       const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
-      if (ignored) return null
+      if (ignored) return -(stat.mtimeMs + 1)
+
+      // Skip unchanged files for incremental indexing (only for non-gitignored files)
+      if (skipIfUnchanged && indexedMtimes?.get(filePath) === stat.mtimeMs) return stat.mtimeMs
 
       const content = await fs.promises.readFile(filePath, "utf-8")
       const chunks = chunkFile(content, filePath)
@@ -823,7 +828,10 @@ export namespace Indexer {
         .filter(Boolean)
         .forEach((rel) => ignored.add(path.resolve(worktree, rel)))
     } catch (error) {
-      log.warn("git check-ignore failed; git-ignored files may be indexed", { error: String(error) })
+      log.warn("git check-ignore failed; treating all files as gitignored to prevent indexing sensitive data", {
+        error: String(error),
+      })
+      return () => true
     }
     return (filepath: string) => ignored.has(filepath)
   }
@@ -911,11 +919,12 @@ export namespace Indexer {
         10,
         async (file) => {
           const mtime = await indexFile(file, true, signal, isIgnored, indexedMtimes)
-          // mtime is non-null whether file was indexed OR skipped-but-unchanged
-          // For skipped files, indexFile returns stat.mtimeMs (the unchanged mtime)
-          // We always update the cache so it stays current
+          // indexFile returns:
+          //   stat.mtimeMs (positive) — file indexed successfully, or mtime unchanged (skipped)
+          //   -stat.mtimeMs (negative) — file is gitignored (sentinel; re-checked each run)
+          //   null — error or file otherwise unindexable (do not update cache)
           if (mtime !== null) {
-            cache.set(file, mtime)
+            cache.set(file, mtime) // bypass debounce; batch flush happens via saveMtimeCacheToDisk after each batch
           }
           done++
           const now = Date.now()

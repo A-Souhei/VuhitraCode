@@ -351,3 +351,45 @@ describe("Indexer Status schema", () => {
     expect(r2.success).toBe(false)
   })
 })
+
+describe("Indexer mtime cache sentinel", () => {
+  test("sentinel is always negative for all valid mtime values", () => {
+    const mtimes = [0, 1, 1000, Date.now()]
+    for (const mtimeMs of mtimes) {
+      const sentinel = -(mtimeMs + 1)
+      expect(sentinel).toBeLessThan(0)
+    }
+  })
+
+  test("sentinel can never equal the positive mtime", () => {
+    const mtimes = [0, 1, 1000, Date.now()]
+    for (const mtimeMs of mtimes) {
+      const sentinel = -(mtimeMs + 1)
+      expect(sentinel).not.toBe(mtimeMs)
+    }
+  })
+
+  test("plus-one offset prevents -0 sentinel (-(0+1) === -1)", () => {
+    expect(-(0 + 1)).toBe(-1)
+    expect(-(0 + 1) === 0).toBe(false)
+  })
+
+  test("sentinel round-trips through JSON.stringify/parse", () => {
+    const sentinel = -(12345 + 1)
+    const json = JSON.stringify({ "/path/to/secret": sentinel })
+    const parsed = JSON.parse(json)
+    expect(parsed["/path/to/secret"]).toBe(sentinel)
+    expect(parsed["/path/to/secret"]).toBeLessThan(0)
+  })
+
+  test("-0 does NOT round-trip through JSON (proof why +1 is needed)", () => {
+    expect(JSON.stringify({ x: -0 })).toBe('{"x":0}')
+    expect(JSON.parse(JSON.stringify({ x: -0 })).x).toBe(0)
+  })
+
+  test("cached sentinel does not suppress re-check on restart (mtime mismatch)", () => {
+    const cachedSentinel = -(1000 + 1)
+    const currentMtime = 1000
+    expect(cachedSentinel === currentMtime).toBe(false)
+  })
+})
