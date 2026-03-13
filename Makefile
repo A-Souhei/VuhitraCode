@@ -40,7 +40,7 @@ install:
 	@echo '# so passing $$PWD as a positional arg is needed only for the TUI (project directory).' >> ~/.local/bin/vuhitracode
 	@echo '# When adding a new top-level command, add it to this list or it will show the help menu.' >> ~/.local/bin/vuhitracode
 	@echo 'case "$${1:-}" in' >> ~/.local/bin/vuhitracode
-	@echo '  init|help|version|completion|-h|--help|-v|--version|acp|mcp|attach|run|debug|auth|agent|upgrade|uninstall|serve|web|models|stats|export|import|github|pr|session|db|set|generate|index)' >> ~/.local/bin/vuhitracode
+	@echo '  init|help|version|completion|-h|--help|-v|--version|acp|mcp|attach|run|debug|auth|agent|upgrade|uninstall|serve|web|models|stats|export|import|github|pr|session|db|set|generate|index|indexer)' >> ~/.local/bin/vuhitracode
 	@echo '    exec env OPENCODE_CLI_NAME=vuhitracode "$$BUN" run --cwd "$$PKGDIR" --conditions=browser src/index.ts "$$@"' >> ~/.local/bin/vuhitracode
 	@echo '    ;;' >> ~/.local/bin/vuhitracode
 	@echo '  *)' >> ~/.local/bin/vuhitracode

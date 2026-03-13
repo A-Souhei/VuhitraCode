@@ -17,9 +17,33 @@ import { Shell } from "@/shell/shell"
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
+import { isGitignored } from "@/util/gitignore"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
+
+const FILE_READ_CMDS = new Set([
+  "cat",
+  "less",
+  "more",
+  "head",
+  "tail",
+  "sed",
+  "awk",
+  "grep",
+  "sort",
+  "uniq",
+  "wc",
+  "strings",
+  "xxd",
+  "od",
+  "base64",
+  "python",
+  "python3",
+  "node",
+  "perl",
+  "ruby",
+])
 
 export const log = Log.create({ service: "bash-tool" })
 
@@ -94,7 +118,7 @@ export const BashTool = Tool.define("bash", async () => {
         if (!node) continue
 
         // Get full command text including redirects if present
-        let commandText = node.parent?.type === "redirected_statement" ? node.parent.text : node.text
+        const commandText = node.parent?.type === "redirected_statement" ? node.parent.text : node.text
 
         const command = []
         for (let i = 0; i < node.childCount; i++) {
@@ -113,7 +137,10 @@ export const BashTool = Tool.define("bash", async () => {
         }
 
         // not an exhaustive list, but covers most common cases
-        if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown", "cat"].includes(command[0])) {
+        if (
+          ["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0]) ||
+          FILE_READ_CMDS.has(command[0])
+        ) {
           for (const arg of command.slice(1)) {
             if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
             const resolved = await $`realpath ${arg}`
@@ -132,6 +159,13 @@ export const BashTool = Tool.define("bash", async () => {
               if (!Instance.containsPath(normalized)) {
                 const dir = (await Filesystem.isDir(normalized)) ? normalized : path.dirname(normalized)
                 directories.add(dir)
+              }
+              if (FILE_READ_CMDS.has(command[0]) && (await isGitignored(normalized))) {
+                const rel = path.relative(Instance.worktree, normalized)
+                throw new Error(
+                  `Access denied: "${rel}" is gitignored (private).\n` +
+                    `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
+                )
               }
             }
           }

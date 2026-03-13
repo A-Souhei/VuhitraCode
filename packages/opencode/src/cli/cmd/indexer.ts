@@ -75,9 +75,9 @@ const IndexDeleteCommand = cmd({
   },
 })
 
-// Main index command group
-export const IndexCommand = cmd({
-  command: "index",
+// Main indexer command group
+export const IndexerCommand = cmd({
+  command: "indexer",
   describe: "manage project index and embeddings",
   builder: (yargs: Argv) => yargs.command(IndexDeleteCommand).demandCommand(),
   async handler() {

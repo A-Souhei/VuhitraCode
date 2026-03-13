@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { $ } from "bun"
 import path from "path"
 import { BashTool } from "../../src/tool/bash"
 import { Instance } from "../../src/project/instance"
@@ -394,6 +395,129 @@ describe("tool.bash truncation", () => {
         expect(lines.length).toBe(lineCount)
         expect(lines[0]).toBe("1")
         expect(lines[lineCount - 1]).toBe(String(lineCount))
+      },
+    })
+  })
+})
+
+describe("tool.bash gitignore", () => {
+  async function setupGitignore(dir: string) {
+    await Bun.write(path.join(dir, ".gitignore"), "secret.env\n")
+    await Bun.write(path.join(dir, "secret.env"), "API_KEY=super_secret\n")
+    await $`git -c user.email=test@test.com -c user.name=Test add .gitignore`.cwd(dir)
+    await $`git -c user.email=test@test.com -c user.name=Test commit -m "add gitignore"`.cwd(dir)
+  }
+
+  test("throws when cat targets a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(bash.execute({ command: `cat ${filepath}`, description: "Read secret" }, ctx)).rejects.toThrow(
+          "gitignored (private)",
+        )
+      },
+    })
+  })
+
+  test("does not throw when cat targets a non-gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "public.txt"), "hello world\n")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "public.txt")
+        await expect(
+          bash.execute({ command: `cat ${filepath}`, description: "Read public" }, ctx),
+        ).resolves.toBeDefined()
+      },
+    })
+  })
+
+  test("throws when head targets a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(bash.execute({ command: `head ${filepath}`, description: "Read secret" }, ctx)).rejects.toThrow(
+          "gitignored (private)",
+        )
+      },
+    })
+  })
+
+  test("throws when tail targets a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(bash.execute({ command: `tail ${filepath}`, description: "Read secret" }, ctx)).rejects.toThrow(
+          "gitignored (private)",
+        )
+      },
+    })
+  })
+
+  test("throws when grep targets a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute({ command: `grep pattern ${filepath}`, description: "Search secret" }, ctx),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when sed targets a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute({ command: `sed -n '1p' ${filepath}`, description: "Read secret" }, ctx),
+        ).rejects.toThrow("gitignored (private)")
       },
     })
   })
