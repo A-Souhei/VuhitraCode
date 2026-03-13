@@ -7,7 +7,6 @@ import { FileIgnore } from "@/file/ignore"
 import { Env } from "@/env"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
 import { isGitignored } from "@/util/gitignore"
-import { Faker } from "@/util/faker"
 import { Log } from "@/util/log"
 import ignore from "ignore"
 import path from "path"
@@ -533,8 +532,6 @@ export namespace Indexer {
           String(p.payload.start_line ?? 0),
           "mtime",
           String(p.payload.mtime ?? 0),
-          "is_gitignored",
-          String(p.payload.is_gitignored ?? false),
           "vector",
           redis.encodeVector(p.vector),
         )
@@ -740,18 +737,13 @@ export namespace Indexer {
       if (!stat.isFile()) return null
       if (stat.size > maxFileSizeBytes()) return null
 
-      if (skipIfUnchanged && indexedMtimes !== undefined) {
-        if (indexedMtimes.get(filePath) === stat.mtimeMs) return stat.mtimeMs
-      }
-
-      let content = await fs.promises.readFile(filePath, "utf-8")
+      // Check if gitignored BEFORE reading the file
       const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
-      // LOGIC-2: Keep real filePath as file_path for delete lookup; only obfuscate text content
-      if (ignored) content = await Faker.fakeContent(content, filePath)
+      if (ignored) return null
+
+      const content = await fs.promises.readFile(filePath, "utf-8")
       const chunks = chunkFile(content, filePath)
       if (chunks.length === 0) return null
-
-      const indexedPath = ignored ? "[gitignored]" : filePath
 
       const results = await mapParallel(
         chunks,
@@ -767,7 +759,6 @@ export namespace Indexer {
                 text: chunk.text,
                 start_line: chunk.startLine,
                 mtime: stat.mtimeMs,
-                is_gitignored: ignored,
               },
             }
           } catch (e) {

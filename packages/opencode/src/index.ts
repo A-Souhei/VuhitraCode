@@ -30,7 +30,7 @@ import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
 import { SetCommand } from "./cli/cmd/set"
 import { InitCommand } from "./cli/cmd/init"
-import { IndexCommand } from "./cli/cmd/indexer"
+import { IndexerCommand } from "./cli/cmd/indexer"
 import path from "path"
 import { Global } from "./global"
 import { JsonMigration } from "./storage/json-migration"
@@ -146,7 +146,7 @@ const cli = yargs(hideBin(process.argv))
   .command(SessionCommand)
   .command(DbCommand)
   .command(SetCommand)
-  .command(IndexCommand)
+  .command(IndexerCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
