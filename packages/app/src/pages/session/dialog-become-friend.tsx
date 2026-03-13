@@ -5,14 +5,18 @@ import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useServer } from "@/context/server"
+import { authHeaders } from "@/utils/auth"
 
 export function DialogBecomeFriend(props: { sessionID: string; directory: string; onSuccess: () => void }) {
   const dialog = useDialog()
   const globalSDK = useGlobalSDK()
+  const server = useServer()
   const [store, setStore] = createStore({ masterID: "", error: "", submitting: false })
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault()
+    if (store.submitting) return
     const masterID = store.masterID.trim()
     if (!masterID) {
       setStore("error", "Session ID is required")
@@ -25,6 +29,7 @@ export function DialogBecomeFriend(props: { sessionID: string; directory: string
       const res = await fetch(`${globalSDK.url}/bridge/set-friend`, {
         method: "POST",
         headers: {
+          ...authHeaders(server.current?.http),
           "Content-Type": "application/json",
           "x-opencode-directory": props.directory,
         },
@@ -42,8 +47,8 @@ export function DialogBecomeFriend(props: { sessionID: string; directory: string
         return
       }
       showToast({ variant: "success", title: "Joined bridge as friend" })
-      props.onSuccess()
       dialog.close()
+      props.onSuccess()
     } catch (e) {
       setStore("error", e instanceof Error ? e.message : String(e))
     } finally {

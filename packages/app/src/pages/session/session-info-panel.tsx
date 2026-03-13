@@ -6,6 +6,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useSDK } from "@/context/sdk"
 import { useServer } from "@/context/server"
+import { authHeaders } from "@/utils/auth"
 import { useSync } from "@/context/sync"
 import { useBridge } from "@/context/bridge"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -35,16 +36,6 @@ export default function SessionInfoPanel() {
   const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
   const dialog = useDialog()
 
-  function authHeaders() {
-    const http = server.current?.http
-    if (!http?.password) return {} as Record<string, string>
-    const auth = `${http.username ?? "opencode"}:${http.password}`
-    const bytes = new TextEncoder().encode(auth)
-    let bin = ""
-    for (const b of bytes) bin += String.fromCharCode(b)
-    return { Authorization: `Basic ${btoa(bin)}` } as Record<string, string>
-  }
-
   const isMaster = () => bridge.state.role === "master"
   const isFriend = () => bridge.state.role === "friend"
 
@@ -59,7 +50,7 @@ export default function SessionInfoPanel() {
       const res = await fetch(`${sdk.url}/bridge/set-master`, {
         method: "POST",
         headers: {
-          ...authHeaders(),
+          ...authHeaders(server.current?.http),
           "Content-Type": "application/json",
           "x-opencode-directory": dir,
         },
@@ -96,7 +87,7 @@ export default function SessionInfoPanel() {
       const res = await fetch(`${sdk.url}/bridge/leave`, {
         method: "POST",
         headers: {
-          ...authHeaders(),
+          ...authHeaders(server.current?.http),
           "Content-Type": "application/json",
           "x-opencode-directory": dir,
         },

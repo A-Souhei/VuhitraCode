@@ -82,9 +82,10 @@ export const TaskTool = Tool.define("task", async (ctx) => {
               output: `Error: bridge session ended before task could be dispatched`,
             }
           const taskID = crypto.randomUUID()
+          const dir = node.directory.replace(/[\r\n]/g, "")
           const res = await fetch(`${node.nodeURL}/bridge/dispatch-task`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-bridge-id": bid },
+            headers: { "Content-Type": "application/json", "x-bridge-id": bid, "x-opencode-directory": dir },
             body: JSON.stringify({ taskID, prompt, description: params.description }),
             signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(10_000)]),
           }).catch(() => null)
@@ -109,6 +110,12 @@ export const TaskTool = Tool.define("task", async (ctx) => {
               title: params.description,
               metadata: { nodeID: node.nodeID, taskID, sessionID: data.sessionID } as { [key: string]: any },
               output,
+            }
+          } else if (res) {
+            return {
+              title: params.description,
+              metadata: {} as { [key: string]: any },
+              output: `Error: bridge node ${node.nodeID} returned HTTP ${res.status} for task dispatch`,
             }
           }
         }
