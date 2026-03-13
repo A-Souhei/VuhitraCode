@@ -1,4 +1,4 @@
-import { Match, Show, Switch } from "solid-js"
+import { createSignal, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -10,13 +10,46 @@ import { authHeaders } from "@/utils/auth"
 import { useSync } from "@/context/sync"
 import { useBridge } from "@/context/bridge"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import { useParams } from "@solidjs/router"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
 
 function fmt(n: number) {
   if (n >= 1000) return `${Math.round(n / 100) / 10}k`
   return String(n)
+}
+
+function DialogConfirmDelete(props: {
+  title: string
+  description: string
+  label: string
+  onConfirm: () => Promise<void>
+}) {
+  const dialog = useDialog()
+  const [pending, setPending] = createSignal(false)
+
+  async function handle() {
+    if (pending()) return
+    setPending(true)
+    dialog.close()
+    await props.onConfirm()
+  }
+
+  return (
+    <Dialog title={props.title} fit>
+      <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+        <span class="text-14-regular text-text-strong">{props.description}</span>
+        <div class="flex justify-end gap-2">
+          <Button variant="ghost" size="large" onClick={() => dialog.close()}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="large" onClick={handle} disabled={pending()}>
+            {props.label}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
 }
 
 export default function SessionInfoPanel() {
@@ -28,7 +61,6 @@ export default function SessionInfoPanel() {
   const memory = () => sync.data.memory_status
   const biblion = () => sync.data.biblion_status
   const indexer = () => sync.data.indexer_status
-  const todos = () => (params.id ? (sync.data.todo[params.id] ?? []) : [])
 
   const [deleting, setDeleting] = createStore({ mem: false, bib: false })
 
@@ -37,7 +69,6 @@ export default function SessionInfoPanel() {
   const dialog = useDialog()
 
   const isMaster = () => bridge.state.role === "master"
-  const isFriend = () => bridge.state.role === "friend"
 
   async function becomeMaster() {
     const id = params.id
@@ -122,16 +153,52 @@ export default function SessionInfoPanel() {
     ))
   }
 
-  async function deleteMem() {
-    setDeleting("mem", true)
-    await sdk.client.memory.delete().catch(() => {})
-    setDeleting("mem", false)
+  function deleteMem() {
+    dialog.show(() => (
+      <DialogConfirmDelete
+        title="Clear memory"
+        description="Are you sure you want to clear all memory entries? This cannot be undone."
+        label="Clear"
+        onConfirm={async () => {
+          setDeleting("mem", true)
+          try {
+            await sdk.client.memory.delete({ directory: sdk.directory })
+          } catch (e) {
+            showToast({
+              variant: "error",
+              title: "Failed to clear memory",
+              description: e instanceof Error ? e.message : String(e),
+            })
+          } finally {
+            setDeleting("mem", false)
+          }
+        }}
+      />
+    ))
   }
 
-  async function clearBib() {
-    setDeleting("bib", true)
-    await sdk.client.biblion.clear().catch(() => {})
-    setDeleting("bib", false)
+  function clearBib() {
+    dialog.show(() => (
+      <DialogConfirmDelete
+        title="Clear biblion"
+        description="Are you sure you want to clear all biblion entries? This cannot be undone."
+        label="Clear"
+        onConfirm={async () => {
+          setDeleting("bib", true)
+          try {
+            await sdk.client.biblion.clear({ directory: sdk.directory })
+          } catch (e) {
+            showToast({
+              variant: "error",
+              title: "Failed to clear biblion",
+              description: e instanceof Error ? e.message : String(e),
+            })
+          } finally {
+            setDeleting("bib", false)
+          }
+        }}
+      />
+    ))
   }
 
   return (
@@ -294,17 +361,6 @@ export default function SessionInfoPanel() {
             </div>
           </div>
         </div>
-
-        {/* Tasks */}
-        <Show when={todos().length > 0}>
-          <div class="border-b border-border-weak-base">
-            <div class="px-4 pt-3 pb-1 flex items-center gap-2">
-              <Icon name="checklist" size="small" class="text-icon-base shrink-0" />
-              <span class="text-12-medium text-text-strong">Tasks</span>
-            </div>
-            <SessionTodoDock todos={todos()} title="Tasks" collapseLabel="Collapse tasks" expandLabel="Expand tasks" />
-          </div>
-        </Show>
       </div>
     </div>
   )
