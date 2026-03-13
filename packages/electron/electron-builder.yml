@@ -1,0 +1,40 @@
+appId: ai.opencode.electron
+productName: OpenCode
+copyright: Copyright © 2024-2026 OpenCode
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+# The app requires vuhitracode-web to be installed on the system (PATH).
+# We don't bundle it — users install it via `make install`.
+
+linux:
+  icon: build/icons/icon.png
+  target:
+    - target: AppImage
+    - target: deb
+  category: Development
+
+mac:
+  icon: build/icon.icns
+  target:
+    - target: dmg
+    - target: zip
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target:
+    - target: nsis
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

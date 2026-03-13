@@ -1,4 +1,4 @@
-.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install
+.PHONY: dev dev-web dev-web-stop dev-electron build-electron docs setup test-privacy install-dev install redis redis-stop mcp-install
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -16,6 +16,12 @@ dev-web:
 
 dev-web-stop:
 	@fuser -k 4096/tcp 4444/tcp 2>/dev/null || true
+
+dev-electron:
+	bun --cwd packages/electron run dev
+
+build-electron:
+	bun --cwd packages/electron run build
 
 docs:
 	cd packages/docs && mintlify dev --port 3333
