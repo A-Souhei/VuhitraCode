@@ -1,6 +1,6 @@
-# opencode index delete Command
+# opencode indexer delete Command
 
-User guide for the `opencode index delete` CLI command.
+User guide for the `opencode indexer delete` CLI command.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ User guide for the `opencode index delete` CLI command.
 
 ## Purpose
 
-The `opencode index delete` command permanently removes all vector embeddings and index data for your project from the vector database (Qdrant). This allows you to:
+The `opencode indexer delete` command permanently removes all vector embeddings and index data for your project from the vector database (Qdrant). This allows you to:
 
 - **Switch embedding providers** (e.g., from one API to another)
 - **Change embedding models** (e.g., upgrading to a newer, more capable model)
@@ -44,7 +44,7 @@ The deletion is **permanent** (within OpenCode) and **immediate**—the vector i
 Old Setup: Using Provider A for embeddings
 New Setup: Switching to Provider B with better quality/cost
 
-→ Use: opencode index delete
+→ Use: opencode indexer delete
 ```
 
 After deletion, the indexer will re-embed your codebase using Provider B on next use.
@@ -55,7 +55,7 @@ After deletion, the indexer will re-embed your codebase using Provider B on next
 Old Embeddings: Using model-v1 (768 dimensions)
 New Embeddings: Upgrading to model-v2 (1024 dimensions, better quality)
 
-→ Use: opencode index delete
+→ Use: opencode indexer delete
 ```
 
 The old embeddings won't work with the new model anyway, so deletion clears space and ensures clean re-indexing.
@@ -65,7 +65,7 @@ The old embeddings won't work with the new model anyway, so deletion clears spac
 ```
 Symptoms: Search results are inaccurate, index operations are failing
 
-→ Use: opencode index delete
+→ Use: opencode indexer delete
 → The indexer will rebuild from scratch on next use
 ```
 
@@ -74,7 +74,7 @@ Symptoms: Search results are inaccurate, index operations are failing
 ```
 Updating multiple indexing settings or embedding parameters
 
-→ Use: opencode index delete
+→ Use: opencode indexer delete
 → Ensures all settings apply uniformly across a fresh index
 ```
 
@@ -92,7 +92,7 @@ Updating multiple indexing settings or embedding parameters
 ### Basic Usage (With Confirmation)
 
 ```bash
-opencode index delete
+opencode indexer delete
 ```
 
 You'll be prompted to confirm before deletion proceeds:
@@ -107,7 +107,7 @@ You'll be prompted to confirm before deletion proceeds:
 Use the `--force` flag to skip the confirmation prompt:
 
 ```bash
-opencode index delete --force
+opencode indexer delete --force
 ```
 
 Useful for CI/CD pipelines or scripted operations where user input isn't available.
@@ -117,7 +117,7 @@ Useful for CI/CD pipelines or scripted operations where user input isn't availab
 ## Command Syntax
 
 ```bash
-opencode index delete [OPTIONS]
+opencode indexer delete [OPTIONS]
 ```
 
 ### Arguments
@@ -148,7 +148,7 @@ None—the command operates on the current project automatically.
 **Example:**
 
 ```bash
-opencode index delete --force
+opencode indexer delete --force
 ```
 
 **Note:** Even with `--force`, if the deletion fails (e.g., Qdrant connection error), the command will exit with code 1 and print an error message.
@@ -157,7 +157,7 @@ opencode index delete --force
 
 ## Safety Confirmation
 
-By default, `opencode index delete` requires explicit user confirmation before proceeding.
+By default, `opencode indexer delete` requires explicit user confirmation before proceeding.
 
 ### The Confirmation Prompt
 
@@ -302,7 +302,7 @@ docker run -p 6333:6333 \
   qdrant/qdrant
 
 # Then retry
-opencode index delete --force
+opencode indexer delete --force
 ```
 
 ### "Failed to delete index: 401 Unauthorized"
@@ -375,7 +375,7 @@ curl -X DELETE http://localhost:4096/indexer/data \
 ### Example 1: Simple Interactive Deletion
 
 ```bash
-$ opencode index delete
+$ opencode indexer delete
 
 ✔ Delete all index data for this project? This will be re-indexed on next use.
 · Yes
@@ -388,7 +388,7 @@ The indexer will automatically regenerate the index on next use.
 ### Example 2: Automated Deletion (Scripted)
 
 ```bash
-$ opencode index delete --force
+$ opencode indexer delete --force
 
 ✓ Index data deleted successfully
 
@@ -404,7 +404,7 @@ The indexer will automatically regenerate the index on next use.
 $ export EMBEDDING_MODEL="premium-v2"
 
 # 2. Delete the old index (built with free model)
-$ opencode index delete --force
+$ opencode indexer delete --force
 
 # 3. Next time you use search or analysis, it re-indexes with premium model
 # Re-indexing starts automatically...
@@ -422,7 +422,7 @@ echo "Deploying new embedding model..."
 export EMBEDDING_MODEL="production-v3"
 
 # Delete old index in automation (no confirmation needed)
-opencode index delete --force
+opencode indexer delete --force
 
 echo "Index cleared. Production deployment ready."
 echo "Indexing will resume automatically on next user action."
@@ -459,7 +459,7 @@ fi
 **Scenario:** Your search results are inaccurate and you suspect index corruption.
 
 ```bash
-$ opencode index delete --force
+$ opencode indexer delete --force
 ✓ Index data deleted successfully
 
 The indexer will automatically regenerate the index on next use.
@@ -478,8 +478,8 @@ $ opencode search "your query"
 
 | Task                           | Command                              |
 | ------------------------------ | ------------------------------------ |
-| Delete with confirmation       | `opencode index delete`              |
-| Delete without confirmation    | `opencode index delete --force`      |
+| Delete with confirmation       | `opencode indexer delete`            |
+| Delete without confirmation    | `opencode indexer delete --force`    |
 | Delete via HTTP API            | `DELETE /indexer/data` + header      |
 | Check next steps               | Index auto-regenerates on use        |
 | Troubleshoot Qdrant connection | Verify Qdrant is running & reachable |
