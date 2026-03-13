@@ -8,8 +8,10 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useBridge } from "@/context/bridge"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import { useParams } from "@solidjs/router"
+import { DialogBecomeFriend } from "./dialog-become-friend"
 
 function fmt(n: number) {
   if (n >= 1000) return `${Math.round(n / 100) / 10}k`
@@ -32,13 +34,15 @@ export default function SessionInfoPanel() {
   const globalSDK = useGlobalSDK()
   const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
   const [isMaster, setIsMaster] = createSignal(false)
+  const [isFriend, setIsFriend] = createSignal(false)
+  const dialog = useDialog()
 
   async function becomeMaster() {
     const id = params.id
     if (!id) return
     const dir = sync.data.path.directory
     if (!dir) return
-    const title = dir.split("/").pop() ?? dir
+    const title = dir.split("/").filter(Boolean).at(-1) ?? dir
     setBridgeLoading("master", true)
     try {
       const res = await fetch(`${globalSDK.url}/bridge/set-master`, {
@@ -83,6 +87,7 @@ export default function SessionInfoPanel() {
       if (!res.ok) throw new Error(await res.text())
       showToast({ variant: "success", title: "Left bridge" })
       setIsMaster(false)
+      setIsFriend(false)
     } catch (e) {
       showToast({
         variant: "error",
@@ -92,6 +97,13 @@ export default function SessionInfoPanel() {
     } finally {
       setBridgeLoading("leave", false)
     }
+  }
+
+  function openBecomeFriend() {
+    const id = params.id
+    const dir = sync.data.path.directory
+    if (!id || !dir) return
+    dialog.show(() => <DialogBecomeFriend sessionID={id} directory={dir} onSuccess={() => setIsFriend(true)} />)
   }
 
   async function deleteMem() {
@@ -236,7 +248,7 @@ export default function SessionInfoPanel() {
               </div>
             </Show>
             <div class="flex gap-2">
-              <Show when={!isMaster()}>
+              <Show when={!isMaster() && !isFriend() && !bridge.role}>
                 <Button
                   size="small"
                   variant="secondary"
@@ -245,8 +257,16 @@ export default function SessionInfoPanel() {
                 >
                   Become Master
                 </Button>
+                <Button
+                  size="small"
+                  variant="secondary"
+                  disabled={!params.id || !sync.data.path.directory}
+                  onClick={openBecomeFriend}
+                >
+                  Become Friend
+                </Button>
               </Show>
-              <Show when={bridge.role}>
+              <Show when={bridge.role || isMaster() || isFriend()}>
                 <Button size="small" variant="ghost" disabled={bridgeLoading.leave} onClick={leaveBridge}>
                   Leave
                 </Button>
