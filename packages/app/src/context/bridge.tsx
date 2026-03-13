@@ -4,8 +4,10 @@ import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "./global-sdk"
 import { useServer } from "./server"
 import { base64Decode } from "@opencode-ai/util/encode"
+import { authHeaders } from "@/utils/auth"
 
 const POLL_MS = 5_000
+const SUPPRESS_MS = 10_000
 
 type Role = "master" | "friend"
 
@@ -53,25 +55,19 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
     let mounted = true
     let lastDir = ""
     let pollAbort: AbortController | null = null
-
-    function authHeaders() {
-      const http = server.current?.http
-      if (!http?.password) return {}
-      const auth = `${http.username ?? "opencode"}:${http.password}`
-      const bytes = new TextEncoder().encode(auth)
-      let bin = ""
-      for (const b of bytes) bin += String.fromCharCode(b)
-      return { Authorization: `Basic ${btoa(bin)}` }
-    }
+    let suppressUntil = 0
+    let gen = 0
 
     async function poll() {
       if (inflight || !mounted) return
+      if (Date.now() < suppressUntil) return // manual set is authoritative for now
       inflight = true
+      const myGen = ++gen
       const myAbort = new AbortController()
       pollAbort = myAbort
       try {
         const directory = dirFromPath()
-        const headers: Record<string, string> = { ...authHeaders() } as Record<string, string>
+        const headers: Record<string, string> = { ...authHeaders(server.current?.http) } as Record<string, string>
         if (directory) headers["x-opencode-directory"] = directory
         const res = await fetch(`${sdk.url}/bridge/info`, { signal: myAbort.signal, headers })
         if (!mounted) return
@@ -93,11 +89,20 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
       } catch {
         // abort or network error — keep last-known state
       } finally {
-        if (pollAbort === myAbort) {
+        if (myGen === gen) {
           inflight = false
           pollAbort = null
         }
       }
+    }
+
+    // Wraps setState and arms the poll-suppression window.
+    // Direct setState() calls in onNavigate intentionally bypass this to avoid
+    // suppressing the fresh poll after a directory change.
+    function set(...args: any[]) {
+      suppressUntil = Date.now() + SUPPRESS_MS
+      // @ts-expect-error — forward all overloads
+      setState(...args)
     }
 
     onMount(() => {
@@ -110,6 +115,7 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
         lastDir = dir
         pollAbort?.abort()
         inflight = false
+        suppressUntil = 0
         setState({ role: null, id: null, sessionID: null })
         void poll()
       }
@@ -128,6 +134,6 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
       })
     })
 
-    return { state, set: setState }
+    return { state, set }
   },
 })

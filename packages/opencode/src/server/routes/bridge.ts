@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
@@ -10,6 +11,7 @@ import { SessionPrompt } from "../../session/prompt"
 import { Identifier } from "../../id/id"
 import { Bus } from "../../bus"
 import { Instance } from "../../project/instance"
+import { Log } from "../../util/log"
 
 // Set BRIDGE_NODE_URL to your machine's reachable IP/hostname for cross-machine bridge
 function nodeURL() {
@@ -23,6 +25,8 @@ function nodeURL() {
     return Server.url().toString()
   }
 }
+
+const activeTaskIDs = new Set<string>()
 
 export const BridgeRoutes = lazy(() =>
   new Hono()
@@ -375,9 +379,16 @@ export const BridgeRoutes = lazy(() =>
       ),
       async (c) => {
         const bid = Bridge.bridgeID()
-        if (!Bridge.isFriend() || !bid || c.req.header("x-bridge-id") !== bid)
-          return c.json({ error: "Unauthorized" }, 401)
+        const incoming = c.req.header("x-bridge-id") ?? ""
+        const safe = (a: string, b: string) =>
+          a.length === b.length && timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"))
+        if (!Bridge.isFriend() || !bid || !safe(incoming, bid)) return c.json({ error: "Unauthorized" }, 401)
         const { taskID, prompt, description } = c.req.valid("json")
+        if (activeTaskIDs.has(taskID)) {
+          // Already processing — return success to acknowledge (master won't retry)
+          return c.json({ taskID, sessionID: "dup", success: true as const })
+        }
+        activeTaskIDs.add(taskID)
         const dir = Instance.directory
         const session = await Session.create({
           title: description,
@@ -405,22 +416,28 @@ export const BridgeRoutes = lazy(() =>
         const messageID = Identifier.ascending("message")
 
         // Fire-and-forget: start friend Alice's orchestration without awaiting
-        SessionPrompt.prompt({
-          messageID,
-          sessionID: session.id,
-          agent: "alice",
-          parts,
-        })
-          .then((result) => {
-            const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
+        Instance.provide({
+          directory: dir,
+          fn: async () => {
+            const result = await SessionPrompt.prompt({
+              messageID,
+              sessionID: session.id,
+              agent: "alice",
+              parts,
+            })
+            activeTaskIDs.delete(taskID)
+            const text = result.parts.findLast((x: (typeof result.parts)[number]) => x.type === "text")?.text ?? ""
             Bridge.shareContext({
               role: "friend",
               directory: session.directory ?? process.cwd(),
               type: "task_result",
               content: `task_id: ${taskID}\n${text}`,
             }).catch(() => {})
-          })
-          .catch(() => {})
+          },
+        }).catch((err) => {
+          activeTaskIDs.delete(taskID)
+          Log.Default.error("dispatch-task: friend prompt failed", { taskID, error: err })
+        })
 
         return c.json({ taskID, sessionID: session.id, success: true as const })
       },

@@ -200,6 +200,7 @@ export function tui(input: {
 }
 
 function App() {
+  const cwd = process.cwd()
   const route = useRoute()
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
@@ -312,7 +313,6 @@ function App() {
       return current ?? sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)[0]
     })
     if (args.bridge === "master") {
-      bridgeInited = true
       sdk
         .fetch(`${sdk.url}/bridge/set-master`, {
           method: "POST",
@@ -321,7 +321,7 @@ function App() {
             sessionID: session.id,
             slug: session.slug,
             title: session.title,
-            directory: session.directory,
+            directory: cwd,
             coordinator: args.coordinator,
           }),
         })
@@ -331,6 +331,7 @@ function App() {
             toast.show({ message: data?.error ?? "Failed to set bridge master", variant: "error" })
             return
           }
+          bridgeInited = true
           const id = data?.bridgeID ?? null
           if (!id) {
             toast.show({ message: "Bridge active! (no ID returned)", variant: "warning", duration: 8000 })
@@ -342,7 +343,6 @@ function App() {
         })
         .catch(() => toast.show({ message: "Failed to start bridge", variant: "error" }))
     } else if (args.bridge === "friend") {
-      bridgeInited = true
       if (!args.bridgeID) {
         toast.show({
           message: "Bridge ID is required for friend mode. Use --bridge-id <master-session-id>",
@@ -360,7 +360,7 @@ function App() {
             sessionID: session.id,
             slug: session.slug,
             title: session.title,
-            directory: session.directory,
+            directory: cwd,
             coordinator: args.coordinator,
           }),
         })
@@ -370,6 +370,7 @@ function App() {
             toast.show({ message: data?.error ?? "Failed to join bridge", variant: "error" })
             return
           }
+          bridgeInited = true
           const id = data?.bridgeID ?? data?.id ?? null
           toast.show({ message: "Joined bridge as friend", variant: "info", duration: 4000 })
           bridge.setRole("friend")
