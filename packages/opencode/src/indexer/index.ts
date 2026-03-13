@@ -166,6 +166,9 @@ export namespace Indexer {
     return path.join(Instance.directory, ".vuhitra", "indexer-cache.json")
   }
 
+  // Cache values: positive = indexed file mtime; negative = gitignored sentinel (-mtime);
+  // null (absent key) = never seen. Negative sentinels are persisted to disk so the
+  // mtime early-return never fires for gitignored files across restarts.
   function loadMtimeCacheFromDisk(): Map<string, number> | null {
     try {
       const raw = fs.readFileSync(mtimeCachePath(), "utf-8")
@@ -724,7 +727,7 @@ export namespace Indexer {
     return chunks
   }
 
-  /** Returns the file's mtimeMs if it was indexed, null if skipped or errored. */
+  /** Returns the file's mtimeMs if indexed, -mtimeMs (negative) if gitignored (cached as sentinel so callers skip re-stat but always re-check gitignore), null if skipped for other reasons or errored. */
   async function indexFile(
     filePath: string,
     skipIfUnchanged = false,
@@ -742,7 +745,7 @@ export namespace Indexer {
 
       // Check if gitignored BEFORE reading the file
       const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
-      if (ignored) return null
+      if (ignored) return -stat.mtimeMs
 
       const content = await fs.promises.readFile(filePath, "utf-8")
       const chunks = chunkFile(content, filePath)
@@ -911,11 +914,12 @@ export namespace Indexer {
         10,
         async (file) => {
           const mtime = await indexFile(file, true, signal, isIgnored, indexedMtimes)
-          // mtime is non-null whether file was indexed OR skipped-but-unchanged
-          // For skipped files, indexFile returns stat.mtimeMs (the unchanged mtime)
-          // We always update the cache so it stays current
+          // indexFile returns:
+          //   stat.mtimeMs (positive) — file indexed successfully, or mtime unchanged (skipped)
+          //   -stat.mtimeMs (negative) — file is gitignored (sentinel; re-checked each run)
+          //   null — error or file otherwise unindexable (do not update cache)
           if (mtime !== null) {
-            cache.set(file, mtime)
+            cache.set(file, mtime) // <-- direct Map.set on s.mtimeCache ref
           }
           done++
           const now = Date.now()
