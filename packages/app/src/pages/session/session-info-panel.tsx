@@ -7,7 +7,6 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useBridge } from "@/context/bridge"
-import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import { useParams } from "@solidjs/router"
@@ -31,21 +30,21 @@ export default function SessionInfoPanel() {
   const [deleting, setDeleting] = createStore({ mem: false, bib: false })
 
   const bridge = useBridge()
-  const globalSDK = useGlobalSDK()
   const [bridgeLoading, setBridgeLoading] = createStore({ master: false, leave: false })
-  const isMaster = () => bridge.role === "master"
-  const isFriend = () => bridge.role === "friend"
   const dialog = useDialog()
+
+  const isMaster = () => bridge.state.role === "master"
+  const isFriend = () => bridge.state.role === "friend"
 
   async function becomeMaster() {
     const id = params.id
     if (!id) return
-    const dir = sync.data.path.directory
+    const dir = sdk.directory
     if (!dir) return
     const title = dir.split("/").filter(Boolean).at(-1) ?? dir
     setBridgeLoading("master", true)
     try {
-      const res = await fetch(`${globalSDK.url}/bridge/set-master`, {
+      const res = await fetch(`${sdk.url}/bridge/set-master`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -63,6 +62,7 @@ export default function SessionInfoPanel() {
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
       }
       showToast({ variant: "success", title: "Bridge master mode enabled" })
+      bridge.set({ role: "master", id: null, sessionID: id })
     } catch (e) {
       showToast({
         variant: "error",
@@ -75,16 +75,17 @@ export default function SessionInfoPanel() {
   }
 
   async function leaveBridge() {
-    const dir = sync.data.path.directory
+    const dir = sdk.directory
     if (!dir) return
     setBridgeLoading("leave", true)
     try {
-      const res = await fetch(`${globalSDK.url}/bridge/leave`, {
+      const res = await fetch(`${sdk.url}/bridge/leave`, {
         method: "POST",
         headers: { "x-opencode-directory": dir },
       })
       if (!res.ok) throw new Error(await res.text())
       showToast({ variant: "success", title: "Left bridge" })
+      bridge.set({ role: null, id: null, sessionID: null })
     } catch (e) {
       showToast({
         variant: "error",
@@ -98,9 +99,17 @@ export default function SessionInfoPanel() {
 
   function openBecomeFriend() {
     const id = params.id
-    const dir = sync.data.path.directory
+    const dir = sdk.directory
     if (!id || !dir) return
-    dialog.show(() => <DialogBecomeFriend sessionID={id} directory={dir} />)
+    dialog.show(() => (
+      <DialogBecomeFriend
+        sessionID={id}
+        directory={dir}
+        onSuccess={() => {
+          bridge.set("role", "friend")
+        }}
+      />
+    ))
   }
 
   async function deleteMem() {
@@ -220,17 +229,17 @@ export default function SessionInfoPanel() {
             <div class="flex items-center gap-2 min-w-0">
               <Icon name="link" size="small" class="text-icon-base shrink-0" />
               <span class="text-12-medium text-text-strong flex-1 min-w-0">Bridge</span>
-              <Show when={bridge.role}>
-                <span class="text-12-regular text-text-weak shrink-0 capitalize">{bridge.role}</span>
-              </Show>
-              <Show when={!bridge.role}>
-                <span class="text-12-regular text-text-weaker shrink-0">—</span>
+              <Show
+                when={bridge.state.role}
+                fallback={<span class="text-12-regular text-text-weaker shrink-0">—</span>}
+              >
+                <span class="text-12-regular text-text-weak shrink-0 capitalize">{bridge.state.role}</span>
               </Show>
             </div>
-            <Show when={isMaster() && params.id}>
+            <Show when={isMaster() && bridge.state.sessionID}>
               <div class="flex items-center gap-1.5 min-w-0">
                 <span class="text-11-regular text-text-weaker font-mono truncate flex-1 min-w-0 select-all">
-                  {params.id}
+                  {bridge.state.sessionID}
                 </span>
                 <IconButton
                   icon="copy"
@@ -238,14 +247,14 @@ export default function SessionInfoPanel() {
                   variant="ghost"
                   aria-label="Copy session ID"
                   onClick={() => {
-                    navigator.clipboard.writeText(params.id!)
+                    navigator.clipboard.writeText(bridge.state.sessionID!)
                     showToast({ variant: "success", title: "Session ID copied" })
                   }}
                 />
               </div>
             </Show>
             <div class="flex gap-2">
-              <Show when={!isMaster() && !isFriend() && !bridge.role}>
+              <Show when={!bridge.state.role}>
                 <Button
                   size="small"
                   variant="secondary"
@@ -263,7 +272,7 @@ export default function SessionInfoPanel() {
                   Become Friend
                 </Button>
               </Show>
-              <Show when={bridge.role || isMaster() || isFriend()}>
+              <Show when={bridge.state.role}>
                 <Button size="small" variant="ghost" disabled={bridgeLoading.leave} onClick={leaveBridge}>
                   Leave
                 </Button>

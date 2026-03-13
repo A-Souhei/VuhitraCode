@@ -544,7 +544,7 @@ export function SessionHeader() {
               </Show>
               <div class="flex items-center gap-1">
                 <div class="hidden md:flex items-center gap-1 shrink-0">
-                  <Show when={bridge.role === "master"}>
+                  <Show when={bridge.state.role === "master"}>
                     <Button
                       variant="ghost"
                       class="titlebar-icon w-8 h-6 p-0 box-border"
@@ -552,13 +552,13 @@ export function SessionHeader() {
                       aria-label="Bridge master · click to copy session ID"
                       onClick={() =>
                         navigator.clipboard
-                          .writeText(bridge.sessionID ?? "")
+                          .writeText(bridge.state.sessionID ?? "")
                           .then(() =>
                             showToast({
                               variant: "success",
                               icon: "circle-check",
                               title: "Copied bridge session ID",
-                              description: bridge.sessionID ?? "",
+                              description: bridge.state.sessionID ?? "",
                             }),
                           )
                           .catch((err: unknown) => showRequestError(language, err))

@@ -2,6 +2,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "./global-sdk"
+import { base64Decode } from "@opencode-ai/util/encode"
 
 const POLL_MS = 5_000
 
@@ -11,6 +12,29 @@ type State = {
   role: Role | null
   id: string | null
   sessionID: string | null
+}
+
+function dirFromPath() {
+  const seg = window.location.pathname.split("/")[1] ?? ""
+  if (!seg) return ""
+  try {
+    return base64Decode(decodeURIComponent(seg))
+  } catch {
+    return ""
+  }
+}
+
+// Patch history once at module load — dispatch a custom event so all listeners
+// can react without needing to be wired into a monkey-patch chain.
+const _origPush = history.pushState.bind(history)
+history.pushState = (...args: Parameters<typeof history.pushState>) => {
+  _origPush(...args)
+  window.dispatchEvent(new CustomEvent("opencode-navigate"))
+}
+const _origReplace = history.replaceState.bind(history)
+history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
+  _origReplace(...args)
+  window.dispatchEvent(new CustomEvent("opencode-navigate"))
 }
 
 export const { use: useBridge, provider: BridgeProvider } = createSimpleContext({
@@ -24,59 +48,70 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
     })
 
     let inflight = false
-    async function poll(signal: AbortSignal) {
-      if (inflight) return
+    let mounted = true
+    let lastDir = ""
+    let pollAbort: AbortController | null = null
+
+    async function poll() {
+      if (inflight || !mounted) return
       inflight = true
+      const myAbort = new AbortController()
+      pollAbort = myAbort
       try {
-        const dirSegment = window.location.pathname.split("/")[1] ?? ""
-        const directory = dirSegment ? decodeURIComponent(dirSegment) : ""
+        const directory = dirFromPath()
         const headers: Record<string, string> = {}
         if (directory) headers["x-opencode-directory"] = directory
-        const res = await fetch(`${sdk.url}/bridge/info`, { signal, headers })
-        if (!res.ok) {
-          setState({ role: null, id: null, sessionID: null })
-          return
-        }
+        const res = await fetch(`${sdk.url}/bridge/info`, { signal: myAbort.signal, headers })
+        if (!mounted) return
+        if (!res.ok) return // keep last-known state on error
         const info = await res.json()
-        if (!info) {
-          setState({ role: null, id: null, sessionID: null })
-          return
-        }
-        // info is Bridge.Info: { bridgeID, masterID, masterSlug, nodes, limit }
-        // nodes is NodeInfo[]: { nodeID, role, sessionID, slug, title, directory, nodeURL, heartbeat, status }
-        // The local server reports info for all bridge nodes. We use the master node's presence
-        // to expose bridgeID and master sessionID. The role stored here reflects bridge membership.
-        // NOTE: role is 'master' if any active node is master; this does not distinguish whether
-        // the local node is master vs friend. The server would need to expose the local node's role
-        // to make this distinction reliable. This is a known limitation.
+        if (!mounted || !info) return
         const nodes: Array<{ nodeID: string; role: Role; sessionID: string; status: string }> = info.nodes ?? []
         const active = nodes.filter((n) => n.status !== "inactive")
         const master = active.find((n) => n.role === "master")
         setState({
-          role: master ? "master" : active.length ? "friend" : null,
+          role: (info.selfRole as Role | null) ?? null,
           id: info.bridgeID ?? null,
           sessionID: master?.sessionID ?? null,
         })
-      } catch (e) {
-        // Silently ignore AbortError from cleanup on unmount
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
-          setState({ role: null, id: null, sessionID: null })
-        }
+      } catch {
+        // abort or network error — keep last-known state
       } finally {
-        inflight = false
+        if (pollAbort === myAbort) {
+          inflight = false
+          pollAbort = null
+        }
       }
     }
 
     onMount(() => {
-      const abort = new AbortController()
-      void poll(abort.signal)
-      const timer = setInterval(() => void poll(abort.signal), POLL_MS)
+      lastDir = dirFromPath()
+      void poll()
+
+      function onNavigate() {
+        const dir = dirFromPath()
+        if (dir === lastDir) return
+        lastDir = dir
+        pollAbort?.abort()
+        inflight = false
+        setState({ role: null, id: null, sessionID: null })
+        void poll()
+      }
+
+      window.addEventListener("popstate", onNavigate)
+      window.addEventListener("opencode-navigate", onNavigate)
+
+      const timer = setInterval(() => void poll(), POLL_MS)
+
       onCleanup(() => {
+        mounted = false
         clearInterval(timer)
-        abort.abort()
+        pollAbort?.abort()
+        window.removeEventListener("popstate", onNavigate)
+        window.removeEventListener("opencode-navigate", onNavigate)
       })
     })
 
-    return state
+    return { state, set: setState }
   },
 })

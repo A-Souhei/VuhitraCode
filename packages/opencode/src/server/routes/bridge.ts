@@ -43,7 +43,13 @@ export const BridgeRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json(Bridge.info())
+        const info = Bridge.info()
+        if (!info) return c.json(null)
+        return c.json({
+          ...info,
+          selfRole: Bridge.role(),
+          selfNodeID: Bridge.sessionID(),
+        })
       },
     )
     .get(

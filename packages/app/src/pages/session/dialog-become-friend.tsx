@@ -6,7 +6,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 
-export function DialogBecomeFriend(props: { sessionID: string; directory: string }) {
+export function DialogBecomeFriend(props: { sessionID: string; directory: string; onSuccess: () => void }) {
   const dialog = useDialog()
   const globalSDK = useGlobalSDK()
   const [store, setStore] = createStore({ masterID: "", error: "", submitting: false })
@@ -42,6 +42,7 @@ export function DialogBecomeFriend(props: { sessionID: string; directory: string
         return
       }
       showToast({ variant: "success", title: "Joined bridge as friend" })
+      props.onSuccess()
       dialog.close()
     } catch (e) {
       setStore("error", e instanceof Error ? e.message : String(e))

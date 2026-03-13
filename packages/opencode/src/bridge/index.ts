@@ -159,6 +159,9 @@ export namespace Bridge {
   export function bridgeID() {
     return state().bridgeID
   }
+  export function sessionID() {
+    return state().sessionID
+  }
   export function role() {
     return state().role
   }
