@@ -1,4 +1,4 @@
-.PHONY: dev docs setup test-privacy install-dev install redis redis-stop mcp-install
+.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -7,6 +7,15 @@ setup:
 
 dev:
 	bun run --cwd packages/opencode --conditions=browser src/index.ts
+
+dev-web:
+	@trap 'kill 0' INT; \
+	bun run --cwd packages/opencode --conditions=browser src/index.ts serve --port 4096 & \
+	bun --cwd packages/app dev -- --port 4444 & \
+	wait
+
+dev-web-stop:
+	@fuser -k 4096/tcp 4444/tcp 2>/dev/null || true
 
 docs:
 	cd packages/docs && mintlify dev --port 3333
@@ -41,6 +50,12 @@ install:
 	@echo 'esac' >> ~/.local/bin/vuhitracode
 	@chmod +x ~/.local/bin/vuhitracode
 	@echo "Installed: vuhitracode → ~/.local/bin/vuhitracode"
+	@sed \
+		-e 's|PKGDIR=.*|PKGDIR="$(CURDIR)/packages/opencode"|' \
+		-e 's|WEBDIR=.*|WEBDIR="$(CURDIR)/packages/app"|' \
+		scripts/vuhitracode-web.sh > ~/.local/bin/vuhitracode-web
+	@chmod +x ~/.local/bin/vuhitracode-web
+	@echo "Installed: vuhitracode-web → ~/.local/bin/vuhitracode-web"
 
 test-privacy:
 	bun test --cwd packages/opencode test/util/faker.test.ts test/tool/read.test.ts
