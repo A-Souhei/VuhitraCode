@@ -99,11 +99,11 @@ export const { use: useBridge, provider: BridgeProvider } = createSimpleContext(
     // Wraps setState and arms the poll-suppression window.
     // Direct setState() calls in onNavigate intentionally bypass this to avoid
     // suppressing the fresh poll after a directory change.
-    function set(...args: any[]) {
+    const set: typeof setState = ((...args: any) => {
       suppressUntil = Date.now() + SUPPRESS_MS
-      // @ts-expect-error — forward all overloads
+      // @ts-expect-error — spread overloaded rest params
       setState(...args)
-    }
+    }) as typeof setState
 
     onMount(() => {
       lastDir = dirFromPath()

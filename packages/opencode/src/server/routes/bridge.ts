@@ -359,8 +359,8 @@ export const BridgeRoutes = lazy(() =>
               },
             },
           },
-          403: {
-            description: "Only callable on a friend node",
+          401: {
+            description: "Not a friend node or bridge ID mismatch",
             content: {
               "application/json": {
                 schema: resolver(z.object({ error: z.string() })),
@@ -389,57 +389,62 @@ export const BridgeRoutes = lazy(() =>
           return c.json({ taskID, sessionID: "dup", success: true as const })
         }
         activeTaskIDs.add(taskID)
-        const dir = Instance.directory
-        const session = await Session.create({
-          title: description,
-          permission: [
-            { permission: "external_directory", pattern: "*", action: "deny" },
-            { permission: "read", pattern: "*", action: "deny" },
-            { permission: "read", pattern: `${dir}/**`, action: "allow" },
-            { permission: "edit", pattern: "*", action: "deny" },
-            { permission: "edit", pattern: `${dir}/**`, action: "allow" },
-            { permission: "glob", pattern: "*", action: "deny" },
-            { permission: "glob", pattern: `${dir}/**`, action: "allow" },
-            { permission: "grep", pattern: "*", action: "deny" },
-            { permission: "grep", pattern: `${dir}/**`, action: "allow" },
-            { permission: "bash", pattern: "*", action: "deny" },
-            { permission: "bash", pattern: `${dir}/**`, action: "allow" },
-          ],
-        })
-        Bus.publish(Bridge.Event.TaskDispatched, {
-          targetNodeID: bid,
-          taskID,
-          sessionID: session.id,
-          agentName: "alice",
-        })
-        const parts = await SessionPrompt.resolvePromptParts(prompt)
-        const messageID = Identifier.ascending("message")
+        try {
+          const dir = Instance.directory
+          const session = await Session.create({
+            title: description,
+            permission: [
+              { permission: "external_directory", pattern: "*", action: "deny" },
+              { permission: "read", pattern: "*", action: "deny" },
+              { permission: "read", pattern: `${dir}/**`, action: "allow" },
+              { permission: "edit", pattern: "*", action: "deny" },
+              { permission: "edit", pattern: `${dir}/**`, action: "allow" },
+              { permission: "glob", pattern: "*", action: "deny" },
+              { permission: "glob", pattern: `${dir}/**`, action: "allow" },
+              { permission: "grep", pattern: "*", action: "deny" },
+              { permission: "grep", pattern: `${dir}/**`, action: "allow" },
+              { permission: "bash", pattern: "*", action: "deny" },
+              { permission: "bash", pattern: `${dir}/**`, action: "allow" },
+            ],
+          })
+          Bus.publish(Bridge.Event.TaskDispatched, {
+            targetNodeID: bid,
+            taskID,
+            sessionID: session.id,
+            agentName: "alice",
+          })
+          const parts = await SessionPrompt.resolvePromptParts(prompt)
+          const messageID = Identifier.ascending("message")
 
-        // Fire-and-forget: start friend Alice's orchestration without awaiting
-        Instance.provide({
-          directory: dir,
-          fn: async () => {
-            const result = await SessionPrompt.prompt({
-              messageID,
-              sessionID: session.id,
-              agent: "alice",
-              parts,
-            })
+          // Fire-and-forget: start friend Alice's orchestration without awaiting
+          Instance.provide({
+            directory: dir,
+            fn: async () => {
+              const result = await SessionPrompt.prompt({
+                messageID,
+                sessionID: session.id,
+                agent: "alice",
+                parts,
+              })
+              activeTaskIDs.delete(taskID)
+              const text = result.parts.findLast((x: (typeof result.parts)[number]) => x.type === "text")?.text ?? ""
+              Bridge.shareContext({
+                role: "friend",
+                directory: session.directory ?? process.cwd(),
+                type: "task_result",
+                content: `task_id: ${taskID}\n${text}`,
+              }).catch(() => {})
+            },
+          }).catch((err) => {
             activeTaskIDs.delete(taskID)
-            const text = result.parts.findLast((x: (typeof result.parts)[number]) => x.type === "text")?.text ?? ""
-            Bridge.shareContext({
-              role: "friend",
-              directory: session.directory ?? process.cwd(),
-              type: "task_result",
-              content: `task_id: ${taskID}\n${text}`,
-            }).catch(() => {})
-          },
-        }).catch((err) => {
-          activeTaskIDs.delete(taskID)
-          Log.Default.error("dispatch-task: friend prompt failed", { taskID, error: err })
-        })
+            Log.Default.error("dispatch-task: friend prompt failed", { taskID, error: err })
+          })
 
-        return c.json({ taskID, sessionID: session.id, success: true as const })
+          return c.json({ taskID, sessionID: session.id, success: true as const })
+        } catch (err) {
+          activeTaskIDs.delete(taskID)
+          throw err
+        }
       },
     ),
 )
