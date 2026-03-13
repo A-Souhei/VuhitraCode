@@ -45,8 +45,6 @@ const FILE_READ_CMDS = new Set([
   "ruby",
 ])
 
-const FILE_FLAG_CMDS = new Set(["grep", "awk", "sed"])
-
 export const log = Log.create({ service: "bash-tool" })
 
 const resolveWasm = (asset: string) => {
@@ -143,14 +141,8 @@ export const BashTool = Tool.define("bash", async () => {
           ["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0]) ||
           FILE_READ_CMDS.has(command[0])
         ) {
-          let skipNext = false
           for (const arg of command.slice(1)) {
-            if (skipNext) {
-              skipNext = false
-            } else if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) {
-              if (FILE_FLAG_CMDS.has(command[0]) && /^-[a-zA-Z]*f/.test(arg)) skipNext = true
-              continue
-            }
+            if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
             const resolved = await $`realpath ${arg}`
               .cwd(cwd)
               .quiet()

@@ -737,6 +737,9 @@ export namespace Indexer {
       if (!stat.isFile()) return null
       if (stat.size > maxFileSizeBytes()) return null
 
+      // Skip unchanged files for incremental indexing
+      if (skipIfUnchanged && indexedMtimes?.get(filePath) === stat.mtimeMs) return stat.mtimeMs
+
       // Check if gitignored BEFORE reading the file
       const ignored = isIgnored ? isIgnored(filePath) : await isGitignored(filePath)
       if (ignored) return null
