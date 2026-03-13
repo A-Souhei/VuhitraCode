@@ -1,4 +1,4 @@
-.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install
+.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install setup-safeguards
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -84,3 +84,8 @@ mcp-install:
 	fi; \
 	rm -f "$$tmp"
 	@echo '✓ MCP servers configured. Run `opencode mcp auth github` to authenticate GitHub (opens browser).'
+
+# Setup language server safeguards (prevent crashes from runaway processes)
+setup-safeguards:
+	@echo "Installing language server safeguards..."
+	@./scripts/setup-language-server-safeguards.sh
