@@ -174,6 +174,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           diffStyle: "split" as ReviewDiffStyle,
           panelOpened: true,
         },
+        sessionPanel: {
+          opened: false,
+          width: DEFAULT_PANEL_WIDTH,
+        },
         fileTree: {
           opened: true,
           width: DEFAULT_PANEL_WIDTH,
@@ -722,6 +726,38 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setReviewPanelOpened(!reviewPanelOpened())
+            },
+          },
+          sessionPanel: {
+            opened: createMemo(() => store.sessionPanel?.opened ?? false),
+            width: createMemo(() => store.sessionPanel?.width ?? DEFAULT_PANEL_WIDTH),
+            open() {
+              if (!store.sessionPanel) {
+                setStore("sessionPanel", { opened: true, width: DEFAULT_PANEL_WIDTH })
+                return
+              }
+              setStore("sessionPanel", "opened", true)
+            },
+            close() {
+              if (!store.sessionPanel) {
+                setStore("sessionPanel", { opened: false, width: DEFAULT_PANEL_WIDTH })
+                return
+              }
+              setStore("sessionPanel", "opened", false)
+            },
+            toggle() {
+              if (!store.sessionPanel) {
+                setStore("sessionPanel", { opened: true, width: DEFAULT_PANEL_WIDTH })
+                return
+              }
+              setStore("sessionPanel", "opened", (x) => !x)
+            },
+            resize(width: number) {
+              if (!store.sessionPanel) {
+                setStore("sessionPanel", { opened: true, width })
+                return
+              }
+              setStore("sessionPanel", "width", width)
             },
           },
           review: {

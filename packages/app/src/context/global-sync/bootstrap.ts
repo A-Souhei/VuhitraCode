@@ -110,6 +110,7 @@ function groupBySession<T extends { id: string; sessionID: string }>(input: T[])
 
 export async function bootstrapDirectory(input: {
   directory: string
+  url: string
   sdk: OpencodeClient
   store: Store<State>
   setStore: SetStoreFunction<State>
@@ -148,6 +149,38 @@ export async function bootstrapDirectory(input: {
     input.loadSessions(input.directory),
     input.sdk.mcp.status().then((x) => input.setStore("mcp", x.data!)),
     input.sdk.lsp.status().then((x) => input.setStore("lsp", x.data!)),
+    input.sdk.memory
+      .status()
+      .then((x) => input.setStore("memory_status", x.data))
+      .catch(() => undefined),
+    input.sdk.biblion
+      .status()
+      .then((x) => input.setStore("biblion_status", x.data))
+      .catch(() => undefined),
+    input.sdk.indexer
+      .status()
+      .then((x) => input.setStore("indexer_status", x.data))
+      .catch(() => undefined),
+    fetch(`${input.url}/profile/list?directory=${encodeURIComponent(input.directory)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`profile/list ${r.status}`)
+        return r.json()
+      })
+      .then((profiles) => {
+        if (!Array.isArray(profiles) || profiles.some((p) => typeof p !== "string")) return
+        input.setStore("profiles", profiles)
+      })
+      .catch((e) => console.error("[profile/list] fetch failed", e)),
+    fetch(`${input.url}/profile/active?directory=${encodeURIComponent(input.directory)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`profile/active ${r.status}`)
+        return r.json()
+      })
+      .then((active) => {
+        if (typeof active !== "string") return
+        input.setStore("active_profile", active)
+      })
+      .catch((e) => console.error("[profile/active] fetch failed", e)),
     input.sdk.vcs.get().then((x) => {
       const next = x.data ?? input.store.vcs
       input.setStore("vcs", next)

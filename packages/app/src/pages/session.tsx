@@ -30,6 +30,7 @@ import { useSessionCommands } from "@/pages/session/use-session-commands"
 import { SessionComposerRegion, createSessionComposerState } from "@/pages/session/composer"
 import { SessionMobileTabs } from "@/pages/session/session-mobile-tabs"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
+import SessionInfoPanel from "@/pages/session/session-info-panel"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 
 export default function Page() {
@@ -1113,6 +1114,25 @@ export default function Page() {
         </div>
 
         <SessionSidePanel reviewPanel={reviewPanel} activeDiff={tree.activeDiff} focusReviewDiff={focusReviewDiff} />
+
+        <Show when={view().sessionPanel.opened()}>
+          <aside
+            class="relative shrink-0 h-full border-l border-border-weak-base flex flex-col overflow-hidden"
+            style={{ width: `${view().sessionPanel.width()}px` }}
+          >
+            <SessionInfoPanel />
+            <ResizeHandle
+              direction="horizontal"
+              edge="start"
+              size={view().sessionPanel.width()}
+              min={200}
+              max={480}
+              collapseThreshold={160}
+              onResize={view().sessionPanel.resize}
+              onCollapse={view().sessionPanel.close}
+            />
+          </aside>
+        </Show>
       </div>
 
       <TerminalPanel />

@@ -36,14 +36,28 @@ export const BridgeRoutes = lazy(() =>
             description: "Current bridge info or null if not active",
             content: {
               "application/json": {
-                schema: resolver(Bridge.Info.nullable()),
+                schema: resolver(
+                  z.union([
+                    Bridge.Info.extend({
+                      selfRole: Bridge.Role.nullable(),
+                      selfNodeID: z.string().nullable(),
+                    }),
+                    z.null(),
+                  ]),
+                ),
               },
             },
           },
         },
       }),
       async (c) => {
-        return c.json(Bridge.info())
+        const info = Bridge.info()
+        if (!info) return c.json(null)
+        return c.json({
+          ...info,
+          selfRole: Bridge.role(),
+          selfNodeID: Bridge.sessionID(),
+        })
       },
     )
     .get(

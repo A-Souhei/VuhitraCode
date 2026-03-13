@@ -5,6 +5,7 @@ import { useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
+import { useBridge } from "@/context/bridge"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
@@ -192,6 +193,7 @@ export function SessionHeader() {
   const sync = useSync()
   const platform = usePlatform()
   const language = useLanguage()
+  const bridge = useBridge()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -542,6 +544,39 @@ export function SessionHeader() {
               </Show>
               <div class="flex items-center gap-1">
                 <div class="hidden md:flex items-center gap-1 shrink-0">
+                  <Show when={bridge.state.role === "master" && bridge.state.sessionID}>
+                    <Button
+                      variant="ghost"
+                      class="titlebar-icon w-8 h-6 p-0 box-border"
+                      title="Bridge master · click to copy session ID"
+                      aria-label="Bridge master · click to copy session ID"
+                      onClick={() => {
+                        const sid = bridge.state.sessionID
+                        if (!sid) return
+                        navigator.clipboard
+                          .writeText(sid)
+                          .then(() =>
+                            showToast({
+                              variant: "success",
+                              icon: "circle-check",
+                              title: "Copied bridge session ID",
+                              description: sid,
+                            }),
+                          )
+                          .catch((err: unknown) => showRequestError(language, err))
+                      }}
+                    >
+                      <div class="flex items-center justify-center size-4">
+                        <svg viewBox="0 0 20 20" fill="none" class="size-4 text-yellow-400" aria-hidden="true">
+                          <path
+                            d="M11.667 2.5L4.167 11.667H10L8.333 17.5L15.833 8.333H10L11.667 2.5Z"
+                            stroke="currentColor"
+                            stroke-linecap="square"
+                          />
+                        </svg>
+                      </div>
+                    </Button>
+                  </Show>
                   <TooltipKeybind
                     title={language.t("command.terminal.toggle")}
                     keybind={command.keybind("terminal.toggle")}
@@ -626,6 +661,34 @@ export function SessionHeader() {
                             "text-icon-strong": layout.fileTree.opened(),
                             "text-icon-weak": !layout.fileTree.opened(),
                           }}
+                        />
+                      </div>
+                    </Button>
+                  </TooltipKeybind>
+
+                  <TooltipKeybind title="Session Info" keybind={command.keybind("sessionPanel.toggle")}>
+                    <Button
+                      variant="ghost"
+                      class="group/session-panel-toggle titlebar-icon w-8 h-6 p-0 box-border"
+                      onClick={() => view().sessionPanel.toggle()}
+                      aria-label="Session Info"
+                      aria-expanded={view().sessionPanel.opened()}
+                    >
+                      <div class="relative flex items-center justify-center size-4 [&>*]:absolute [&>*]:inset-0">
+                        <Icon
+                          size="small"
+                          name={view().sessionPanel.opened() ? "layout-right-partial" : "layout-right"}
+                          class="group-hover/session-panel-toggle:hidden"
+                        />
+                        <Icon
+                          size="small"
+                          name="layout-right-partial"
+                          class="hidden group-hover/session-panel-toggle:inline-block"
+                        />
+                        <Icon
+                          size="small"
+                          name={view().sessionPanel.opened() ? "layout-right" : "layout-right-partial"}
+                          class="hidden group-active/session-panel-toggle:inline-block"
                         />
                       </div>
                     </Button>

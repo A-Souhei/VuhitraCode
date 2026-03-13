@@ -31,6 +31,7 @@ import { ConfigRoutes } from "./routes/config"
 import { IndexerRoutes } from "./routes/indexer"
 import { MemoryRoutes } from "./routes/memory"
 import { BiblionRoutes } from "./routes/biblion"
+import { ProfileRoutes } from "./routes/profile"
 import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { lazy } from "../util/lazy"
@@ -235,6 +236,7 @@ export namespace Server {
         .route("/indexer", IndexerRoutes())
         .route("/memory", MemoryRoutes())
         .route("/biblion", BiblionRoutes())
+        .route("/profile", ProfileRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
         .route("/permission", PermissionRoutes())

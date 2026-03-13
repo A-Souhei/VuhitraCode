@@ -103,9 +103,10 @@ export namespace Profiles {
     const dir_ = profilesDir(dir)
     try {
       const entries = await fs.promises.readdir(dir_)
-      return entries.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""))
+      const names = entries.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""))
+      return names.includes("default") ? names : ["default", ...names]
     } catch {
-      return []
+      return ["default"]
     }
   }
 
