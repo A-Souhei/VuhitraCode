@@ -265,7 +265,11 @@ export const SessionRoutes = lazy(() =>
         "json",
         z.object({
           title: z.string().optional(),
-          profile: z.string().nullable().optional(),
+          profile: z
+            .string()
+            .regex(/^[A-Za-z0-9_\-.]+$/)
+            .nullable()
+            .optional(),
           time: z
             .object({
               archived: z.number().optional(),

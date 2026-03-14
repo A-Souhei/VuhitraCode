@@ -120,14 +120,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!params.id) return undefined
     return sync.data.session.find((s) => s.id === params.id)?.profile ?? undefined
   }
-  const displayProfile = () => sessionProfile() ?? activeProfile()
+  const [pending, setPending] = createSignal<string | null | undefined>(undefined)
+  const displayProfile = () => pending() ?? sessionProfile() ?? activeProfile()
   async function switchProfile(name: string) {
+    if (name === displayProfile()) return
+    setPending(name)
     if (params.id) {
       const res = await fetch(`${globalSDK.url}/session/${params.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profile: name }),
       })
+      setPending(undefined)
       if (!res.ok) {
         showToast({ variant: "error", title: "Failed to switch session profile", description: await res.text() })
         return
@@ -144,6 +148,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
       body: JSON.stringify({ name, directory: dir }),
     })
+    setPending(undefined)
     if (!res.ok) {
       showToast({ variant: "error", title: "Failed to switch profile", description: await res.text() })
       return
