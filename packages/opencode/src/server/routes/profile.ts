@@ -4,6 +4,8 @@ import z from "zod"
 import { VuHitraSettings } from "../../project/vuhitra-settings"
 import { lazy } from "../../util/lazy"
 import { Session } from "../../session"
+import { Identifier } from "../../id/id"
+import { errors } from "../error"
 
 export const ProfileRoutes = lazy(() =>
   new Hono()
@@ -74,9 +76,10 @@ export const ProfileRoutes = lazy(() =>
             description: "Session profile name",
             content: { "application/json": { schema: resolver(z.string().nullable()) } },
           },
+          ...errors(400, 404),
         },
       }),
-      validator("query", z.object({ sessionID: z.string() })),
+      validator("query", z.object({ sessionID: Identifier.schema("session") })),
       async (c) => {
         const session = await Session.get(c.req.valid("query").sessionID)
         return c.json(session.profile ?? null)
@@ -96,9 +99,10 @@ export const ProfileRoutes = lazy(() =>
             description: "Invalid profile name or session ID",
             content: { "application/json": { schema: resolver(z.object({ error: z.string() })) } },
           },
+          ...errors(404),
         },
       }),
-      validator("json", z.object({ sessionID: z.string(), name: z.string() })),
+      validator("json", z.object({ sessionID: Identifier.schema("session"), name: z.string() })),
       async (c) => {
         const body = c.req.valid("json")
         if (!/^[A-Za-z0-9_\-.]+$/.test(body.name)) {

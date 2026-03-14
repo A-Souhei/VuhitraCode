@@ -106,6 +106,7 @@ import type {
   PermissionRuleset,
   ProfileActiveResponses,
   ProfileListResponses,
+  ProfileSessionActiveErrors,
   ProfileSessionActiveResponses,
   ProfileSessionSwitchErrors,
   ProfileSessionSwitchResponses,
@@ -1090,7 +1091,11 @@ export class Profile extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ProfileSessionActiveResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      ProfileSessionActiveResponses,
+      ProfileSessionActiveErrors,
+      ThrowOnError
+    >({
       url: "/profile/session-active",
       ...options,
       ...params,

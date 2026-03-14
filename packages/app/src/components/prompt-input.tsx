@@ -17,6 +17,7 @@ import {
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useServer } from "@/context/server"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
@@ -97,6 +98,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
   const sync = useSync()
   const globalSDK = useGlobalSDK()
+  const server = useServer()
   const local = useLocal()
   const files = useFile()
   const prompt = usePrompt()
@@ -125,10 +127,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   async function switchProfile(name: string) {
     if (name === displayProfile()) return
     setPending(name)
+    const http = server.current?.http
+    const auth = http?.password
+      ? { Authorization: `Basic ${btoa(`${http.username ?? "opencode"}:${http.password}`)}` }
+      : undefined
     if (params.id) {
       const res = await fetch(`${globalSDK.url}/session/${params.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-opencode-directory": sync.data.path.directory, ...auth },
         body: JSON.stringify({ profile: name }),
       })
       setPending(undefined)
@@ -145,6 +151,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       headers: {
         "Content-Type": "application/json",
         "x-opencode-directory": dir,
+        ...auth,
       },
       body: JSON.stringify({ name, directory: dir }),
     })

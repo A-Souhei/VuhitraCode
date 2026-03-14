@@ -26,7 +26,6 @@ import { Snapshot } from "@/snapshot"
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
-import { VuHitraSettings } from "@/project/vuhitra-settings"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
 

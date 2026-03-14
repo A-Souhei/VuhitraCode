@@ -3299,6 +3299,19 @@ export type ProfileSessionActiveData = {
   url: "/profile/session-active"
 }
 
+export type ProfileSessionActiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ProfileSessionActiveError = ProfileSessionActiveErrors[keyof ProfileSessionActiveErrors]
+
 export type ProfileSessionActiveResponses = {
   /**
    * Session profile name
@@ -3327,6 +3340,10 @@ export type ProfileSessionSwitchErrors = {
   400: {
     error: string
   }
+  /**
+   * Not found
+   */
+  404: NotFoundError
 }
 
 export type ProfileSessionSwitchError = ProfileSessionSwitchErrors[keyof ProfileSessionSwitchErrors]
