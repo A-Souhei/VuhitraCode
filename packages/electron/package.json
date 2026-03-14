@@ -10,7 +10,7 @@
     "typecheck": "tsgo -b"
   },
   "devDependencies": {
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@typescript/native-preview": "catalog:",
     "electron": "^36.0.0",
     "electron-builder": "^25.0.0"
   },

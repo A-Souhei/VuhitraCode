@@ -57,6 +57,21 @@ function create() {
     if (url.startsWith("https://") || url.startsWith("http://")) shell.openExternal(url)
     return { action: "deny" }
   })
+
+  // restrict in-window navigation to the local server only
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith(URL)) {
+      event.preventDefault()
+      if (url.startsWith("https://") || url.startsWith("http://")) shell.openExternal(url)
+    }
+  })
+
+  win.webContents.on("will-redirect", (event, url) => {
+    if (!url.startsWith(URL)) {
+      event.preventDefault()
+      if (url.startsWith("https://") || url.startsWith("http://")) shell.openExternal(url)
+    }
+  })
 }
 
 app.whenReady().then(create)

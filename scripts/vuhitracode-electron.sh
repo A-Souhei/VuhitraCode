@@ -16,10 +16,24 @@ fi
 LOGFILE="${TMPDIR:-/tmp}/vuhitracode-electron.log"
 PIDFILE="${TMPDIR:-/tmp}/vuhitracode-electron.pid"
 
+# --no-sandbox is only needed on Linux (chrome-sandbox SUID requirement)
+SANDBOX_FLAG=""
+[ "$(uname)" = "Linux" ] && SANDBOX_FLAG="--no-sandbox"
+
 wait_ready() {
+  # prefer curl, fall back to nc
+  local check
+  if command -v curl >/dev/null 2>&1; then
+    check() { curl -s http://localhost:4444 >/dev/null 2>&1; }
+  elif command -v nc >/dev/null 2>&1; then
+    check() { nc -z localhost 4444 >/dev/null 2>&1; }
+  else
+    echo "Error: neither curl nor nc found — cannot poll for server readiness" >&2
+    return 1
+  fi
   local tries=0
   printf "Waiting for web server on :4444 "
-  while ! curl -s http://localhost:4444 >/dev/null 2>&1; do
+  while ! check; do
     sleep 1
     tries=$((tries + 1))
     printf "."
@@ -47,10 +61,13 @@ stop() {
 start() {
   for dir in "$PKGDIR" "$WEBDIR" "$ELECTRONDIR"; do
     if [ ! -d "$dir" ]; then
-      echo "Error: directory not found: $dir — re-run --install" >&2
+      echo "Error: directory not found: $dir — re-run: make install-electron" >&2
       exit 1
     fi
   done
+
+  # clear stale PID file from previous (possibly crashed) run
+  rm -f "$PIDFILE"
 
   local detach=0
   [ "${1:-}" = "-d" ] || [ "${1:-}" = "--detach" ] && detach=1
@@ -60,12 +77,20 @@ start() {
     echo "Installing Electron dependencies ..."
     "$BUN" install --cwd "$ELECTRONDIR"
   fi
-  # bun does not run post-install scripts by default; ensure the electron binary is downloaded
-  local dist
-  dist="$(readlink -f "$ELECTRONDIR/node_modules/electron")/dist/electron"
-  if [ ! -x "$dist" ]; then
+
+  # bun skips post-install scripts; resolve the real module dir portably and
+  # run install.js (which downloads the platform binary) if dist/electron is missing
+  local node_bin
+  node_bin=$(command -v node 2>/dev/null || true)
+  if [ -z "$node_bin" ]; then
+    echo "Error: node not found in PATH — required to download the Electron binary" >&2
+    exit 1
+  fi
+  local electron_module
+  electron_module=$("$node_bin" -e "process.stdout.write(require.resolve('electron/package.json', {paths: ['$ELECTRONDIR']}).replace(/package\.json$/,''))")
+  if [ ! -x "${electron_module}dist/electron" ]; then
     echo "Downloading Electron binary ..."
-    node "$ELECTRONDIR/node_modules/electron/install.js"
+    "$node_bin" "${electron_module}install.js"
   fi
 
   if [ "$detach" = "1" ]; then
@@ -80,7 +105,8 @@ start() {
     wait_ready || { kill 0; exit 1; }
 
     echo "Launching Electron ..."
-    (cd "$ELECTRONDIR" && "$electron" . --no-sandbox) &
+    # use exec so $! is the actual Electron PID, not a subshell wrapper
+    ( cd "$ELECTRONDIR" && exec "$electron" . $SANDBOX_FLAG ) &
     echo $! >> "$PIDFILE"
     disown
     echo "Logs: $LOGFILE  |  PIDs: $PIDFILE"
@@ -97,7 +123,7 @@ start() {
     wait_ready || { kill 0; exit 1; }
 
     echo "Launching Electron ..."
-    (cd "$ELECTRONDIR" && "$electron" . --no-sandbox)
+    ( cd "$ELECTRONDIR" && exec "$electron" . $SANDBOX_FLAG )
 
     echo "Electron closed. Shutting down servers ..."
     kill 0
@@ -105,9 +131,9 @@ start() {
 }
 
 case "${1:-}" in
-  stop)      stop ;;
+  stop)        stop ;;
   -d|--detach) start "$1" ;;
-  "")        start ;;
+  "")          start ;;
   *)
     echo "Usage: $(basename "$0") [--detach] | stop" >&2
     exit 1

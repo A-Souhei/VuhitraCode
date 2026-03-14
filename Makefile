@@ -91,6 +91,7 @@ setup-safeguards:
 	@./scripts/setup-language-server-safeguards.sh
 
 install-electron:
+	@mkdir -p ~/.local/bin
 	@sed \
 		-e 's|PKGDIR=.*|PKGDIR="$(CURDIR)/packages/opencode"|' \
 		-e 's|WEBDIR=.*|WEBDIR="$(CURDIR)/packages/app"|' \
