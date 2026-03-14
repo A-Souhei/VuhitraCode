@@ -26,6 +26,7 @@ import { Snapshot } from "@/snapshot"
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
 
@@ -67,6 +68,7 @@ export namespace Session {
       parentID: row.parent_id ?? undefined,
       title: row.title,
       version: row.version,
+      profile: row.profile ?? undefined,
       summary,
       share,
       revert,
@@ -89,6 +91,7 @@ export namespace Session {
       directory: info.directory,
       title: info.title,
       version: info.version,
+      profile: info.profile,
       share_url: info.share?.url,
       summary_additions: info.summary?.additions,
       summary_deletions: info.summary?.deletions,
@@ -135,6 +138,7 @@ export namespace Session {
         .optional(),
       title: z.string(),
       version: z.string(),
+      profile: z.string().optional(),
       time: z.object({
         created: z.number(),
         updated: z.number(),
@@ -215,6 +219,7 @@ export namespace Session {
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
         permission: Info.shape.permission,
+        profile: z.string().optional(),
       })
       .optional(),
     async (input) => {
@@ -223,6 +228,7 @@ export namespace Session {
         directory: Instance.directory,
         title: input?.title,
         permission: input?.permission,
+        profile: input?.profile,
       })
     },
   )
@@ -239,6 +245,7 @@ export namespace Session {
       const session = await createNext({
         directory: Instance.directory,
         title,
+        profile: original.profile,
       })
       const msgs = await messages({ sessionID: input.sessionID })
       const idMap = new Map<string, string>()
@@ -290,6 +297,7 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
+    profile?: string
   }) {
     const result: Info = {
       id: Identifier.descending("session", input.id),
@@ -299,6 +307,7 @@ export namespace Session {
       directory: input.directory,
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
+      profile: input.profile,
       permission: input.permission,
       time: {
         created: Date.now(),
@@ -397,6 +406,27 @@ export namespace Session {
         const row = db
           .update(SessionTable)
           .set({ time_archived: input.time })
+          .where(eq(SessionTable.id, input.sessionID))
+          .returning()
+          .get()
+        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
+        const info = fromRow(row)
+        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        return info
+      })
+    },
+  )
+
+  export const setProfile = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      profile: z.string().nullable(),
+    }),
+    async (input) => {
+      return Database.use((db) => {
+        const row = db
+          .update(SessionTable)
+          .set({ profile: input.profile, time_updated: Date.now() })
           .where(eq(SessionTable.id, input.sessionID))
           .returning()
           .get()

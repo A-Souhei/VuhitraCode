@@ -44,6 +44,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { VuHitraSettings } from "@/project/vuhitra-settings"
+import { Profiles } from "../project/profiles"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
@@ -964,7 +965,11 @@ export namespace SessionPrompt {
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
 
-    const saved = await VuHitraSettings.agentModel(agent.name)
+    const session = await Session.get(input.sessionID)
+    const sessionProfile = session.profile
+    const saved = sessionProfile
+      ? await Profiles.agentModel(sessionProfile, agent.name)
+      : await VuHitraSettings.agentModel(agent.name)
     const validSaved =
       saved?.providerID && saved?.modelID
         ? (await Provider.getModel(saved.providerID, saved.modelID).catch(() => undefined))
