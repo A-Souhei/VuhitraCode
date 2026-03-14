@@ -1,4 +1,4 @@
-.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install setup-safeguards
+.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install setup-safeguards install-electron
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -89,3 +89,13 @@ mcp-install:
 setup-safeguards:
 	@echo "Installing language server safeguards..."
 	@./scripts/setup-language-server-safeguards.sh
+
+install-electron:
+	@mkdir -p ~/.local/bin
+	@sed \
+		-e 's|PKGDIR=.*|PKGDIR="$(CURDIR)/packages/opencode"|' \
+		-e 's|WEBDIR=.*|WEBDIR="$(CURDIR)/packages/app"|' \
+		-e 's|ELECTRONDIR=.*|ELECTRONDIR="$(CURDIR)/packages/electron"|' \
+		scripts/vuhitracode-electron.sh > ~/.local/bin/vuhitracode-electron
+	@chmod +x ~/.local/bin/vuhitracode-electron
+	@echo "Installed: vuhitracode-electron → ~/.local/bin/vuhitracode-electron"
