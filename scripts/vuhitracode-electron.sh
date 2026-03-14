@@ -80,7 +80,7 @@ start() {
     wait_ready || { kill 0; exit 1; }
 
     echo "Launching Electron ..."
-    (cd "$ELECTRONDIR" && "$electron" .) &
+    (cd "$ELECTRONDIR" && "$electron" . --no-sandbox) &
     echo $! >> "$PIDFILE"
     disown
     echo "Logs: $LOGFILE  |  PIDs: $PIDFILE"
@@ -97,7 +97,7 @@ start() {
     wait_ready || { kill 0; exit 1; }
 
     echo "Launching Electron ..."
-    (cd "$ELECTRONDIR" && "$electron" .)
+    (cd "$ELECTRONDIR" && "$electron" . --no-sandbox)
 
     echo "Electron closed. Shutting down servers ..."
     kill 0
