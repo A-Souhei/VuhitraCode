@@ -60,6 +60,13 @@ start() {
     echo "Installing Electron dependencies ..."
     "$BUN" install --cwd "$ELECTRONDIR"
   fi
+  # bun does not run post-install scripts by default; ensure the electron binary is downloaded
+  local dist
+  dist="$(readlink -f "$ELECTRONDIR/node_modules/electron")/dist/electron"
+  if [ ! -x "$dist" ]; then
+    echo "Downloading Electron binary ..."
+    node "$ELECTRONDIR/node_modules/electron/install.js"
+  fi
 
   if [ "$detach" = "1" ]; then
     echo "Starting backend on :4096 and web on :4444 (detached) ..."
