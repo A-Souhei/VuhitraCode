@@ -265,6 +265,11 @@ export const SessionRoutes = lazy(() =>
         "json",
         z.object({
           title: z.string().optional(),
+          profile: z
+            .string()
+            .regex(/^[A-Za-z0-9_\-.]+$/)
+            .nullable()
+            .optional(),
           time: z
             .object({
               archived: z.number().optional(),
@@ -279,6 +284,9 @@ export const SessionRoutes = lazy(() =>
         let session = await Session.get(sessionID)
         if (updates.title !== undefined) {
           session = await Session.setTitle({ sessionID, title: updates.title })
+        }
+        if (updates.profile !== undefined) {
+          session = await Session.setProfile({ sessionID, profile: updates.profile })
         }
         if (updates.time?.archived !== undefined) {
           session = await Session.setArchived({ sessionID, time: updates.time.archived })

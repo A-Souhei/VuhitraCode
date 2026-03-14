@@ -620,6 +620,89 @@ export type EventPermissionReplied = {
   }
 }
 
+export type EventBridgeStateChanged = {
+  type: "bridge.state.changed"
+  properties: {
+    bridgeID: string
+    masterID: string
+    masterSlug: string
+    nodes: Array<{
+      nodeID: string
+      role: "master" | "friend"
+      sessionID: string
+      slug: string
+      title: string
+      directory: string
+      nodeURL: string
+      heartbeat: number
+      status: "active" | "inactive" | "locked"
+    }>
+    limit: number
+  }
+}
+
+export type EventBridgeNodeJoined = {
+  type: "bridge.node.joined"
+  properties: {
+    nodeID: string
+    role: "master" | "friend"
+    sessionID: string
+    slug: string
+    title: string
+    directory: string
+    nodeURL: string
+    heartbeat: number
+    status: "active" | "inactive" | "locked"
+  }
+}
+
+export type EventBridgeNodeLeft = {
+  type: "bridge.node.left"
+  properties: {
+    nodeID: string
+    bridgeID: string
+  }
+}
+
+export type EventBridgeContextShared = {
+  type: "bridge.context.shared"
+  properties: {
+    nodeID: string
+    role: "master" | "friend"
+    directory: string
+    type: "finding" | "work_summary" | "task_result" | "status"
+    content: string
+    timestamp: number
+  }
+}
+
+export type EventBridgeInputLocked = {
+  type: "bridge.input.locked"
+  properties: {
+    locked: boolean
+  }
+}
+
+export type EventBridgeTaskDispatched = {
+  type: "bridge.task.dispatched"
+  properties: {
+    targetNodeID: string
+    taskID: string
+    sessionID: string
+    agentName: string
+  }
+}
+
+export type EventBridgeTaskResult = {
+  type: "bridge.task.result"
+  properties: {
+    taskID: string
+    nodeID: string
+    result: string
+    success: boolean
+  }
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -722,6 +805,27 @@ export type MemoryStatus =
 export type EventMemoryUpdated = {
   type: "memory.updated"
   properties: MemoryStatus
+}
+
+export type BiblionStatus =
+  | {
+      type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
+      message?: string
+    }
+  | {
+      type: "ready"
+      entry_count: number
+      token_count: number
+      backend: "qdrant" | "redis"
+      embedding_url?: string
+      embedding_model?: string
+      backend_url?: string
+    }
+
+export type EventBiblionUpdated = {
+  type: "biblion.updated"
+  properties: BiblionStatus
 }
 
 export type QuestionOption = {
@@ -885,6 +989,7 @@ export type Session = {
   }
   title: string
   version: string
+  profile?: string
   time: {
     created: number
     updated: number
@@ -990,27 +1095,6 @@ export type EventPtyDeleted = {
   }
 }
 
-export type BiblionStatus =
-  | {
-      type: "disabled"
-      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
-      message?: string
-    }
-  | {
-      type: "ready"
-      entry_count: number
-      token_count: number
-      backend: "qdrant" | "redis"
-      embedding_url?: string
-      embedding_model?: string
-      backend_url?: string
-    }
-
-export type EventBiblionUpdated = {
-  type: "biblion.updated"
-  properties: BiblionStatus
-}
-
 export type EventWorktreeReady = {
   type: "worktree.ready"
   properties: {
@@ -1046,6 +1130,13 @@ export type Event =
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventBridgeStateChanged
+  | EventBridgeNodeJoined
+  | EventBridgeNodeLeft
+  | EventBridgeContextShared
+  | EventBridgeInputLocked
+  | EventBridgeTaskDispatched
+  | EventBridgeTaskResult
   | EventSessionStatus
   | EventSessionIdle
   | EventTuiPromptAppend
@@ -1053,6 +1144,7 @@ export type Event =
   | EventTuiToastShow
   | EventTuiSessionSelect
   | EventMemoryUpdated
+  | EventBiblionUpdated
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -1071,7 +1163,6 @@ export type Event =
   | EventPtyUpdated
   | EventPtyExited
   | EventPtyDeleted
-  | EventBiblionUpdated
   | EventWorktreeReady
   | EventWorktreeFailed
 
@@ -2156,6 +2247,7 @@ export type GlobalSession = {
   }
   title: string
   version: string
+  profile?: string
   time: {
     created: number
     updated: number
@@ -2933,6 +3025,18 @@ export type BiblionListData = {
   url: "/biblion/list"
 }
 
+export type BiblionListErrors = {
+  /**
+   * Internal server error
+   */
+  500: {
+    success: false
+    error: string
+  }
+}
+
+export type BiblionListError = BiblionListErrors[keyof BiblionListErrors]
+
 export type BiblionListResponses = {
   /**
    * List of biblion entries
@@ -2964,6 +3068,18 @@ export type BiblionSearchData = {
   }
   url: "/biblion/search"
 }
+
+export type BiblionSearchErrors = {
+  /**
+   * Internal server error
+   */
+  500: {
+    success: false
+    error: string
+  }
+}
+
+export type BiblionSearchError = BiblionSearchErrors[keyof BiblionSearchErrors]
 
 export type BiblionSearchResponses = {
   /**
@@ -3006,6 +3122,13 @@ export type BiblionWriteData = {
 
 export type BiblionWriteErrors = {
   /**
+   * Internal server error
+   */
+  500: {
+    success: false
+    error: string
+  }
+  /**
    * Biblion not ready
    */
   503: {
@@ -3036,6 +3159,18 @@ export type BiblionClearData = {
   url: "/biblion/clear"
 }
 
+export type BiblionClearErrors = {
+  /**
+   * Internal server error
+   */
+  500: {
+    success: false
+    error: string
+  }
+}
+
+export type BiblionClearError = BiblionClearErrors[keyof BiblionClearErrors]
+
 export type BiblionClearResponses = {
   /**
    * Biblion cleared successfully
@@ -3061,6 +3196,18 @@ export type BiblionDeleteData = {
   url: "/biblion/{id}"
 }
 
+export type BiblionDeleteErrors = {
+  /**
+   * Internal server error
+   */
+  500: {
+    success: false
+    error: string
+  }
+}
+
+export type BiblionDeleteError = BiblionDeleteErrors[keyof BiblionDeleteErrors]
+
 export type BiblionDeleteResponses = {
   /**
    * Entry deleted successfully
@@ -3071,6 +3218,146 @@ export type BiblionDeleteResponses = {
 }
 
 export type BiblionDeleteResponse = BiblionDeleteResponses[keyof BiblionDeleteResponses]
+
+export type ProfileListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/profile/list"
+}
+
+export type ProfileListResponses = {
+  /**
+   * List of profile names
+   */
+  200: Array<string>
+}
+
+export type ProfileListResponse = ProfileListResponses[keyof ProfileListResponses]
+
+export type ProfileActiveData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/profile/active"
+}
+
+export type ProfileActiveResponses = {
+  /**
+   * Active profile name
+   */
+  200: string
+}
+
+export type ProfileActiveResponse = ProfileActiveResponses[keyof ProfileActiveResponses]
+
+export type ProfileSwitchData = {
+  body?: {
+    name: string
+    directory: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/profile/switch"
+}
+
+export type ProfileSwitchErrors = {
+  /**
+   * Invalid profile name
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ProfileSwitchError = ProfileSwitchErrors[keyof ProfileSwitchErrors]
+
+export type ProfileSwitchResponses = {
+  /**
+   * Profile switched successfully
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type ProfileSwitchResponse = ProfileSwitchResponses[keyof ProfileSwitchResponses]
+
+export type ProfileSessionActiveData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    sessionID: string
+  }
+  url: "/profile/session-active"
+}
+
+export type ProfileSessionActiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ProfileSessionActiveError = ProfileSessionActiveErrors[keyof ProfileSessionActiveErrors]
+
+export type ProfileSessionActiveResponses = {
+  /**
+   * Session profile name
+   */
+  200: string | null
+}
+
+export type ProfileSessionActiveResponse = ProfileSessionActiveResponses[keyof ProfileSessionActiveResponses]
+
+export type ProfileSessionSwitchData = {
+  body?: {
+    sessionID: string
+    name: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/profile/session-switch"
+}
+
+export type ProfileSessionSwitchErrors = {
+  /**
+   * Invalid profile name or session ID
+   */
+  400: {
+    error: string
+  }
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ProfileSessionSwitchError = ProfileSessionSwitchErrors[keyof ProfileSessionSwitchErrors]
+
+export type ProfileSessionSwitchResponses = {
+  /**
+   * Session profile updated
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type ProfileSessionSwitchResponse = ProfileSessionSwitchResponses[keyof ProfileSessionSwitchResponses]
 
 export type ToolIdsData = {
   body?: never
@@ -3335,6 +3622,7 @@ export type SessionCreateData = {
     parentID?: string
     title?: string
     permission?: PermissionRuleset
+    profile?: string
   }
   path?: never
   query?: {
@@ -3459,6 +3747,7 @@ export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses]
 export type SessionUpdateData = {
   body?: {
     title?: string
+    profile?: string | null
     time?: {
       archived?: number
     }
@@ -5252,6 +5541,370 @@ export type TuiControlResponseResponses = {
 }
 
 export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
+
+export type BridgeInfoData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/info"
+}
+
+export type BridgeInfoResponses = {
+  /**
+   * Current bridge info or null if not active
+   */
+  200: {
+    bridgeID: string
+    masterID: string
+    masterSlug: string
+    nodes: Array<{
+      nodeID: string
+      role: "master" | "friend"
+      sessionID: string
+      slug: string
+      title: string
+      directory: string
+      nodeURL: string
+      heartbeat: number
+      status: "active" | "inactive" | "locked"
+    }>
+    limit: number
+    selfRole: "master" | "friend" | null
+    selfNodeID: string | null
+  } | null
+}
+
+export type BridgeInfoResponse = BridgeInfoResponses[keyof BridgeInfoResponses]
+
+export type BridgeNodesData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    bridgeID: string
+  }
+  url: "/bridge/nodes"
+}
+
+export type BridgeNodesErrors = {
+  /**
+   * Bridge not active or bridgeID mismatch
+   */
+  403: {
+    error: string
+  }
+}
+
+export type BridgeNodesError = BridgeNodesErrors[keyof BridgeNodesErrors]
+
+export type BridgeNodesResponses = {
+  /**
+   * List of nodes in the bridge
+   */
+  200: Array<{
+    nodeID: string
+    role: "master" | "friend"
+    sessionID: string
+    slug: string
+    title: string
+    directory: string
+    nodeURL: string
+    heartbeat: number
+    status: "active" | "inactive" | "locked"
+  }>
+}
+
+export type BridgeNodesResponse = BridgeNodesResponses[keyof BridgeNodesResponses]
+
+export type BridgeContextData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    bridgeID: string
+    limit?: number
+  }
+  url: "/bridge/context"
+}
+
+export type BridgeContextErrors = {
+  /**
+   * Bridge not active or bridgeID mismatch
+   */
+  403: {
+    error: string
+  }
+}
+
+export type BridgeContextError = BridgeContextErrors[keyof BridgeContextErrors]
+
+export type BridgeContextResponses = {
+  /**
+   * List of shared context entries
+   */
+  200: Array<{
+    nodeID: string
+    role: "master" | "friend"
+    directory: string
+    type: "finding" | "work_summary" | "task_result" | "status"
+    content: string
+    timestamp: number
+  }>
+}
+
+export type BridgeContextResponse = BridgeContextResponses[keyof BridgeContextResponses]
+
+export type BridgeSetMasterData = {
+  body?: {
+    sessionID: string
+    slug: string
+    title: string
+    directory: string
+    limit?: number
+    coordinator?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/set-master"
+}
+
+export type BridgeSetMasterErrors = {
+  /**
+   * Invalid input or bridge full
+   */
+  400: {
+    error: string
+  }
+}
+
+export type BridgeSetMasterError = BridgeSetMasterErrors[keyof BridgeSetMasterErrors]
+
+export type BridgeSetMasterResponses = {
+  /**
+   * Bridge info after becoming master
+   */
+  200: {
+    bridgeID: string
+    masterID: string
+    masterSlug: string
+    nodes: Array<{
+      nodeID: string
+      role: "master" | "friend"
+      sessionID: string
+      slug: string
+      title: string
+      directory: string
+      nodeURL: string
+      heartbeat: number
+      status: "active" | "inactive" | "locked"
+    }>
+    limit: number
+  }
+}
+
+export type BridgeSetMasterResponse = BridgeSetMasterResponses[keyof BridgeSetMasterResponses]
+
+export type BridgeSetFriendData = {
+  body?: {
+    masterIDOrSlug: string
+    sessionID: string
+    slug: string
+    title: string
+    directory: string
+    coordinator?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/set-friend"
+}
+
+export type BridgeSetFriendErrors = {
+  /**
+   * Invalid input or bridge full
+   */
+  400: {
+    error: string
+  }
+}
+
+export type BridgeSetFriendError = BridgeSetFriendErrors[keyof BridgeSetFriendErrors]
+
+export type BridgeSetFriendResponses = {
+  /**
+   * Bridge info after joining as friend
+   */
+  200: {
+    bridgeID: string
+    masterID: string
+    masterSlug: string
+    nodes: Array<{
+      nodeID: string
+      role: "master" | "friend"
+      sessionID: string
+      slug: string
+      title: string
+      directory: string
+      nodeURL: string
+      heartbeat: number
+      status: "active" | "inactive" | "locked"
+    }>
+    limit: number
+  }
+}
+
+export type BridgeSetFriendResponse = BridgeSetFriendResponses[keyof BridgeSetFriendResponses]
+
+export type BridgeLeaveData = {
+  body?: {
+    bridgeID?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/leave"
+}
+
+export type BridgeLeaveErrors = {
+  /**
+   * bridgeID mismatch
+   */
+  403: {
+    error: string
+  }
+}
+
+export type BridgeLeaveError = BridgeLeaveErrors[keyof BridgeLeaveErrors]
+
+export type BridgeLeaveResponses = {
+  /**
+   * Successfully left the bridge
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BridgeLeaveResponse = BridgeLeaveResponses[keyof BridgeLeaveResponses]
+
+export type BridgeShareContextData = {
+  body?: {
+    role: "master" | "friend"
+    directory: string
+    type: "finding" | "work_summary" | "task_result" | "status"
+    content: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/share-context"
+}
+
+export type BridgeShareContextErrors = {
+  /**
+   * Not in an active bridge
+   */
+  400: {
+    error: string
+  }
+}
+
+export type BridgeShareContextError = BridgeShareContextErrors[keyof BridgeShareContextErrors]
+
+export type BridgeShareContextResponses = {
+  /**
+   * Context entry shared successfully
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BridgeShareContextResponse = BridgeShareContextResponses[keyof BridgeShareContextResponses]
+
+export type BridgeLockInputData = {
+  body?: {
+    targetNodeID: string
+    locked: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/lock-input"
+}
+
+export type BridgeLockInputErrors = {
+  /**
+   * Only master can lock input
+   */
+  403: {
+    error: string
+  }
+  /**
+   * Target node not found
+   */
+  404: {
+    error: string
+  }
+}
+
+export type BridgeLockInputError = BridgeLockInputErrors[keyof BridgeLockInputErrors]
+
+export type BridgeLockInputResponses = {
+  /**
+   * Input lock state updated
+   */
+  200: {
+    success: true
+  }
+}
+
+export type BridgeLockInputResponse = BridgeLockInputResponses[keyof BridgeLockInputResponses]
+
+export type BridgeDispatchTaskData = {
+  body?: {
+    taskID: string
+    prompt: string
+    description: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/bridge/dispatch-task"
+}
+
+export type BridgeDispatchTaskErrors = {
+  /**
+   * Not a friend node or bridge ID mismatch
+   */
+  401: {
+    error: string
+  }
+}
+
+export type BridgeDispatchTaskError = BridgeDispatchTaskErrors[keyof BridgeDispatchTaskErrors]
+
+export type BridgeDispatchTaskResponses = {
+  /**
+   * Task accepted — friend Alice has started running
+   */
+  200: {
+    taskID: string
+    sessionID: string
+    success: true
+  }
+}
+
+export type BridgeDispatchTaskResponse = BridgeDispatchTaskResponses[keyof BridgeDispatchTaskResponses]
 
 export type InstanceDisposeData = {
   body?: never

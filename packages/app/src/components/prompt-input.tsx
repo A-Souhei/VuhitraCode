@@ -17,6 +17,7 @@ import {
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useServer } from "@/context/server"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
@@ -97,6 +98,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
   const sync = useSync()
   const globalSDK = useGlobalSDK()
+  const server = useServer()
   const local = useLocal()
   const files = useFile()
   const prompt = usePrompt()
@@ -116,26 +118,49 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const profiles = () => sync.data.profiles ?? ["default"]
   const activeProfile = () => sync.data.active_profile ?? "default"
+  const sessionProfile = () => {
+    if (!params.id) return undefined
+    return sync.data.session.find((s) => s.id === params.id)?.profile ?? undefined
+  }
+  const [pending, setPending] = createSignal<string | null | undefined>(undefined)
+  const displayProfile = () => pending() ?? sessionProfile() ?? activeProfile()
   async function switchProfile(name: string) {
-    const dir = sync.data.path.directory
-    try {
-      const res = await fetch(`${globalSDK.url}/profile/switch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-opencode-directory": dir,
-        },
-        body: JSON.stringify({ name, directory: dir }),
+    if (name === displayProfile()) return
+    setPending(name)
+    const http = server.current?.http
+    const auth = http?.password
+      ? { Authorization: `Basic ${btoa(`${http.username ?? "opencode"}:${http.password}`)}` }
+      : undefined
+    if (params.id) {
+      const res = await fetch(`${globalSDK.url}/session/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-opencode-directory": sync.data.path.directory, ...auth },
+        body: JSON.stringify({ profile: name }),
       })
-      if (!res.ok) throw new Error(await res.text())
-      showToast({ variant: "success", title: `Switched to profile "${name}"` })
-    } catch (e) {
-      showToast({
-        variant: "error",
-        title: "Failed to switch profile",
-        description: e instanceof Error ? e.message : String(e),
-      })
+      setPending(undefined)
+      if (!res.ok) {
+        showToast({ variant: "error", title: "Failed to switch session profile", description: await res.text() })
+        return
+      }
+      showToast({ variant: "success", title: `Session profile set to "${name}"` })
+      return
     }
+    const dir = sync.data.path.directory
+    const res = await fetch(`${globalSDK.url}/profile/switch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-opencode-directory": dir,
+        ...auth,
+      },
+      body: JSON.stringify({ name, directory: dir }),
+    })
+    setPending(undefined)
+    if (!res.ok) {
+      showToast({ variant: "error", title: "Failed to switch profile", description: await res.text() })
+      return
+    }
+    showToast({ variant: "success", title: `Switched to profile "${name}"` })
   }
 
   const mirror = { input: false }
@@ -1455,13 +1480,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Select
                   size="normal"
                   options={profiles()}
-                  current={activeProfile()}
+                  current={displayProfile()}
                   class="capitalize max-w-[160px]"
                   valueClass="truncate text-13-regular"
                   triggerStyle={{ height: "28px" }}
                   variant="ghost"
                   onSelect={(name) => {
-                    if (name && name !== activeProfile()) switchProfile(name)
+                    if (name && name !== displayProfile()) switchProfile(name)
                   }}
                 />
               </Show>

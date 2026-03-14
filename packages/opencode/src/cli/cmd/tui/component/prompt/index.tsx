@@ -694,7 +694,10 @@ export function Prompt(props: PromptProps) {
                 disabled: n === local.profile.current,
                 onSelect: async () => {
                   const switched = await local.profile.switch(n)
-                  if (switched) ctx.clear()
+                  if (switched) {
+                    if (props.sessionID) await sdk.client.profile.sessionSwitch({ sessionID: props.sessionID, name: n })
+                    ctx.clear()
+                  }
                 },
               }))}
             />
@@ -1246,7 +1249,9 @@ export function Prompt(props: PromptProps) {
               </Show>
               <Show when={store.mode === "normal"}>
                 <text fg={theme.textMuted}>·</text>
-                <text fg={theme.accent}>{local.profile.current}</text>
+                <text fg={theme.accent}>
+                  {sync.data.session.find((s) => s.id === props.sessionID)?.profile ?? local.profile.current}
+                </text>
               </Show>
             </box>
           </box>

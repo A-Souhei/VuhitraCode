@@ -297,6 +297,10 @@ export const RunCommand = cmd({
         describe: "show thinking blocks",
         default: false,
       })
+      .option("profile", {
+        type: "string",
+        describe: "profile to use for this session",
+      })
   },
   handler: async (args) => {
     let message = [...args.message, ...(args["--"] || [])]
@@ -383,10 +387,17 @@ export const RunCommand = cmd({
         return id
       }
 
+      if (baseID && args.profile) UI.println("Warning: --profile is ignored when resuming an existing session")
+
       if (baseID) return baseID
 
+      // --profile only works for new sessions (not continuing/forking existing ones)
       const name = title()
-      const result = await sdk.session.create({ title: name, permission: rules })
+      const result = await sdk.session.create({
+        title: name,
+        permission: rules,
+        ...(args.profile ? { profile: args.profile } : {}),
+      })
       const id = result.data?.id
       if (!id) throw new Error("Session creation returned no ID")
       return id
