@@ -55,18 +55,26 @@ start() {
   local detach=0
   [ "${1:-}" = "-d" ] || [ "${1:-}" = "--detach" ] && detach=1
 
+  local electron="$ELECTRONDIR/node_modules/.bin/electron"
+  if [ ! -x "$electron" ]; then
+    echo "Installing Electron dependencies ..."
+    "$BUN" install --cwd "$ELECTRONDIR"
+  fi
+
   if [ "$detach" = "1" ]; then
-    echo "Starting (detached) backend on :4096, web on :4444, then Electron ..."
-    {
-      "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts serve --port 4096 &
-      echo $! >> "$PIDFILE"
-      "$BUN" --cwd "$WEBDIR" dev -- --port 4444 &
-      echo $! >> "$PIDFILE"
-      wait_ready
-      (cd "$ELECTRONDIR" && "$BUN" x electron .) &
-      echo $! >> "$PIDFILE"
-      wait
-    } >> "$LOGFILE" 2>&1 &
+    echo "Starting backend on :4096 and web on :4444 (detached) ..."
+    "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts serve --port 4096 \
+      >> "$LOGFILE" 2>&1 &
+    echo $! >> "$PIDFILE"
+    "$BUN" --cwd "$WEBDIR" dev -- --port 4444 \
+      >> "$LOGFILE" 2>&1 &
+    echo $! >> "$PIDFILE"
+
+    wait_ready || { kill 0; exit 1; }
+
+    echo "Launching Electron ..."
+    (cd "$ELECTRONDIR" && "$electron" .) &
+    echo $! >> "$PIDFILE"
     disown
     echo "Logs: $LOGFILE  |  PIDs: $PIDFILE"
     echo "Stop with: vuhitracode-electron stop"
@@ -74,13 +82,15 @@ start() {
     echo "Starting backend on :4096 and web dev on :4444 ..."
     trap 'echo ""; echo "Shutting down..."; kill 0' INT TERM EXIT
 
-    "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts serve --port 4096 &
-    "$BUN" --cwd "$WEBDIR" dev -- --port 4444 &
+    "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts serve --port 4096 \
+      >> "$LOGFILE" 2>&1 &
+    "$BUN" --cwd "$WEBDIR" dev -- --port 4444 \
+      >> "$LOGFILE" 2>&1 &
 
     wait_ready || { kill 0; exit 1; }
 
     echo "Launching Electron ..."
-    (cd "$ELECTRONDIR" && "$BUN" x electron .)
+    (cd "$ELECTRONDIR" && "$electron" .)
 
     echo "Electron closed. Shutting down servers ..."
     kill 0
