@@ -1,4 +1,4 @@
-.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install setup-safeguards
+.PHONY: dev dev-web dev-web-stop docs setup test-privacy install-dev install redis redis-stop mcp-install setup-safeguards install-electron
 
 setup:
 	@command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash
@@ -89,3 +89,6 @@ mcp-install:
 setup-safeguards:
 	@echo "Installing language server safeguards..."
 	@./scripts/setup-language-server-safeguards.sh
+
+install-electron:
+	@bash scripts/vuhitracode-electron.sh --install
