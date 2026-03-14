@@ -91,4 +91,10 @@ setup-safeguards:
 	@./scripts/setup-language-server-safeguards.sh
 
 install-electron:
-	@bash scripts/vuhitracode-electron.sh --install
+	@sed \
+		-e 's|PKGDIR=.*|PKGDIR="$(CURDIR)/packages/opencode"|' \
+		-e 's|WEBDIR=.*|WEBDIR="$(CURDIR)/packages/app"|' \
+		-e 's|ELECTRONDIR=.*|ELECTRONDIR="$(CURDIR)/packages/electron"|' \
+		scripts/vuhitracode-electron.sh > ~/.local/bin/vuhitracode-electron
+	@chmod +x ~/.local/bin/vuhitracode-electron
+	@echo "Installed: vuhitracode-electron → ~/.local/bin/vuhitracode-electron"

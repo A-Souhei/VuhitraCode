@@ -1,7 +1,7 @@
 #!/bin/bash
 # vuhitracode-electron — start the full OpenCode stack and open in Electron
-# Installed by: bash scripts/vuhitracode-electron.sh --install
-# Usage: vuhitracode-electron [--detach] | stop | --install
+# Installed by: make install-electron  (paths are baked in at install time)
+# Usage: vuhitracode-electron [--detach] | stop
 
 PKGDIR="$(cd "$(dirname "$0")/../packages/opencode" 2>/dev/null && pwd)"
 WEBDIR="$(cd "$(dirname "$0")/../packages/app" 2>/dev/null && pwd)"
@@ -15,18 +15,6 @@ fi
 
 LOGFILE="${TMPDIR:-/tmp}/vuhitracode-electron.log"
 PIDFILE="${TMPDIR:-/tmp}/vuhitracode-electron.pid"
-
-install_self() {
-  local dest="$HOME/.local/bin/vuhitracode-electron"
-  mkdir -p "$HOME/.local/bin"
-  sed \
-    -e "s|PKGDIR=.*|PKGDIR=\"$(cd "$(dirname "$0")/../packages/opencode" && pwd)\"|" \
-    -e "s|WEBDIR=.*|WEBDIR=\"$(cd "$(dirname "$0")/../packages/app" && pwd)\"|" \
-    -e "s|ELECTRONDIR=.*|ELECTRONDIR=\"$(cd "$(dirname "$0")/../packages/electron" && pwd)\"|" \
-    "$0" > "$dest"
-  chmod +x "$dest"
-  echo "Installed: vuhitracode-electron → $dest"
-}
 
 wait_ready() {
   local tries=0
@@ -100,12 +88,11 @@ start() {
 }
 
 case "${1:-}" in
-  --install) install_self ;;
   stop)      stop ;;
   -d|--detach) start "$1" ;;
   "")        start ;;
   *)
-    echo "Usage: $(basename "$0") [--detach] | stop | --install" >&2
+    echo "Usage: $(basename "$0") [--detach] | stop" >&2
     exit 1
     ;;
 esac
