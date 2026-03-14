@@ -13,13 +13,34 @@ import type {
   AuthRemoveResponses,
   AuthSetErrors,
   AuthSetResponses,
+  BiblionClearErrors,
   BiblionClearResponses,
+  BiblionDeleteErrors,
   BiblionDeleteResponses,
+  BiblionListErrors,
   BiblionListResponses,
+  BiblionSearchErrors,
   BiblionSearchResponses,
   BiblionStatusResponses,
   BiblionWriteErrors,
   BiblionWriteResponses,
+  BridgeContextErrors,
+  BridgeContextResponses,
+  BridgeDispatchTaskErrors,
+  BridgeDispatchTaskResponses,
+  BridgeInfoResponses,
+  BridgeLeaveErrors,
+  BridgeLeaveResponses,
+  BridgeLockInputErrors,
+  BridgeLockInputResponses,
+  BridgeNodesErrors,
+  BridgeNodesResponses,
+  BridgeSetFriendErrors,
+  BridgeSetFriendResponses,
+  BridgeSetMasterErrors,
+  BridgeSetMasterResponses,
+  BridgeShareContextErrors,
+  BridgeShareContextResponses,
   CommandListResponses,
   Config as Config3,
   ConfigGetResponses,
@@ -83,6 +104,13 @@ import type {
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
+  ProfileActiveResponses,
+  ProfileListResponses,
+  ProfileSessionActiveResponses,
+  ProfileSessionSwitchErrors,
+  ProfileSessionSwitchResponses,
+  ProfileSwitchErrors,
+  ProfileSwitchResponses,
   ProjectCurrentResponses,
   ProjectListResponses,
   ProjectUpdateErrors,
@@ -834,7 +862,7 @@ export class Biblion extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<BiblionListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<BiblionListResponses, BiblionListErrors, ThrowOnError>({
       url: "/biblion/list",
       ...options,
       ...params,
@@ -864,7 +892,7 @@ export class Biblion extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<BiblionSearchResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<BiblionSearchResponses, BiblionSearchErrors, ThrowOnError>({
       url: "/biblion/search",
       ...options,
       ...params,
@@ -927,7 +955,7 @@ export class Biblion extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).delete<BiblionClearResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).delete<BiblionClearResponses, BiblionClearErrors, ThrowOnError>({
       url: "/biblion/clear",
       ...options,
       ...params,
@@ -955,10 +983,156 @@ export class Biblion extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<BiblionDeleteResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).delete<BiblionDeleteResponses, BiblionDeleteErrors, ThrowOnError>({
       url: "/biblion/{id}",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class Profile extends HeyApiClient {
+  /**
+   * List available profiles
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ProfileListResponses, unknown, ThrowOnError>({
+      url: "/profile/list",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get active profile
+   */
+  public active<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ProfileActiveResponses, unknown, ThrowOnError>({
+      url: "/profile/active",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Switch active profile
+   */
+  public switch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      query_directory?: string
+      name?: string
+      body_directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "body", key: "name" },
+            {
+              in: "body",
+              key: "body_directory",
+              map: "directory",
+            },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ProfileSwitchResponses, ProfileSwitchErrors, ThrowOnError>({
+      url: "/profile/switch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get session profile
+   */
+  public sessionActive<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProfileSessionActiveResponses, unknown, ThrowOnError>({
+      url: "/profile/session-active",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Switch session profile
+   */
+  public sessionSwitch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      sessionID?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProfileSessionSwitchResponses,
+      ProfileSessionSwitchErrors,
+      ThrowOnError
+    >({
+      url: "/profile/session-switch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -1265,6 +1439,7 @@ export class Session2 extends HeyApiClient {
       parentID?: string
       title?: string
       permission?: PermissionRuleset
+      profile?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1277,6 +1452,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
             { in: "body", key: "permission" },
+            { in: "body", key: "profile" },
           ],
         },
       ],
@@ -1382,6 +1558,7 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       title?: string
+      profile?: string | null
       time?: {
         archived?: number
       }
@@ -1396,6 +1573,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
+            { in: "body", key: "profile" },
             { in: "body", key: "time" },
           ],
         },
@@ -3244,6 +3422,337 @@ export class Tui extends HeyApiClient {
   }
 }
 
+export class Bridge extends HeyApiClient {
+  /**
+   * Get bridge info
+   */
+  public info<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<BridgeInfoResponses, unknown, ThrowOnError>({
+      url: "/bridge/info",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get bridge nodes
+   */
+  public nodes<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      bridgeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "bridgeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BridgeNodesResponses, BridgeNodesErrors, ThrowOnError>({
+      url: "/bridge/nodes",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get bridge shared context
+   */
+  public context<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      bridgeID: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "bridgeID" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BridgeContextResponses, BridgeContextErrors, ThrowOnError>({
+      url: "/bridge/context",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Become bridge master
+   */
+  public setMaster<ThrowOnError extends boolean = false>(
+    parameters?: {
+      query_directory?: string
+      sessionID?: string
+      slug?: string
+      title?: string
+      body_directory?: string
+      limit?: number
+      coordinator?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "slug" },
+            { in: "body", key: "title" },
+            {
+              in: "body",
+              key: "body_directory",
+              map: "directory",
+            },
+            { in: "body", key: "limit" },
+            { in: "body", key: "coordinator" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeSetMasterResponses, BridgeSetMasterErrors, ThrowOnError>({
+      url: "/bridge/set-master",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Join a bridge as friend
+   */
+  public setFriend<ThrowOnError extends boolean = false>(
+    parameters?: {
+      query_directory?: string
+      masterIDOrSlug?: string
+      sessionID?: string
+      slug?: string
+      title?: string
+      body_directory?: string
+      coordinator?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "body", key: "masterIDOrSlug" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "slug" },
+            { in: "body", key: "title" },
+            {
+              in: "body",
+              key: "body_directory",
+              map: "directory",
+            },
+            { in: "body", key: "coordinator" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeSetFriendResponses, BridgeSetFriendErrors, ThrowOnError>({
+      url: "/bridge/set-friend",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Leave the current bridge
+   */
+  public leave<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      bridgeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "bridgeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeLeaveResponses, BridgeLeaveErrors, ThrowOnError>({
+      url: "/bridge/leave",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Share a context entry with the bridge
+   */
+  public shareContext<ThrowOnError extends boolean = false>(
+    parameters?: {
+      query_directory?: string
+      role?: "master" | "friend"
+      body_directory?: string
+      type?: "finding" | "work_summary" | "task_result" | "status"
+      content?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "body", key: "role" },
+            {
+              in: "body",
+              key: "body_directory",
+              map: "directory",
+            },
+            { in: "body", key: "type" },
+            { in: "body", key: "content" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeShareContextResponses, BridgeShareContextErrors, ThrowOnError>({
+      url: "/bridge/share-context",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Lock or unlock input for a target node
+   */
+  public lockInput<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      targetNodeID?: string
+      locked?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "targetNodeID" },
+            { in: "body", key: "locked" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeLockInputResponses, BridgeLockInputErrors, ThrowOnError>({
+      url: "/bridge/lock-input",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Dispatch a task to this friend node (async fire-and-start)
+   */
+  public dispatchTask<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      taskID?: string
+      prompt?: string
+      description?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "taskID" },
+            { in: "body", key: "prompt" },
+            { in: "body", key: "description" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BridgeDispatchTaskResponses, BridgeDispatchTaskErrors, ThrowOnError>({
+      url: "/bridge/dispatch-task",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Instance extends HeyApiClient {
   /**
    * Dispose instance
@@ -3522,6 +4031,11 @@ export class OpencodeClient extends HeyApiClient {
     return (this._biblion ??= new Biblion({ client: this.client }))
   }
 
+  private _profile?: Profile
+  get profile(): Profile {
+    return (this._profile ??= new Profile({ client: this.client }))
+  }
+
   private _tool?: Tool
   get tool(): Tool {
     return (this._tool ??= new Tool({ client: this.client }))
@@ -3580,6 +4094,11 @@ export class OpencodeClient extends HeyApiClient {
   private _tui?: Tui
   get tui(): Tui {
     return (this._tui ??= new Tui({ client: this.client }))
+  }
+
+  private _bridge?: Bridge
+  get bridge(): Bridge {
+    return (this._bridge ??= new Bridge({ client: this.client }))
   }
 
   private _instance?: Instance

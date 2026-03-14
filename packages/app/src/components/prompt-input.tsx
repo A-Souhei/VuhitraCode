@@ -116,26 +116,39 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const profiles = () => sync.data.profiles ?? ["default"]
   const activeProfile = () => sync.data.active_profile ?? "default"
+  const sessionProfile = () => {
+    if (!params.id) return undefined
+    return sync.data.session.find((s) => s.id === params.id)?.profile ?? undefined
+  }
+  const displayProfile = () => sessionProfile() ?? activeProfile()
   async function switchProfile(name: string) {
-    const dir = sync.data.path.directory
-    try {
-      const res = await fetch(`${globalSDK.url}/profile/switch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-opencode-directory": dir,
-        },
-        body: JSON.stringify({ name, directory: dir }),
+    if (params.id) {
+      const res = await fetch(`${globalSDK.url}/session/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: name }),
       })
-      if (!res.ok) throw new Error(await res.text())
-      showToast({ variant: "success", title: `Switched to profile "${name}"` })
-    } catch (e) {
-      showToast({
-        variant: "error",
-        title: "Failed to switch profile",
-        description: e instanceof Error ? e.message : String(e),
-      })
+      if (!res.ok) {
+        showToast({ variant: "error", title: "Failed to switch session profile", description: await res.text() })
+        return
+      }
+      showToast({ variant: "success", title: `Session profile set to "${name}"` })
+      return
     }
+    const dir = sync.data.path.directory
+    const res = await fetch(`${globalSDK.url}/profile/switch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-opencode-directory": dir,
+      },
+      body: JSON.stringify({ name, directory: dir }),
+    })
+    if (!res.ok) {
+      showToast({ variant: "error", title: "Failed to switch profile", description: await res.text() })
+      return
+    }
+    showToast({ variant: "success", title: `Switched to profile "${name}"` })
   }
 
   const mirror = { input: false }
@@ -1455,13 +1468,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <Select
                   size="normal"
                   options={profiles()}
-                  current={activeProfile()}
+                  current={displayProfile()}
                   class="capitalize max-w-[160px]"
                   valueClass="truncate text-13-regular"
                   triggerStyle={{ height: "28px" }}
                   variant="ghost"
                   onSelect={(name) => {
-                    if (name && name !== activeProfile()) switchProfile(name)
+                    if (name && name !== displayProfile()) switchProfile(name)
                   }}
                 />
               </Show>
