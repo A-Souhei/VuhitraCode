@@ -1,0 +1,50 @@
+{
+  "name": "@opencode-ai/electron",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder",
+    "typecheck": "tsgo -b"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "electron": "^36.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "ai.opencode.electron",
+    "productName": "OpenCode",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
