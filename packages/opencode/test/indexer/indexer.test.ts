@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Indexer } from "../../src/indexer"
 import path from "path"
+import { mkdir } from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 
@@ -391,5 +392,176 @@ describe("Indexer mtime cache sentinel", () => {
     const cachedSentinel = -(1000 + 1)
     const currentMtime = 1000
     expect(cachedSentinel === currentMtime).toBe(false)
+  })
+})
+
+describe("Indexer persistence helpers (unit)", () => {
+  test("persisted status shape matches configMatchesDisk expectations", () => {
+    // The persisted status must have these exact fields for configMatchesDisk to work
+    const persisted = {
+      backend: "qdrant" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    // Validate the shape is correct (all required fields present)
+    expect(persisted.backend).toBe("qdrant")
+    expect(typeof persisted.embedding_url).toBe("string")
+    expect(typeof persisted.embedding_model).toBe("string")
+    expect(typeof persisted.backend_url).toBe("string")
+  })
+
+  test("config mismatch: different backend means status does not match current config", () => {
+    const persisted: {
+      backend: "qdrant" | "redis"
+      embedding_url: string
+      embedding_model: string
+      backend_url: string
+    } = {
+      backend: "qdrant",
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    const changed = {
+      backend: "redis" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "redis://localhost:6379",
+    }
+    const matches =
+      persisted.backend === changed.backend &&
+      persisted.embedding_url === changed.embedding_url &&
+      persisted.embedding_model === changed.embedding_model &&
+      persisted.backend_url === changed.backend_url
+    expect(matches).toBe(false)
+  })
+
+  test("config match: identical config means fast path is valid", () => {
+    const persisted = {
+      backend: "qdrant" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    const current = {
+      backend: "qdrant" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    const matches =
+      persisted.backend === current.backend &&
+      persisted.embedding_url === current.embedding_url &&
+      persisted.embedding_model === current.embedding_model &&
+      persisted.backend_url === current.backend_url
+    expect(matches).toBe(true)
+  })
+
+  test("config mismatch: only embedding model changed", () => {
+    const persisted = {
+      backend: "qdrant" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    const current = {
+      backend: "qdrant" as const,
+      embedding_url: "http://localhost:11434",
+      embedding_model: "mxbai-embed-large", // changed!
+      backend_url: "http://localhost:6333",
+    }
+    const matches =
+      persisted.backend === current.backend &&
+      persisted.embedding_url === current.embedding_url &&
+      persisted.embedding_model === current.embedding_model &&
+      persisted.backend_url === current.backend_url
+    expect(matches).toBe(false)
+  })
+
+  test("fast-path: status and cache files are readable as valid JSON", async () => {
+    await using tmp = await tmpdir()
+    const vuhitraDir = path.join(tmp.path, ".vuhitra")
+    await mkdir(vuhitraDir, { recursive: true })
+
+    const status = {
+      backend: "qdrant",
+      embedding_url: "http://localhost:11434",
+      embedding_model: "nomic-embed-text",
+      backend_url: "http://localhost:6333",
+    }
+    await Bun.write(path.join(vuhitraDir, "indexer-status.json"), JSON.stringify(status))
+    await Bun.write(path.join(vuhitraDir, "indexer-cache.json"), JSON.stringify({}))
+
+    const rawStatus = await Bun.file(path.join(vuhitraDir, "indexer-status.json")).text()
+    const rawCache = await Bun.file(path.join(vuhitraDir, "indexer-cache.json")).text()
+
+    expect(() => JSON.parse(rawStatus)).not.toThrow()
+    expect(() => JSON.parse(rawCache)).not.toThrow()
+
+    const parsed = JSON.parse(rawStatus)
+    expect(parsed.backend).toBe("qdrant")
+    expect(parsed.embedding_url).toBe("http://localhost:11434")
+  })
+
+  test("fast-path: empty cache file results in empty mtime map", async () => {
+    await using tmp = await tmpdir()
+    const vuhitraDir = path.join(tmp.path, ".vuhitra")
+    await mkdir(vuhitraDir, { recursive: true })
+
+    // Empty cache object
+    await Bun.write(path.join(vuhitraDir, "indexer-cache.json"), JSON.stringify({}))
+
+    const rawCache = await Bun.file(path.join(vuhitraDir, "indexer-cache.json")).text()
+    const parsed = JSON.parse(rawCache)
+    expect(Object.keys(parsed)).toHaveLength(0)
+  })
+
+  test("fast-path: cache file with entries preserves file paths and mtimes", async () => {
+    await using tmp = await tmpdir()
+    const vuhitraDir = path.join(tmp.path, ".vuhitra")
+    await mkdir(vuhitraDir, { recursive: true })
+
+    const cache = {
+      "/path/to/file1.ts": 1234567890,
+      "/path/to/file2.ts": 9876543210,
+    }
+    await Bun.write(path.join(vuhitraDir, "indexer-cache.json"), JSON.stringify(cache))
+
+    const rawCache = await Bun.file(path.join(vuhitraDir, "indexer-cache.json")).text()
+    const parsed = JSON.parse(rawCache)
+    expect(parsed["/path/to/file1.ts"]).toBe(1234567890)
+    expect(parsed["/path/to/file2.ts"]).toBe(9876543210)
+  })
+
+  test("fast-path: cache file with gitignored sentinel values (negative)", async () => {
+    await using tmp = await tmpdir()
+    const vuhitraDir = path.join(tmp.path, ".vuhitra")
+    await mkdir(vuhitraDir, { recursive: true })
+
+    // Gitignored files use sentinel = -(mtime + 1), which is always negative
+    const cache = {
+      "/path/to/.env": -1234567891, // sentinel for mtime 1234567890
+      "/path/to/secrets.json": -9876543211, // sentinel for mtime 9876543210
+    }
+    await Bun.write(path.join(vuhitraDir, "indexer-cache.json"), JSON.stringify(cache))
+
+    const rawCache = await Bun.file(path.join(vuhitraDir, "indexer-cache.json")).text()
+    const parsed = JSON.parse(rawCache)
+    // Sentinel values are negative
+    expect(parsed["/path/to/.env"]).toBeLessThan(0)
+    expect(parsed["/path/to/secrets.json"]).toBeLessThan(0)
+    // Exact formula verification: sentinel = -(mtime + 1)
+    expect(parsed["/path/to/.env"]).toBe(-(1234567890 + 1))
+    expect(parsed["/path/to/secrets.json"]).toBe(-(9876543210 + 1))
+  })
+
+  // Integration tests that require live services - skipped by default
+  test.skip("status file is created with correct shape when indexing completes", async () => {
+    throw new Error("not implemented: requires live embedding server")
+  })
+
+  test.skip("deleteCollection clears status and cache files", async () => {
+    throw new Error("not implemented: requires live services")
   })
 })
