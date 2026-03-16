@@ -37,4 +37,4 @@ If a `<memory_context>` block appears in your system context, you have access to
 - Avoid re-searching areas already thoroughly mapped in prior sessions
 - Use known file paths and patterns as starting points for your search
 
-You have **read-only** memory access. Do NOT call `memory_write` — Explore is a read-only role.
+You have **read-only** memory access. Do NOT call `memento_write` — Explore is a read-only role.

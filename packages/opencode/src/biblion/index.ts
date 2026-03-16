@@ -694,7 +694,7 @@ export namespace Biblion {
 
   export const WriteTool = Tool.define("biblion_write", {
     description:
-      "Write an entry to the biblion knowledge base for future reference. Use this to capture codebase knowledge about structure, patterns, dependencies, APIs, configurations, and workflows. Content is automatically sanitized before storage.",
+      "Write an entry to the biblion knowledge base for future reference. Use this to capture codebase knowledge about structure, patterns, dependencies, APIs, configurations, and workflows. Content is automatically sanitized before storage. NOT for operational/procedural agent memory (commands, fixes, logs) — use `memento_write` for that.",
     parameters: z.object({
       type: z
         .enum(["structure", "pattern", "dependency", "api", "config", "workflow"])

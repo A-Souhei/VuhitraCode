@@ -610,11 +610,11 @@ export namespace Memory {
     })
   }
 
-  // ─── memory_write tool ────────────────────────────────────────────────────────
+  // ─── memento_write tool ───────────────────────────────────────────────────────
 
-  export const WriteTool = Tool.define("memory_write", {
+  export const WriteTool = Tool.define("memento_write", {
     description:
-      "Write an entry to agent memory for future reference. Use this to capture important findings, commands, procedures, scripts, issues, and resolutions. Content is automatically sanitized before storage.",
+      "Write an entry to agent memory for future reference. Use this to capture important findings, commands, procedures, scripts, issues, and resolutions. Content is automatically sanitized before storage. NOT for codebase knowledge (architecture, patterns, APIs) — use `biblion_write` for that.",
     parameters: z.object({
       type: z
         .enum(["issue", "resolution", "finding", "command", "procedure", "script", "branch", "log"])

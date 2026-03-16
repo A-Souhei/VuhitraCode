@@ -94,4 +94,4 @@ If a `<memory_context>` block appears in your system context, you have access to
 - Understand past findings and resolutions in related areas
 - Gain context about procedures and patterns the team has established
 
-You have **read-only** memory access. Do NOT call `memory_write` — audit is a read-only role.
+You have **read-only** memory access. Do NOT call `memento_write` — audit is a read-only role.
