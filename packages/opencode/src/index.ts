@@ -31,7 +31,6 @@ import { DbCommand } from "./cli/cmd/db"
 import { SetCommand } from "./cli/cmd/set"
 import { InitCommand } from "./cli/cmd/init"
 import { IndexerCommand } from "./cli/cmd/indexer"
-import { ElectronCommand } from "./cli/cmd/electron"
 import path from "path"
 import { Global } from "./global"
 import { JsonMigration } from "./storage/json-migration"
@@ -148,7 +147,6 @@ const cli = yargs(hideBin(process.argv))
   .command(DbCommand)
   .command(SetCommand)
   .command(IndexerCommand)
-  .command(ElectronCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
