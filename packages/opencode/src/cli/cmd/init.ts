@@ -1,11 +1,12 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
-import { mkdir, writeFile } from "fs/promises"
-import { existsSync } from "fs"
+import { mkdir } from "fs/promises"
 import path from "path"
+import { fileURLToPath } from "url"
 import { Filesystem } from "../../util/filesystem"
 
+// Keep DEFAULT_INDEX_IGNORE exported so other code that imports it still works
 export const DEFAULT_INDEX_IGNORE = `# VuHitra index-ignore
 # Files and directories excluded from semantic indexing
 # Uses .gitignore syntax
@@ -30,30 +31,10 @@ out/
 .vuhitra/
 `
 
-const DEFAULT_ENV_JSON = {
-  _comment:
-    "Project-local environment overrides. These take precedence over the root .env file but NOT over shell environment variables (process.env). Remove or leave empty any key you don't want to override. (This _comment key is ignored by the env loader.)",
-  OLLAMA_MODEL: "",
-  OLLAMA_URL: "",
-  OLLAMA_CONTEXT_SIZE: "",
-  OLLAMA_TOOLCALL: "",
-  QDRANT_URL: "",
-  QDRANT_API_KEY: "",
-  REDIS_URL: "",
-  REDIS_HOST: "",
-  REDIS_PORT: "",
-  REDIS_PASSWORD: "",
-  BRIDGE_NODE_URL: "",
-  BRIDGE_MAX_NODES: "",
-  EMBEDDING_URL: "",
-  EMBEDDING_MODEL: "",
-  INDEXER_MAX_FILE_SIZE: "",
-}
+// Runtime artifacts that should never be copied to other projects
+const SKIP = new Set(["indexer-cache.json", "indexer-status.json"])
 
 async function resolveProjectRoot(): Promise<string> {
-  // process.cwd() may point to the opencode source dir when run via `opencode-dev`
-  // (bun --cwd changes the process cwd). PWD preserves the shell's invocation directory
-  // on Linux/macOS; on Windows PWD is undefined so process.cwd() is used as fallback.
   const invocationDir = process.env.PWD ?? process.cwd()
   const match = await Filesystem.up({ targets: [".git"], start: invocationDir }).next()
   if (match.value) return path.dirname(match.value)
@@ -69,51 +50,57 @@ export const InitCommand = cmd({
       type: "boolean",
       default: true,
     }),
-  async handler(args) {
+  async handler(_args) {
     UI.empty()
     prompts.intro("Initialize project config")
 
     try {
+      // Source: the app's own .vuhitra/ directory (5 levels up from this file)
+      const src = path.join(fileURLToPath(new URL("../../../../../.vuhitra", import.meta.url)))
+
+      if (!(await Filesystem.exists(src))) {
+        prompts.log.warn("No .vuhitra/ template found in opencode installation, skipping")
+        prompts.outro("Done")
+        return
+      }
+
       const root = await resolveProjectRoot()
-      const vuHitraDir = path.join(root, ".vuhitra")
-      const settingsPath = path.join(vuHitraDir, "settings.json")
-      const indexIgnorePath = path.join(vuHitraDir, "index-ignore")
-      const envJsonPath = path.join(vuHitraDir, "env.json")
+      const dest = path.join(root, ".vuhitra")
+      await mkdir(dest, { recursive: true })
 
-      if (!existsSync(vuHitraDir)) {
-        await mkdir(vuHitraDir, { recursive: true })
+      // Walk all files in src recursively
+      const glob = new Bun.Glob("**/*")
+      for await (const rel of glob.scan({ cwd: src, onlyFiles: true, dot: true })) {
+        const name = path.basename(rel)
+        if (SKIP.has(name)) continue
+
+        const srcFile = path.join(src, rel)
+        const destFile = path.join(dest, rel)
+
+        // Ensure parent dir exists
+        await mkdir(path.dirname(destFile), { recursive: true })
+
+        // Copy (overwrite)
+        await Bun.write(destFile, Bun.file(srcFile))
+        prompts.log.success(`.vuhitra/${rel}`)
       }
 
-      const indexingEnabled = args.index
-
-      if (!existsSync(settingsPath)) {
-        const settings = {
-          indexing: { enabled: indexingEnabled },
-          memory: { enabled: true },
-          model_lock: { enabled: false },
-          review_max_rounds: 7,
-          explore_max_instances: 3,
+      // Add .vuhitra/ to .gitignore if needed
+      const gitignorePath = path.join(root, ".gitignore")
+      const entry = ".vuhitra/"
+      if (await Filesystem.exists(gitignorePath)) {
+        const current = await Filesystem.readText(gitignorePath)
+        const lines = current.split("\n").map((l) => l.trim())
+        if (lines.some((l) => l === entry || l === ".vuhitra")) {
+          prompts.log.info(".gitignore already contains .vuhitra/, skipped")
+        } else {
+          const appended = current.endsWith("\n") ? current + entry + "\n" : current + "\n" + entry + "\n"
+          await Filesystem.write(gitignorePath, appended)
+          prompts.log.success(".gitignore  (added .vuhitra/)")
         }
-        await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8")
-        prompts.log.success(
-          `.vuhitra/settings.json  (indexing: ${settings.indexing.enabled}, model_lock: ${settings.model_lock.enabled})`,
-        )
       } else {
-        prompts.log.info(".vuhitra/settings.json already exists, skipped")
-      }
-
-      if (!existsSync(indexIgnorePath)) {
-        await writeFile(indexIgnorePath, DEFAULT_INDEX_IGNORE, "utf-8")
-        prompts.log.success(".vuhitra/index-ignore")
-      } else {
-        prompts.log.info(".vuhitra/index-ignore already exists, skipped")
-      }
-
-      if (!existsSync(envJsonPath)) {
-        await writeFile(envJsonPath, JSON.stringify(DEFAULT_ENV_JSON, null, 2) + "\n", "utf-8")
-        prompts.log.success(".vuhitra/env.json")
-      } else {
-        prompts.log.info(".vuhitra/env.json already exists, skipped")
+        await Filesystem.write(gitignorePath, entry + "\n")
+        prompts.log.success(".gitignore  (created with .vuhitra/)")
       }
 
       prompts.outro("Done")
