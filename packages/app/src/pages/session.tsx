@@ -722,19 +722,22 @@ export default function Page() {
     if (contextOpen()) tabs().setActive("context")
   })
 
-  createEffect(() => {
-    const id = params.id
-    if (!id) return
-
-    const wants = isDesktop()
-      ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-      : store.mobileTab === "changes"
-    if (!wants) return
-    if (sync.data.session_diff[id] !== undefined) return
-    if (sync.status === "loading") return
-
-    void sync.session.diff(id)
-  })
+  createEffect(
+    on(
+      () => {
+        const id = params.id
+        if (!id) return false
+        const wants = isDesktop()
+          ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
+          : store.mobileTab === "changes"
+        return wants && sync.status !== "loading" ? id : false
+      },
+      (id) => {
+        if (!id) return
+        void sync.session.diff(id)
+      },
+    ),
+  )
 
   let treeDir: string | undefined
   createEffect(() => {

@@ -1172,3 +1172,150 @@ test("diffFull with whitespace changes", async () => {
     },
   })
 })
+
+test("diffFull with modified submodule", async () => {
+  // Create a submodule repo with two commits
+  await using subTmp = await tmpdir({ git: true })
+  await Filesystem.write(`${subTmp.path}/subfile.txt`, "original content\n")
+  await $`git add .`.cwd(subTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "submodule initial"`.cwd(subTmp.path).quiet()
+  const subCommit1 = (await $`git rev-parse HEAD`.cwd(subTmp.path).quiet().text()).trim()
+
+  // Make a second commit in submodule
+  await Filesystem.write(`${subTmp.path}/subfile.txt`, "modified content\n")
+  await Filesystem.write(`${subTmp.path}/extra.txt`, "extra file\n")
+  await $`git add .`.cwd(subTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "submodule second"`.cwd(subTmp.path).quiet()
+
+  // Create main repo with submodule
+  await using mainTmp = await tmpdir({ git: true })
+  await $`git -c protocol.file.allow=always submodule add ${subTmp.path} mysub`.cwd(mainTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "add submodule"`.cwd(mainTmp.path).quiet()
+
+  await Instance.provide({
+    directory: mainTmp.path,
+    fn: async () => {
+      // Snapshot with submodule at commit2
+      const before = await Snapshot.track()
+      expect(before).toBeTruthy()
+
+      // Update submodule to commit1
+      await $`git checkout ${subCommit1}`.cwd(`${mainTmp.path}/mysub`).quiet()
+      await $`git add mysub`.cwd(mainTmp.path).quiet()
+      const after = await Snapshot.track()
+      expect(after).toBeTruthy()
+
+      const diffs = await Snapshot.diffFull(before!, after!)
+
+      // Should contain file-level diffs from inside submodule, prefixed by submodule path
+      const subfileDiff = diffs.find((d) => d.file === "mysub/subfile.txt")
+      expect(subfileDiff).toBeDefined()
+      expect(subfileDiff!.status).toBe("modified")
+      expect(subfileDiff!.before).toBe("modified content\n")
+      expect(subfileDiff!.after).toBe("original content\n")
+
+      const extraDiff = diffs.find((d) => d.file === "mysub/extra.txt")
+      expect(extraDiff).toBeDefined()
+      expect(extraDiff!.status).toBe("deleted")
+      expect(extraDiff!.before).toBe("extra file\n")
+      expect(extraDiff!.after).toBe("")
+    },
+  })
+})
+
+test("diffFull with added submodule", async () => {
+  // Create a submodule repo
+  await using subTmp = await tmpdir({ git: true })
+  await Filesystem.write(`${subTmp.path}/subfile.txt`, "submodule content\n")
+  await Filesystem.write(`${subTmp.path}/another.txt`, "another file\n")
+  await $`git add .`.cwd(subTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "submodule initial"`.cwd(subTmp.path).quiet()
+
+  // Create main repo without submodule initially
+  await using mainTmp = await tmpdir({ git: true })
+  await Filesystem.write(`${mainTmp.path}/main.txt`, "main content\n")
+  await $`git add .`.cwd(mainTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "initial"`.cwd(mainTmp.path).quiet()
+
+  await Instance.provide({
+    directory: mainTmp.path,
+    fn: async () => {
+      const before = await Snapshot.track()
+      expect(before).toBeTruthy()
+
+      // Add submodule
+      await $`git -c protocol.file.allow=always submodule add ${subTmp.path} mysub`.cwd(mainTmp.path).quiet()
+      await $`git commit --no-gpg-sign -m "add submodule"`.cwd(mainTmp.path).quiet()
+
+      const after = await Snapshot.track()
+      expect(after).toBeTruthy()
+
+      const diffs = await Snapshot.diffFull(before!, after!)
+
+      // All files in the submodule should be added
+      const subfileDiff = diffs.find((d) => d.file === "mysub/subfile.txt")
+      expect(subfileDiff).toBeDefined()
+      expect(subfileDiff!.status).toBe("added")
+      expect(subfileDiff!.before).toBe("")
+      expect(subfileDiff!.after).toBe("submodule content\n")
+
+      const anotherDiff = diffs.find((d) => d.file === "mysub/another.txt")
+      expect(anotherDiff).toBeDefined()
+      expect(anotherDiff!.status).toBe("added")
+      expect(anotherDiff!.before).toBe("")
+      expect(anotherDiff!.after).toBe("another file\n")
+    },
+  })
+})
+
+test("diffFull with deleted submodule", async () => {
+  // Create a submodule repo
+  await using subTmp = await tmpdir({ git: true })
+  await Filesystem.write(`${subTmp.path}/subfile.txt`, "submodule content\n")
+  await Filesystem.write(`${subTmp.path}/another.txt`, "another file\n")
+  await $`git add .`.cwd(subTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "submodule initial"`.cwd(subTmp.path).quiet()
+
+  // Create main repo with submodule
+  await using mainTmp = await tmpdir({ git: true })
+  // Configure to allow local file protocol for submodule
+  await $`git -c protocol.file.allow=always submodule add ${subTmp.path} mysub`.cwd(mainTmp.path).quiet()
+  await $`git commit --no-gpg-sign -m "add submodule"`.cwd(mainTmp.path).quiet()
+
+  await Instance.provide({
+    directory: mainTmp.path,
+    fn: async () => {
+      const before = await Snapshot.track()
+      expect(before).toBeTruthy()
+
+      // Remove submodule from index (gitlink) but keep .git/modules/mysub for git database access
+      await $`git rm --cached mysub`.cwd(mainTmp.path).quiet()
+      await $`rm -rf ${mainTmp.path}/mysub`.cwd(mainTmp.path).quiet()
+      await $`git commit --no-gpg-sign -m "remove submodule"`.cwd(mainTmp.path).quiet()
+
+      // Track snapshot without mysub - it should be absent from the tree
+      const after = await Snapshot.track()
+      expect(after).toBeTruthy()
+
+      // Now create the mysub directory with .git pointing to the preserved submodule database
+      // This allows diffFull to access the submodule's git objects when expanding the diff
+      await $`mkdir -p ${mainTmp.path}/mysub`.cwd(mainTmp.path).quiet()
+      await Bun.write(`${mainTmp.path}/mysub/.git`, "gitdir: ../.git/modules/mysub\n")
+
+      const diffs = await Snapshot.diffFull(before!, after!)
+
+      // All files in the submodule should be deleted
+      const subfileDiff = diffs.find((d) => d.file === "mysub/subfile.txt")
+      expect(subfileDiff).toBeDefined()
+      expect(subfileDiff!.status).toBe("deleted")
+      expect(subfileDiff!.before).toBe("submodule content\n")
+      expect(subfileDiff!.after).toBe("")
+
+      const anotherDiff = diffs.find((d) => d.file === "mysub/another.txt")
+      expect(anotherDiff).toBeDefined()
+      expect(anotherDiff!.status).toBe("deleted")
+      expect(anotherDiff!.before).toBe("another file\n")
+      expect(anotherDiff!.after).toBe("")
+    },
+  })
+})

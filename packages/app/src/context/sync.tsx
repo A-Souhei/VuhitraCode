@@ -275,8 +275,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         async diff(sessionID: string) {
           const directory = sdk.directory
           const client = sdk.client
-          const [store, setStore] = globalSync.child(directory)
-          if (store.session_diff[sessionID] !== undefined) return
+          const [, setStore] = globalSync.child(directory)
 
           const key = keyFor(directory, sessionID)
           return runInflight(inflightDiff, key, () =>
