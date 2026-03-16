@@ -2,27 +2,21 @@ import { createEffect, For, on, onCleanup } from "solid-js"
 import { Portal } from "solid-js/web"
 import { createStore } from "solid-js/store"
 import { useSync } from "@/context/sync"
+import { useGlobalSDK } from "@/context/global-sdk"
 import "./status-toast.css"
 
 type Notification = {
   id: number
   title: string
   description?: string
-  createdAt: number
 }
 
 export function StatusToastRegion() {
   const sync = useSync()
+  const globalSDK = useGlobalSDK()
   const [notifications, setNotifications] = createStore<Notification[]>([])
   let nextId = 0
   const timeouts = new Map<number, ReturnType<typeof setTimeout>>()
-
-  const addNotification = (title: string, description?: string) => {
-    const id = ++nextId
-    setNotifications(notifications.length, { id, title, description, createdAt: Date.now() })
-    const timeout = setTimeout(() => removeNotification(id), 4000)
-    timeouts.set(id, timeout)
-  }
 
   const removeNotification = (id: number) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id))
@@ -32,6 +26,25 @@ export function StatusToastRegion() {
       timeouts.delete(id)
     }
   }
+
+  const addNotification = (title: string, description?: string, duration = 4000) => {
+    const id = ++nextId
+    setNotifications((prev) => [...prev, { id, title, description }])
+    const timeout = setTimeout(() => removeNotification(id), duration)
+    timeouts.set(id, timeout)
+  }
+
+  const unsub = globalSDK.event.listen((e) => {
+    if (e.name !== sync.data.path.directory) return
+    if (e.details.type !== "tui.toast.show") return
+    const { title, message, duration } = e.details.properties as {
+      title?: string
+      message: string
+      variant: string
+      duration?: number
+    }
+    addNotification(title || message, title ? message : undefined, duration)
+  })
 
   createEffect(
     on(
@@ -47,6 +60,7 @@ export function StatusToastRegion() {
           addNotification("◈ Indexer — disabled", status.message ?? status.reason)
         }
       },
+      { defer: true },
     ),
   )
 
@@ -62,6 +76,7 @@ export function StatusToastRegion() {
           addNotification("◈ Memory — disabled", status.message ?? status.reason)
         }
       },
+      { defer: true },
     ),
   )
 
@@ -77,17 +92,19 @@ export function StatusToastRegion() {
           addNotification("◈ Biblion — disabled", status.message ?? status.reason)
         }
       },
+      { defer: true },
     ),
   )
 
   onCleanup(() => {
+    unsub()
     timeouts.forEach((timeout) => clearTimeout(timeout))
     timeouts.clear()
   })
 
   return (
     <Portal>
-      <div class="status-toast-region">
+      <div class="status-toast-region" aria-live="polite">
         <For each={notifications}>
           {(notification) => (
             <div class="status-toast">
