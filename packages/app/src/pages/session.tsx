@@ -730,7 +730,6 @@ export default function Page() {
       ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
       : store.mobileTab === "changes"
     if (!wants) return
-    if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
 
     void sync.session.diff(id)
