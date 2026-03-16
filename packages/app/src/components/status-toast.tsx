@@ -5,10 +5,13 @@ import { useSync } from "@/context/sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import "./status-toast.css"
 
+type Variant = "info" | "success" | "warning" | "error"
+
 type Notification = {
   id: number
   title: string
   description?: string
+  variant: Variant
 }
 
 export function StatusToastRegion() {
@@ -27,23 +30,23 @@ export function StatusToastRegion() {
     }
   }
 
-  const addNotification = (title: string, description?: string, duration = 4000) => {
+  const addNotification = (title: string, description?: string, duration = 5000, variant: Variant = "info") => {
     const id = ++nextId
-    setNotifications((prev) => [...prev, { id, title, description }])
-    const timeout = setTimeout(() => removeNotification(id), duration)
+    setNotifications((prev) => [...prev, { id, title, description, variant }])
+    const timeout = setTimeout(() => removeNotification(id), Math.max(1000, duration))
     timeouts.set(id, timeout)
   }
 
   const unsub = globalSDK.event.listen((e) => {
     if (e.name !== sync.data.path.directory) return
     if (e.details.type !== "tui.toast.show") return
-    const { title, message, duration } = e.details.properties as {
+    const { title, message, duration, variant } = e.details.properties as {
       title?: string
       message: string
-      variant: string
+      variant: Variant
       duration?: number
     }
-    addNotification(title || message, title ? message : undefined, duration)
+    addNotification(title || message, title ? message : undefined, duration ?? 5000, variant)
   })
 
   createEffect(
@@ -107,7 +110,7 @@ export function StatusToastRegion() {
       <div class="status-toast-region" aria-live="polite">
         <For each={notifications}>
           {(notification) => (
-            <div class="status-toast">
+            <div class="status-toast" data-variant={notification.variant}>
               <div class="status-toast-content">
                 <span class="status-toast-title">{notification.title}</span>
                 {notification.description && <span class="status-toast-description">{notification.description}</span>}

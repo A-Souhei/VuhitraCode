@@ -78,3 +78,27 @@
 .status-toast-close:hover {
   opacity: 1;
 }
+
+.status-toast[data-variant="warning"] {
+  border-color: var(--border-warning-base);
+}
+
+.status-toast[data-variant="warning"] .status-toast-title {
+  color: var(--text-on-warning-base);
+}
+
+.status-toast[data-variant="error"] {
+  border-color: var(--border-critical-base);
+}
+
+.status-toast[data-variant="error"] .status-toast-title {
+  color: var(--text-on-critical-base);
+}
+
+.status-toast[data-variant="success"] {
+  border-color: var(--border-success-base);
+}
+
+.status-toast[data-variant="success"] .status-toast-title {
+  color: var(--text-on-success-base);
+}
