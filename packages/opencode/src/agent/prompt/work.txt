@@ -10,7 +10,7 @@ If a `<memory_context>` block appears in your system context, use it as read-onl
 - Prior resolved issues and known fixes
 - Useful commands, scripts, and procedures
 
-You have `memory_write` access. Use the `memory_write` tool in Phase 6 to save significant findings, commands, or procedures from this session.
+You have `memento_write` access. Use the `memento_write` tool in Phase 6 to save significant findings, commands, or procedures from this session.
 
 ---
 
@@ -124,7 +124,7 @@ Reached after Phase 5 completes (or is skipped). This phase only applies when th
 
 If proceeding:
 
-1. Use the `memory_write` tool to write one or more memory entries capturing:
+1. Use the `memento_write` tool to write one or more memory entries capturing:
    - Key commands run during implementation (type: `command`)
    - Procedures or patterns followed (type: `procedure`)
    - Issues encountered and how they were resolved (type: `resolution` or `issue`)
@@ -133,4 +133,4 @@ If proceeding:
 2. Tag entries with relevant keywords (e.g. tool names, file areas, error codes).
 3. Declare the task complete.
 
-**Work agent can write memory directly** — it has `memory_write` tool access.
+**Work agent can write memory directly** — it has `memento_write` tool access.

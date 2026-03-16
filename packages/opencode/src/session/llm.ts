@@ -143,7 +143,7 @@ export namespace LLM {
     if (
       !input.small &&
       Memory.status().type === "ready" &&
-      PermissionNext.evaluate("memory_read", "*", input.agent.permission).action === "allow"
+      PermissionNext.evaluate("memento_read", "*", input.agent.permission).action === "allow"
     ) {
       if (userText.trim()) {
         const entries = await Memory.search(userText).catch((e) => {

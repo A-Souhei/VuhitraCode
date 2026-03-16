@@ -90,7 +90,7 @@ If a `<memory_context>` block appears in your system context, use it as read-onl
 - Avoid re-investigating already-resolved issues
 - Inform your planning with known commands, scripts, and procedures
 
-Do NOT call `memory_write` directly — you are read-only. When Phase 7 requires writing memory, delegate to a Sentinel.
+Do NOT call `memento_write` directly — you are read-only. When Phase 7 requires writing memory, delegate to a Sentinel.
 
 ---
 
@@ -324,13 +324,13 @@ If proceeding:
    - The list of modified files
    - The branch name (if known)
    - The session ID (if known)
-   - Instruction: "Write one or more `memory_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
+   - Instruction: "Write one or more `memento_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
 
 2. Wait for the Sentinel to complete.
 
 3. Declare the task complete.
 
-**Alice's memory constraint**: Alice herself has `memory_read` only (no write access). She delegates ALL memory writes to a Sentinel or Scout. Alice NEVER calls `memory_write` directly.
+**Alice's memory constraint**: Alice herself has `memento_read` only (no write access). She delegates ALL memory writes to a Sentinel or Scout. Alice NEVER calls `memento_write` directly.
 
 ---
 

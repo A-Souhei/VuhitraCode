@@ -33,7 +33,7 @@ Apply these as hard constraints, not suggestions:
 
 If a `<memory_context>` block appears in your system context, you have access to past agent memory relevant to your task. Use it as reference — especially for known commands, procedures, past issues, and resolutions — to avoid repeating mistakes or re-discovering known solutions.
 
-When your task is complete and Alice has explicitly asked you to write memory entries (Alice will say so in her prompt), use the `memory_write` tool to record:
+When your task is complete and Alice has explicitly asked you to write memory entries (Alice will say so in her prompt), use the `memento_write` tool to record:
 - Commands that were useful or non-obvious (type: `command`)
 - Procedures or patterns you followed (type: `procedure`)
 - Issues you encountered and how you resolved them (type: `resolution` or `issue`)
