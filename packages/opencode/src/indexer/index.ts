@@ -204,6 +204,57 @@ export namespace Indexer {
     } catch {}
   }
 
+  // ─── Status persistence (completion state) ──────────────────────────────────
+
+  function statusPath() {
+    return path.join(Instance.directory, ".vuhitra", "indexer-status.json")
+  }
+
+  interface PersistedStatus {
+    backend: "qdrant" | "redis"
+    embedding_url: string
+    embedding_model: string
+    backend_url: string
+  }
+
+  function loadStatusFromDisk(): PersistedStatus | null {
+    try {
+      const raw = fs.readFileSync(statusPath(), "utf-8")
+      return JSON.parse(raw) as PersistedStatus
+    } catch {
+      return null
+    }
+  }
+
+  function saveStatusToDisk(status: PersistedStatus) {
+    try {
+      const dir = path.join(Instance.directory, ".vuhitra")
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(statusPath(), JSON.stringify(status), "utf-8")
+    } catch (e) {
+      log.warn("failed to save indexer status", { error: String(e) })
+    }
+  }
+
+  function deleteStatusFromDisk() {
+    try {
+      fs.rmSync(statusPath(), { force: true })
+    } catch {}
+  }
+
+  function configMatchesDisk(persisted: PersistedStatus): boolean {
+    const backend = activeBackend()
+    const eu = embeddingUrl()
+    const em = embeddingModel()
+    const bu = useRedis() ? redisUrl() : qdrantUrl()
+    return (
+      persisted.backend === backend &&
+      persisted.embedding_url === eu &&
+      persisted.embedding_model === em &&
+      persisted.backend_url === bu
+    )
+  }
+
   // PERF-9: Trailing-edge debounce for mtime cache flush
   /** Mark the in-memory cache dirty and schedule a debounced flush to disk. */
   function scheduleFlushMtimeCache() {
@@ -997,6 +1048,13 @@ export namespace Indexer {
     // Persist the updated mtime map so next restart is fast
     if (s.mtimeCache) saveMtimeCacheToDisk(s.mtimeCache)
 
+    saveStatusToDisk({
+      backend,
+      embedding_url: embeddingUrl(),
+      embedding_model: embeddingModel(),
+      backend_url: useRedis() ? redisUrl() : qdrantUrl(),
+    })
+
     s.status = {
       type: "complete",
       backend,
@@ -1060,6 +1118,25 @@ export namespace Indexer {
     Promise.resolve().then(async () => {
       try {
         await checkServices()
+
+        // Fast path: if previous run completed with same config and mtime cache exists, skip full scan
+        const persisted = loadStatusFromDisk()
+        const cached = loadMtimeCacheFromDisk()
+        if (persisted && cached && configMatchesDisk(persisted)) {
+          log.info("indexer already complete from previous run, skipping initial scan", { files: cached.size })
+          s.mtimeCache = cached
+          s.status = {
+            type: "complete",
+            backend: persisted.backend,
+            embedding_url: persisted.embedding_url,
+            embedding_model: persisted.embedding_model,
+            backend_url: persisted.backend_url,
+          }
+          Bus.publish(Event.Updated, s.status)
+          watchForChanges()
+          return
+        }
+
         s.status = {
           type: "indexing",
           progress: 0,
@@ -1092,6 +1169,7 @@ export namespace Indexer {
       s.abortController = new AbortController()
       await store.deleteAll()
       deleteMtimeCache()
+      deleteStatusFromDisk()
       const newStatus: Status = { type: "disabled", reason: "deleted" }
       s.status = newStatus
       await Bus.publish(Event.Updated, newStatus)
