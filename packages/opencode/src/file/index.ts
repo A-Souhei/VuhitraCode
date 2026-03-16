@@ -425,17 +425,97 @@ export namespace File {
       .text()
 
     const changedFiles: Info[] = []
+    const submodulePaths = new Set<string>()
+
+    // Get submodule list
+    const submoduleOutput = await $`git -c core.quotepath=false submodule status`
+      .cwd(Instance.directory)
+      .quiet()
+      .nothrow()
+      .text()
+
+    if (submoduleOutput.trim()) {
+      for (const line of submoduleOutput.trim().split("\n")) {
+        const match = line.match(/^[+-U ]?[0-9a-f]+\s+(.+?)(?:\s+\(.*\))?$/)
+        if (match) submodulePaths.add(match[1])
+      }
+    }
 
     if (diffOutput.trim()) {
       const lines = diffOutput.trim().split("\n")
       for (const line of lines) {
         const [added, removed, filepath] = line.split("\t")
+        // Skip submodule entries - they'll be expanded below
+        if (submodulePaths.has(filepath)) continue
         changedFiles.push({
           path: filepath,
           added: added === "-" ? 0 : parseInt(added, 10),
           removed: removed === "-" ? 0 : parseInt(removed, 10),
           status: "modified",
         })
+      }
+    }
+
+    // Process submodules
+    for (const subPath of submodulePaths) {
+      const subDir = path.join(Instance.directory, subPath)
+      if (!Instance.containsPath(subDir)) continue
+      const exists = await Filesystem.exists(subDir).catch(() => false)
+      if (!exists) continue
+
+      const subDiff = await $`git -c core.quotepath=false diff --numstat --diff-filter=ACMRT HEAD`
+        .cwd(subDir)
+        .quiet()
+        .nothrow()
+        .text()
+
+      if (subDiff.trim()) {
+        for (const line of subDiff.trim().split("\n")) {
+          const [added, removed, filepath] = line.split("\t")
+          changedFiles.push({
+            path: path.join(subPath, filepath),
+            added: added === "-" ? 0 : parseInt(added, 10),
+            removed: removed === "-" ? 0 : parseInt(removed, 10),
+            status: "modified",
+          })
+        }
+      }
+
+      const subUntracked = await $`git -c core.quotepath=false ls-files --others --exclude-standard`
+        .cwd(subDir)
+        .quiet()
+        .nothrow()
+        .text()
+
+      if (subUntracked.trim()) {
+        for (const filepath of subUntracked.trim().split("\n")) {
+          const content = await Filesystem.readText(path.join(subDir, filepath)).catch(() => null)
+          if (content === null) continue
+          const lines = content.split("\n").length
+          changedFiles.push({
+            path: path.join(subPath, filepath),
+            added: lines,
+            removed: 0,
+            status: "added",
+          })
+        }
+      }
+
+      const subDeleted = await $`git -c core.quotepath=false diff --name-only --diff-filter=D HEAD`
+        .cwd(subDir)
+        .quiet()
+        .nothrow()
+        .text()
+
+      if (subDeleted.trim()) {
+        for (const filepath of subDeleted.trim().split("\n")) {
+          changedFiles.push({
+            path: path.join(subPath, filepath),
+            added: 0,
+            removed: 0,
+            status: "deleted",
+          })
+        }
       }
     }
 
@@ -448,18 +528,16 @@ export namespace File {
     if (untrackedOutput.trim()) {
       const untrackedFiles = untrackedOutput.trim().split("\n")
       for (const filepath of untrackedFiles) {
-        try {
-          const content = await Filesystem.readText(path.join(Instance.directory, filepath))
-          const lines = content.split("\n").length
-          changedFiles.push({
-            path: filepath,
-            added: lines,
-            removed: 0,
-            status: "added",
-          })
-        } catch {
-          continue
-        }
+        if ([...submodulePaths].some((sub) => filepath === sub || filepath.startsWith(sub + "/"))) continue
+        const content = await Filesystem.readText(path.join(Instance.directory, filepath)).catch(() => null)
+        if (content === null) continue
+        const lines = content.split("\n").length
+        changedFiles.push({
+          path: filepath,
+          added: lines,
+          removed: 0,
+          status: "added",
+        })
       }
     }
 
