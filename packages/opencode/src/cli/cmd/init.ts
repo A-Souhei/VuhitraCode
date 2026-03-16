@@ -2,11 +2,26 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { mkdir } from "fs/promises"
+import { existsSync, statSync } from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { Filesystem } from "../../util/filesystem"
 
-// Keep DEFAULT_INDEX_IGNORE exported so other code that imports it still works
+// Runtime artifacts that should never be copied to other projects
+const SKIP = new Set(["indexer-cache.json", "indexer-status.json", "index-ignore"])
+
+function findTemplateSrc(): string | null {
+  const nextToBinary = path.join(path.dirname(process.execPath), ".vuhitra")
+  if (existsSync(nextToBinary)) return nextToBinary
+
+  if (!import.meta.url.startsWith("/$bunfs/")) {
+    const fromSource = fileURLToPath(new URL("../../../../../.vuhitra", import.meta.url))
+    if (existsSync(fromSource)) return fromSource
+  }
+
+  return null
+}
+
 export const DEFAULT_INDEX_IGNORE = `# VuHitra index-ignore
 # Files and directories excluded from semantic indexing
 # Uses .gitignore syntax
@@ -31,8 +46,11 @@ out/
 .vuhitra/
 `
 
-// Runtime artifacts that should never be copied to other projects
-const SKIP = new Set(["indexer-cache.json", "indexer-status.json"])
+const RULES_MD = `# Project Rules
+
+Add project-specific instructions for the AI here.
+These rules are included in every session for this project.
+`
 
 async function resolveProjectRoot(): Promise<string> {
   const invocationDir = process.env.PWD ?? process.cwd()
@@ -55,34 +73,59 @@ export const InitCommand = cmd({
     prompts.intro("Initialize project config")
 
     try {
-      // Source: the app's own .vuhitra/ directory (5 levels up from this file)
-      const src = path.join(fileURLToPath(new URL("../../../../../.vuhitra", import.meta.url)))
-
-      if (!(await Filesystem.exists(src))) {
-        prompts.log.warn("No .vuhitra/ template found in opencode installation, skipping")
-        prompts.outro("Done")
-        return
-      }
-
       const root = await resolveProjectRoot()
       const dest = path.join(root, ".vuhitra")
       await mkdir(dest, { recursive: true })
 
-      // Walk all files in src recursively
-      const glob = new Bun.Glob("**/*")
-      for await (const rel of glob.scan({ cwd: src, onlyFiles: true, dot: true })) {
-        const name = path.basename(rel)
-        if (SKIP.has(name)) continue
+      // Find source template
+      const src = findTemplateSrc()
+      if (src) {
+        prompts.log.info("copying .vuhitra/ template (existing files will be overwritten)")
+        const glob = new Bun.Glob("**/*")
+        for await (const rel of glob.scan({ cwd: src, onlyFiles: true, dot: true })) {
+          if (SKIP.has(path.basename(rel))) continue
+          const srcFile = path.join(src, rel)
+          // Guard: skip directories (Bun glob may yield them despite onlyFiles:true)
+          if (statSync(srcFile).isDirectory()) continue
+          const destFile = path.join(dest, rel)
+          // Path traversal guard
+          if (!path.resolve(destFile).startsWith(path.resolve(dest) + path.sep)) {
+            throw new Error(`Path traversal detected: ${rel}`)
+          }
+          await mkdir(path.dirname(destFile), { recursive: true })
+          await Bun.write(destFile, Bun.file(srcFile))
+          prompts.log.success(`.vuhitra/${rel}`)
+        }
+      } else {
+        prompts.log.warn(
+          "No .vuhitra/ template found. Run opencode init from your opencode installation directory first, or place your .vuhitra/ next to the opencode binary.",
+        )
 
-        const srcFile = path.join(src, rel)
-        const destFile = path.join(dest, rel)
+        // Write defaults
+        await Bun.write(path.join(dest, "settings.json"), "{}\n")
+        prompts.log.success(".vuhitra/settings.json")
 
-        // Ensure parent dir exists
-        await mkdir(path.dirname(destFile), { recursive: true })
+        await Bun.write(path.join(dest, "rules.md"), RULES_MD)
+        prompts.log.success(".vuhitra/rules.md")
 
-        // Copy (overwrite)
-        await Bun.write(destFile, Bun.file(srcFile))
-        prompts.log.success(`.vuhitra/${rel}`)
+        await Bun.write(path.join(dest, "index-ignore"), DEFAULT_INDEX_IGNORE)
+        prompts.log.success(".vuhitra/index-ignore")
+      }
+
+      // Handle --no-index: disable indexing in settings.json
+      if (!_args.index) {
+        const settingsPath = path.join(dest, "settings.json")
+        const raw = await Filesystem.readText(settingsPath)
+        const obj: unknown = JSON.parse(raw)
+        if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
+          prompts.log.warn("settings.json does not contain a JSON object, skipping --no-index patch")
+        } else {
+          const settings = obj as Record<string, unknown>
+          settings.indexing ??= {}
+          ;(settings.indexing as Record<string, unknown>).enabled = false
+          await Bun.write(settingsPath, JSON.stringify(settings, null, 2) + "\n")
+          prompts.log.info("indexing disabled in settings.json (--no-index)")
+        }
       }
 
       // Add .vuhitra/ to .gitignore if needed

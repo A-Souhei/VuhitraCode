@@ -174,7 +174,8 @@ export namespace Indexer {
       const raw = fs.readFileSync(mtimeCachePath(), "utf-8")
       const obj = JSON.parse(raw) as Record<string, number>
       return new Map(Object.entries(obj))
-    } catch {
+    } catch (e: any) {
+      if (e?.code !== "ENOENT") log.warn("failed to load mtime cache from disk", { error: String(e) })
       return null
     }
   }
@@ -220,8 +221,19 @@ export namespace Indexer {
   function loadStatusFromDisk(): PersistedStatus | null {
     try {
       const raw = fs.readFileSync(statusPath(), "utf-8")
-      return JSON.parse(raw) as PersistedStatus
-    } catch {
+      const obj: unknown = JSON.parse(raw)
+      if (
+        typeof obj !== "object" ||
+        obj === null ||
+        !["qdrant", "redis"].includes((obj as any).backend) ||
+        typeof (obj as any).embedding_url !== "string" ||
+        typeof (obj as any).embedding_model !== "string" ||
+        typeof (obj as any).backend_url !== "string"
+      )
+        return null
+      return obj as PersistedStatus
+    } catch (e: any) {
+      if (e?.code !== "ENOENT") log.warn("failed to load indexer status from disk", { error: String(e) })
       return null
     }
   }
@@ -1122,7 +1134,8 @@ export namespace Indexer {
         // Fast path: if previous run completed with same config and mtime cache exists, skip full scan
         const persisted = loadStatusFromDisk()
         const cached = loadMtimeCacheFromDisk()
-        if (persisted && cached && configMatchesDisk(persisted)) {
+        const matches = persisted ? configMatchesDisk(persisted) : false
+        if (persisted && cached && matches) {
           log.info("indexer already complete from previous run, skipping initial scan", { files: cached.size })
           s.mtimeCache = cached
           s.status = {
@@ -1135,6 +1148,11 @@ export namespace Indexer {
           Bus.publish(Event.Updated, s.status)
           watchForChanges()
           return
+        }
+        if (persisted && !matches) {
+          log.info("indexer config changed, discarding mtime cache to force re-index")
+          deleteMtimeCache()
+          deleteStatusFromDisk()
         }
 
         s.status = {
