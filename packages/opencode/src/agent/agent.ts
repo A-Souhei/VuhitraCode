@@ -257,6 +257,9 @@ export namespace Agent {
             task: "deny",
             memento_read: "allow",
             memento_write: "allow",
+            external_directory: {
+              "*": "deny",
+            },
           }),
         ),
         prompt: PROMPT_SENTINEL,
@@ -279,6 +282,9 @@ export namespace Agent {
             task: "deny",
             memento_read: "allow",
             memento_write: "allow",
+            external_directory: {
+              "*": "deny",
+            },
           }),
         ),
         prompt: PROMPT_SCOUT,

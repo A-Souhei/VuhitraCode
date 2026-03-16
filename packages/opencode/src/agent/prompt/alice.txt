@@ -324,7 +324,7 @@ If proceeding:
    - The list of modified files
    - The branch name (if known)
    - The session ID (if known)
-    - Instruction: "Write one or more `memento_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
+   - Instruction: "Write one or more `memento_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
 
 2. Wait for the Sentinel to complete.
 
