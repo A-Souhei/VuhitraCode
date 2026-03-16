@@ -253,37 +253,41 @@ export namespace Snapshot {
     if (result.length > 0) {
       const files = result.map((d) => d.file)
       for (const tree of [from, to]) {
-        const lsOut = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${tree} -- ${files}`
-          .quiet()
-          .cwd(Instance.directory)
-          .nothrow()
-          .text()
-        for (const line of lsOut.trim().split("\n")) {
-          if (!line) continue
-          const [mode, , , name] = line.split(/\s+/)
+        const lsOut =
+          await $`git -c core.quotepath=false --git-dir ${git} --work-tree ${Instance.worktree} ls-tree -z ${tree} -- ${files}`
+            .quiet()
+            .cwd(Instance.directory)
+            .nothrow()
+            .text()
+        for (const entry of lsOut.split("\0")) {
+          if (!entry) continue
+          const tab = entry.indexOf("\t")
+          if (tab === -1) continue
+          const meta = entry.slice(0, tab)
+          const name = entry.slice(tab + 1)
+          const [mode] = meta.split(" ")
           if (mode === "160000" && name) submodulePaths.add(name)
         }
       }
     }
 
     if (submodulePaths.size > 0) {
-      const expanded: FileDiff[] = []
-      for (const subPath of submodulePaths) {
-        const subDiffs = await getSubmoduleDiffs(git, from, to, subPath)
-        for (const sd of subDiffs) {
-          expanded.push(sd)
-        }
-      }
-      // Return non-submodule entries plus expanded submodule files
+      const expanded = (
+        await Promise.all([...submodulePaths].map((subPath) => getSubmoduleDiffs(git, from, to, subPath)))
+      ).flat()
       return [...result.filter((d) => !submodulePaths.has(d.file)), ...expanded]
     }
 
     return result
   }
 
+  function isSafeRelativePath(p: string) {
+    return !path.isAbsolute(p) && !p.split("/").some((seg) => seg === "..")
+  }
+
   async function getSubmoduleDiffs(git: string, from: string, to: string, subPath: string): Promise<FileDiff[]> {
     const subRepoPath = path.join(Instance.worktree, subPath)
-    if (!subRepoPath.startsWith(Instance.worktree + path.sep) && subRepoPath !== Instance.worktree) {
+    if (!Instance.containsPath(subRepoPath)) {
       log.warn("submodule path escapes worktree, skipping", { subPath })
       return []
     }
@@ -291,22 +295,42 @@ export namespace Snapshot {
       .stat(subRepoPath)
       .then(() => true)
       .catch(() => false)
+
+    // When worktree is missing, try to fall back to bare gitdir under .git/modules
+    let subGitDir: string | undefined
     if (!exists) {
-      log.warn("submodule directory not found, skipping", { subPath })
-      return []
+      const modulesBase = path.join(Instance.worktree, ".git", "modules")
+      const modulesGitDir = path.join(modulesBase, subPath)
+      if (!modulesGitDir.startsWith(modulesBase + path.sep) && modulesGitDir !== modulesBase) {
+        log.warn("submodule modules path escapes .git/modules, skipping", { subPath, modulesGitDir })
+        return []
+      }
+      const hasModulesDir = await fs
+        .stat(modulesGitDir)
+        .then(() => true)
+        .catch(() => false)
+      if (!hasModulesDir) {
+        log.warn("submodule directory not found, skipping", { subPath })
+        return []
+      }
+      log.info("submodule worktree missing, using bare gitdir fallback", { subPath, modulesGitDir })
+      subGitDir = modulesGitDir
     }
+
     const result: FileDiff[] = []
 
-    // Get nested submodule paths to skip them
-    const nestedSubOutput = await $`git -c core.quotepath=false submodule status`
-      .quiet()
-      .cwd(subRepoPath)
-      .nothrow()
-      .text()
+    // Get nested submodule paths to skip them (only possible when worktree exists)
     const nestedSubs = new Set<string>()
-    for (const line of nestedSubOutput.trim().split("\n")) {
-      const m = line.match(/^[+-U ]?[0-9a-f]+\s+(.+?)(?:\s+\(.*\))?$/)
-      if (m) nestedSubs.add(m[1])
+    if (!subGitDir) {
+      const nestedSubOutput = await $`git -c core.quotepath=false submodule status`
+        .quiet()
+        .cwd(subRepoPath)
+        .nothrow()
+        .text()
+      for (const line of nestedSubOutput.trim().split("\n")) {
+        const m = line.match(/^[+-U ]?[0-9a-f]+\s+(.+?)(?:\s+\(.*\))?$/)
+        if (m) nestedSubs.add(m[1])
+      }
     }
 
     // Get the commit hashes for the submodule in both snapshots using ls-tree
@@ -320,8 +344,8 @@ export namespace Snapshot {
       .nothrow()
       .text()
 
-    const fromHash = fromLsTree.trim().split(/\s+/)[2]
-    const toHash = toLsTree.trim().split(/\s+/)[2]
+    const fromHash = fromLsTree.trim() ? fromLsTree.trim().split("\t")[0]?.split(/\s+/)[2] : undefined
+    const toHash = toLsTree.trim() ? toLsTree.trim().split("\t")[0]?.split(/\s+/)[2] : undefined
 
     if (!fromHash && !toHash) {
       log.warn("could not resolve submodule commits", { subPath })
@@ -334,32 +358,46 @@ export namespace Snapshot {
     // Handle added submodule (no fromHash) or deleted submodule (no toHash)
     if (!fromHash) {
       // Submodule was added - get all files from toHash and treat as added
-      const fileList = await $`git -c core.autocrlf=false -c core.quotepath=false ls-tree -r --name-only ${toHash}`
-        .quiet()
-        .cwd(subRepoPath)
-        .nothrow()
-        .text()
+      const fileList = subGitDir
+        ? await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${subGitDir} ls-tree -r --name-only ${toHash}`
+            .quiet()
+            .nothrow()
+            .text()
+        : await $`git -c core.autocrlf=false -c core.quotepath=false ls-tree -r --name-only ${toHash}`
+            .quiet()
+            .cwd(subRepoPath)
+            .nothrow()
+            .text()
       for (const f of fileList.trim().split("\n").filter(Boolean)) {
         subStatus.set(f, "added")
       }
     } else if (!toHash) {
       // Submodule was deleted - get all files from fromHash and treat as deleted
-      const fileList = await $`git -c core.autocrlf=false -c core.quotepath=false ls-tree -r --name-only ${fromHash}`
-        .quiet()
-        .cwd(subRepoPath)
-        .nothrow()
-        .text()
+      const fileList = subGitDir
+        ? await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${subGitDir} ls-tree -r --name-only ${fromHash}`
+            .quiet()
+            .nothrow()
+            .text()
+        : await $`git -c core.autocrlf=false -c core.quotepath=false ls-tree -r --name-only ${fromHash}`
+            .quiet()
+            .cwd(subRepoPath)
+            .nothrow()
+            .text()
       for (const f of fileList.trim().split("\n").filter(Boolean)) {
         subStatus.set(f, "deleted")
       }
     } else {
       // Both commits exist - run diff to get file changes
-      const statusOutput =
-        await $`git -c core.autocrlf=false -c core.quotepath=false diff --name-status --no-renames ${fromHash} ${toHash}`
-          .quiet()
-          .cwd(subRepoPath)
-          .nothrow()
-          .text()
+      const statusOutput = subGitDir
+        ? await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${subGitDir} diff --name-status --no-renames ${fromHash} ${toHash}`
+            .quiet()
+            .nothrow()
+            .text()
+        : await $`git -c core.autocrlf=false -c core.quotepath=false diff --name-status --no-renames ${fromHash} ${toHash}`
+            .quiet()
+            .cwd(subRepoPath)
+            .nothrow()
+            .text()
       for (const line of statusOutput.trim().split("\n")) {
         if (!line) continue
         const [code, f] = line.split("\t")
@@ -373,29 +411,42 @@ export namespace Snapshot {
     const numstat =
       !fromHash || !toHash
         ? ""
-        : await $`git -c core.autocrlf=false -c core.quotepath=false diff --numstat --no-renames ${fromHash} ${toHash}`
-            .quiet()
-            .cwd(subRepoPath)
-            .nothrow()
-            .text()
+        : subGitDir
+          ? await $`git -c core.autocrlf=false -c core.quotepath=false --git-dir ${subGitDir} diff --numstat --no-renames ${fromHash} ${toHash}`
+              .quiet()
+              .nothrow()
+              .text()
+          : await $`git -c core.autocrlf=false -c core.quotepath=false diff --numstat --no-renames ${fromHash} ${toHash}`
+              .quiet()
+              .cwd(subRepoPath)
+              .nothrow()
+              .text()
 
     for (const line of numstat.trim().split("\n")) {
       if (!line) continue
       const [additions, deletions, f] = line.split("\t")
       if (!f) continue
       if (nestedSubs.has(f)) continue // skip nested submodule entries
+      if (!isSafeRelativePath(f)) {
+        log.warn("skipping unsafe submodule path", { subPath, f })
+        continue
+      }
       const isBinary = additions === "-" && deletions === "-"
       const fullPath = path.posix.join(subPath, f)
 
       const before = isBinary
         ? ""
         : fromHash
-          ? await $`git -c core.autocrlf=false show ${fromHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
+          ? subGitDir
+            ? await $`git -c core.autocrlf=false --git-dir ${subGitDir} show ${fromHash}:${f}`.quiet().nothrow().text()
+            : await $`git -c core.autocrlf=false show ${fromHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
           : ""
       const after = isBinary
         ? ""
         : toHash
-          ? await $`git -c core.autocrlf=false show ${toHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
+          ? subGitDir
+            ? await $`git -c core.autocrlf=false --git-dir ${subGitDir} show ${toHash}:${f}`.quiet().nothrow().text()
+            : await $`git -c core.autocrlf=false show ${toHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
           : ""
 
       const added = isBinary ? 0 : parseInt(additions)
@@ -414,17 +465,27 @@ export namespace Snapshot {
     const seen = new Set(result.map((r) => r.file))
     for (const [f, st] of subStatus) {
       if (nestedSubs.has(f)) continue // skip nested submodule entries
+      if (!isSafeRelativePath(f)) {
+        log.warn("skipping unsafe submodule path", { subPath, f })
+        continue
+      }
       const fullPath = path.posix.join(subPath, f)
       if (seen.has(fullPath)) continue
 
-      const before =
+      const rawBefore =
         st === "added" || !fromHash
           ? ""
-          : await $`git -c core.autocrlf=false show ${fromHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
-      const after =
+          : subGitDir
+            ? await $`git -c core.autocrlf=false --git-dir ${subGitDir} show ${fromHash}:${f}`.quiet().nothrow().text()
+            : await $`git -c core.autocrlf=false show ${fromHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
+      const rawAfter =
         st === "deleted" || !toHash
           ? ""
-          : await $`git -c core.autocrlf=false show ${toHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
+          : subGitDir
+            ? await $`git -c core.autocrlf=false --git-dir ${subGitDir} show ${toHash}:${f}`.quiet().nothrow().text()
+            : await $`git -c core.autocrlf=false show ${toHash}:${f}`.quiet().cwd(subRepoPath).nothrow().text()
+      const before = rawBefore.includes("\0") ? "" : rawBefore
+      const after = rawAfter.includes("\0") ? "" : rawAfter
 
       result.push({
         file: fullPath,

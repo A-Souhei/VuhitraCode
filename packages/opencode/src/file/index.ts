@@ -12,6 +12,10 @@ import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
 import { Global } from "../global"
 
+function isSafeRelativePath(p: string) {
+  return !path.isAbsolute(p) && !p.split("/").some((seg) => seg === "..")
+}
+
 export namespace File {
   const log = Log.create({ service: "file" })
 
@@ -418,14 +422,26 @@ export namespace File {
     const project = Instance.project
     if (project.vcs !== "git") return []
 
-    const diffOutput = await $`git -c core.quotepath=false diff --numstat HEAD`
-      .cwd(Instance.directory)
-      .quiet()
-      .nothrow()
-      .text()
+    const [diffOutput, diffStatusOutput] = await Promise.all([
+      $`git -c core.quotepath=false diff --numstat HEAD`.cwd(Instance.directory).quiet().nothrow().text(),
+      $`git -c core.quotepath=false diff --name-status --no-renames HEAD`
+        .cwd(Instance.directory)
+        .quiet()
+        .nothrow()
+        .text(),
+    ])
 
     const changedFiles: Info[] = []
     const submodulePaths = new Set<string>()
+
+    // Build top-level file status map
+    const topFileStatus = new Map<string, "added" | "deleted" | "modified">()
+    for (const line of diffStatusOutput.trim().split("\n")) {
+      if (!line) continue
+      const [code, f] = line.split("\t")
+      if (!code || !f) continue
+      topFileStatus.set(f, code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified")
+    }
 
     // Get submodule list
     const submoduleOutput = await $`git -c core.quotepath=false submodule status`
@@ -451,7 +467,7 @@ export namespace File {
           path: filepath,
           added: added === "-" ? 0 : parseInt(added, 10),
           removed: removed === "-" ? 0 : parseInt(removed, 10),
-          status: "modified",
+          status: topFileStatus.get(filepath) ?? "modified",
         })
       }
     }
@@ -463,20 +479,37 @@ export namespace File {
       const exists = await Filesystem.exists(subDir).catch(() => false)
       if (!exists) continue
 
-      const subDiff = await $`git -c core.quotepath=false diff --numstat --no-renames --diff-filter=ACMT HEAD`
-        .cwd(subDir)
-        .quiet()
-        .nothrow()
-        .text()
+      const [subDiff, subDiffStatus] = await Promise.all([
+        $`git -c core.quotepath=false diff --numstat --no-renames --diff-filter=ACMT HEAD`
+          .cwd(subDir)
+          .quiet()
+          .nothrow()
+          .text(),
+        $`git -c core.quotepath=false diff --name-status --no-renames --diff-filter=ACMT HEAD`
+          .cwd(subDir)
+          .quiet()
+          .nothrow()
+          .text(),
+      ])
+
+      const subFileStatus = new Map<string, "added" | "deleted" | "modified">()
+      for (const line of subDiffStatus.trim().split("\n")) {
+        if (!line) continue
+        const [code, f] = line.split("\t")
+        if (!code || !f) continue
+        subFileStatus.set(f, code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified")
+      }
 
       if (subDiff.trim()) {
         for (const line of subDiff.trim().split("\n")) {
           const [added, removed, filepath] = line.split("\t")
+          if (!filepath) continue
+          if (!isSafeRelativePath(filepath)) continue
           changedFiles.push({
             path: path.posix.join(subPath, filepath),
             added: added === "-" ? 0 : parseInt(added, 10),
             removed: removed === "-" ? 0 : parseInt(removed, 10),
-            status: "modified",
+            status: subFileStatus.get(filepath) ?? "modified",
           })
         }
       }
@@ -489,6 +522,7 @@ export namespace File {
 
       if (subUntracked.trim()) {
         for (const filepath of subUntracked.trim().split("\n")) {
+          if (!isSafeRelativePath(filepath)) continue
           const content = await Filesystem.readText(path.join(subDir, filepath)).catch(() => null)
           if (content === null) continue
           const lines = content.split("\n").length
@@ -509,6 +543,7 @@ export namespace File {
 
       if (subDeleted.trim()) {
         for (const filepath of subDeleted.trim().split("\n")) {
+          if (!isSafeRelativePath(filepath)) continue
           changedFiles.push({
             path: path.posix.join(subPath, filepath),
             added: 0,
@@ -530,6 +565,7 @@ export namespace File {
       const subPaths = [...submodulePaths]
       for (const filepath of untrackedFiles) {
         if (subPaths.some((sub) => filepath === sub || filepath.startsWith(sub + "/"))) continue
+        if (!isSafeRelativePath(filepath)) continue
         const content = await Filesystem.readText(path.join(Instance.directory, filepath)).catch(() => null)
         if (content === null) continue
         const lines = content.split("\n").length
@@ -552,6 +588,7 @@ export namespace File {
     if (deletedOutput.trim()) {
       const deletedFiles = deletedOutput.trim().split("\n")
       for (const filepath of deletedFiles) {
+        if (!isSafeRelativePath(filepath)) continue
         changedFiles.push({
           path: filepath,
           added: 0,
