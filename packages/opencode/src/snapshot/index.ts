@@ -248,23 +248,22 @@ export namespace Snapshot {
     }
 
     // Expand submodule entries into file-level diffs
+    // Use a single ls-tree call per snapshot tree to detect all gitlinks (mode 160000)
     const submodulePaths = new Set<string>()
-    for (const diff of result) {
-      const lsFrom = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${from} -- ${diff.file}`
-        .quiet()
-        .cwd(Instance.directory)
-        .nothrow()
-        .text()
-      let mode = lsFrom.trim().split(/\s+/)[0]
-      if (mode !== "160000") {
-        const lsTo = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${to} -- ${diff.file}`
+    if (result.length > 0) {
+      const files = result.map((d) => d.file)
+      for (const tree of [from, to]) {
+        const lsOut = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${tree} -- ${files}`
           .quiet()
           .cwd(Instance.directory)
           .nothrow()
           .text()
-        mode = lsTo.trim().split(/\s+/)[0]
+        for (const line of lsOut.trim().split("\n")) {
+          if (!line) continue
+          const [mode, , , name] = line.split(/\s+/)
+          if (mode === "160000" && name) submodulePaths.add(name)
+        }
       }
-      if (mode === "160000") submodulePaths.add(diff.file)
     }
 
     if (submodulePaths.size > 0) {
@@ -288,6 +287,14 @@ export namespace Snapshot {
       log.warn("submodule path escapes worktree, skipping", { subPath })
       return []
     }
+    const exists = await fs
+      .stat(subRepoPath)
+      .then(() => true)
+      .catch(() => false)
+    if (!exists) {
+      log.warn("submodule directory not found, skipping", { subPath })
+      return []
+    }
     const result: FileDiff[] = []
 
     // Get nested submodule paths to skip them
@@ -302,22 +309,19 @@ export namespace Snapshot {
       if (m) nestedSubs.add(m[1])
     }
 
-    // Get the commit hashes for the submodule in both snapshots
-    const fromCommitResult =
-      await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.worktree} show ${from}:${subPath}`
-        .quiet()
-        .nothrow()
-        .text()
-    const toCommitResult =
-      await $`git -c core.autocrlf=false --git-dir ${git} --work-tree ${Instance.worktree} show ${to}:${subPath}`
-        .quiet()
-        .nothrow()
-        .text()
+    // Get the commit hashes for the submodule in both snapshots using ls-tree
+    // ls-tree output format: "<mode> <type> <hash>\t<path>"
+    const fromLsTree = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${from} -- ${subPath}`
+      .quiet()
+      .nothrow()
+      .text()
+    const toLsTree = await $`git --git-dir ${git} --work-tree ${Instance.worktree} ls-tree ${to} -- ${subPath}`
+      .quiet()
+      .nothrow()
+      .text()
 
-    const fromMatch = fromCommitResult.match(/Subproject commit ([a-f0-9]+)/)
-    const toMatch = toCommitResult.match(/Subproject commit ([a-f0-9]+)/)
-    const fromHash = fromMatch?.[1]
-    const toHash = toMatch?.[1]
+    const fromHash = fromLsTree.trim().split(/\s+/)[2]
+    const toHash = toLsTree.trim().split(/\s+/)[2]
 
     if (!fromHash && !toHash) {
       log.warn("could not resolve submodule commits", { subPath })

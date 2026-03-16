@@ -463,7 +463,7 @@ export namespace File {
       const exists = await Filesystem.exists(subDir).catch(() => false)
       if (!exists) continue
 
-      const subDiff = await $`git -c core.quotepath=false diff --numstat --diff-filter=ACMRT HEAD`
+      const subDiff = await $`git -c core.quotepath=false diff --numstat --no-renames --diff-filter=ACMT HEAD`
         .cwd(subDir)
         .quiet()
         .nothrow()
@@ -473,7 +473,7 @@ export namespace File {
         for (const line of subDiff.trim().split("\n")) {
           const [added, removed, filepath] = line.split("\t")
           changedFiles.push({
-            path: path.join(subPath, filepath),
+            path: path.posix.join(subPath, filepath),
             added: added === "-" ? 0 : parseInt(added, 10),
             removed: removed === "-" ? 0 : parseInt(removed, 10),
             status: "modified",
@@ -493,7 +493,7 @@ export namespace File {
           if (content === null) continue
           const lines = content.split("\n").length
           changedFiles.push({
-            path: path.join(subPath, filepath),
+            path: path.posix.join(subPath, filepath),
             added: lines,
             removed: 0,
             status: "added",
@@ -510,7 +510,7 @@ export namespace File {
       if (subDeleted.trim()) {
         for (const filepath of subDeleted.trim().split("\n")) {
           changedFiles.push({
-            path: path.join(subPath, filepath),
+            path: path.posix.join(subPath, filepath),
             added: 0,
             removed: 0,
             status: "deleted",
@@ -527,8 +527,9 @@ export namespace File {
 
     if (untrackedOutput.trim()) {
       const untrackedFiles = untrackedOutput.trim().split("\n")
+      const subPaths = [...submodulePaths]
       for (const filepath of untrackedFiles) {
-        if ([...submodulePaths].some((sub) => filepath === sub || filepath.startsWith(sub + "/"))) continue
+        if (subPaths.some((sub) => filepath === sub || filepath.startsWith(sub + "/"))) continue
         const content = await Filesystem.readText(path.join(Instance.directory, filepath)).catch(() => null)
         if (content === null) continue
         const lines = content.split("\n").length

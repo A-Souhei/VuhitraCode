@@ -117,18 +117,35 @@ export namespace SessionSummary {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
-      const diffs = await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
-      const next = diffs.map((item) => {
-        const file = unquoteGitPath(item.file)
-        if (file === item.file) return item
-        return {
-          ...item,
-          file,
+      const stored = await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
+      if (stored.length > 0) {
+        const next = stored.map((item) => {
+          const file = unquoteGitPath(item.file)
+          if (file === item.file) return item
+          return { ...item, file }
+        })
+        const changed = next.some((item, i) => item.file !== stored[i]?.file)
+        if (changed) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
+        return next
+      }
+
+      // No stored diffs yet (no AI step has run) — compute a live diff between
+      // the session's first step-start snapshot and the current working tree.
+      const messages = await Session.messages({ sessionID: input.sessionID })
+      let from: string | undefined
+      for (const msg of messages) {
+        for (const part of msg.parts) {
+          if (part.type === "step-start" && part.snapshot) {
+            from = part.snapshot
+            break
+          }
         }
-      })
-      const changed = next.some((item, i) => item.file !== diffs[i]?.file)
-      if (changed) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
-      return next
+        if (from) break
+      }
+      if (!from) return []
+      const to = await Snapshot.track()
+      if (!to) return []
+      return Snapshot.diffFull(from, to)
     },
   )
 
