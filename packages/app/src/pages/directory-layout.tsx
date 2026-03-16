@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
+import { StatusToastRegion } from "@/components/status-toast"
 
 import { DataProvider } from "@opencode-ai/ui/context"
 import type { QuestionAnswer } from "@opencode-ai/sdk/v2"
@@ -61,6 +62,7 @@ export default function Layout(props: ParentProps) {
     <Show when={directory()}>
       <SDKProvider directory={directory}>
         <SyncProvider>
+          <StatusToastRegion />
           <DirectoryDataProvider directory={directory()}>{props.children}</DirectoryDataProvider>
         </SyncProvider>
       </SDKProvider>
