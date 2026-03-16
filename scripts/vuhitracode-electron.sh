@@ -131,11 +131,12 @@ start() {
 }
 
 case "${1:-}" in
-  stop)        stop ;;
-  -d|--detach) start "$1" ;;
-  "")          start ;;
+  stop)           stop ;;
+  restart)        stop; start -d ;;
+  -d|--detach)    start "$1" ;;
+  "")             start ;;
   *)
-    echo "Usage: $(basename "$0") [--detach] | stop" >&2
+    echo "Usage: $(basename "$0") [--detach] | stop | restart" >&2
     exit 1
     ;;
 esac
