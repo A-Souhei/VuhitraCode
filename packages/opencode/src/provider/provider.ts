@@ -822,7 +822,14 @@ export namespace Provider {
       id: "ollama",
       source: "env",
       name: "Ollama (local)",
-      env: ["OLLAMA_MODEL", "OLLAMA_URL", "OLLAMA_CONTEXT_SIZE", "OLLAMA_TOOLCALL"],
+      env: [
+        "OLLAMA_MODEL",
+        "OLLAMA_URL",
+        "OLLAMA_CONTEXT_SIZE",
+        "OLLAMA_TOOLCALL",
+        "OLLAMA_ENABLED_MODELS",
+        "OLLAMA_SECRET_MODEL",
+      ],
       options: { baseURL: ollamaBaseURL, apiKey: "ollama" },
       models: {
         "[configure OLLAMA_MODEL]": {
@@ -855,9 +862,21 @@ export namespace Provider {
       },
     }
 
-    // Add model to ollama provider if OLLAMA_MODEL is configured
+    // Add models to ollama provider if OLLAMA_MODEL or OLLAMA_ENABLED_MODELS is configured
     const ollamaModel = Env.get("OLLAMA_MODEL")
-    if (ollamaModel && database["ollama"]) {
+    const ollamaEnabledRaw = Env.get("OLLAMA_ENABLED_MODELS")
+
+    // Parse enabled models list — comma-separated
+    const enabledModels = ollamaEnabledRaw
+      ? ollamaEnabledRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : ollamaModel
+        ? [ollamaModel]
+        : []
+
+    if (enabledModels.length > 0) {
       try {
         new URL(rawOllamaURL)
       } catch {
@@ -869,35 +888,40 @@ export namespace Provider {
         throw new Error(`Invalid OLLAMA_CONTEXT_SIZE: "${rawContextSize}". Must be a positive integer.`)
       }
       const ollamaToolCall = Env.get("OLLAMA_TOOLCALL") !== "false"
-      const ollamaModelEntry: Model = {
-        id: ollamaModel,
-        providerID: "ollama",
-        name: ollamaModel,
-        family: "",
-        api: {
-          id: ollamaModel,
-          url: ollamaBaseURL,
-          npm: "@ai-sdk/openai-compatible",
-        },
-        status: "active",
-        headers: {},
-        options: {},
-        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-        limit: { context: ollamaContextSize, output: Math.min(4096, Math.floor(ollamaContextSize / 4)) },
-        capabilities: {
-          temperature: true,
-          reasoning: false,
-          attachment: false,
-          toolcall: ollamaToolCall,
-          input: { text: true, audio: false, image: false, video: false, pdf: false },
-          output: { text: true, audio: false, image: false, video: false, pdf: false },
-          interleaved: false,
-        },
-        release_date: "2024-01-01",
-        variants: {},
-      }
-      database["ollama"].models[ollamaModel] = ollamaModelEntry
+
+      // Remove the placeholder
       delete database["ollama"].models["[configure OLLAMA_MODEL]"]
+
+      // Register each enabled model
+      for (const modelID of enabledModels) {
+        database["ollama"].models[modelID] = {
+          id: modelID,
+          providerID: "ollama",
+          name: modelID,
+          family: "",
+          api: {
+            id: modelID,
+            url: ollamaBaseURL,
+            npm: "@ai-sdk/openai-compatible",
+          },
+          status: "active",
+          headers: {},
+          options: {},
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          limit: { context: ollamaContextSize, output: Math.min(4096, Math.floor(ollamaContextSize / 4)) },
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: false,
+            toolcall: ollamaToolCall,
+            input: { text: true, audio: false, image: false, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          release_date: "2024-01-01",
+          variants: {},
+        }
+      }
       database["ollama"].options = { baseURL: ollamaBaseURL, apiKey: "ollama" }
     }
 

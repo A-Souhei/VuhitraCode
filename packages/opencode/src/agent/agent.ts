@@ -745,8 +745,23 @@ export namespace Agent {
       },
     }
 
-    const ollamaModel = Env.get("OLLAMA_MODEL")
-    if (ollamaModel) {
+    // Determine which model to use for the secret agent:
+    // priority: OLLAMA_SECRET_MODEL > OLLAMA_MODEL > first model from OLLAMA_ENABLED_MODELS
+    const secretModel = (() => {
+      const explicit = Env.get("OLLAMA_SECRET_MODEL")
+      if (explicit) return explicit
+      const single = Env.get("OLLAMA_MODEL")
+      if (single) return single
+      const enabled = Env.get("OLLAMA_ENABLED_MODELS")
+      if (enabled)
+        return enabled
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)[0]
+      return undefined
+    })()
+
+    if (secretModel) {
       result.secret = {
         name: "secret",
         description: `Private agent for analyzing gitignored (sensitive) files. Runs locally on ollama — data never leaves the machine. Never outputs raw sensitive values, only logical abstractions. Use this agent whenever you need to reason about files that are gitignored.`,
@@ -762,7 +777,7 @@ export namespace Agent {
         ),
         model: {
           providerID: "ollama",
-          modelID: ollamaModel,
+          modelID: secretModel,
         },
         prompt: PROMPT_SECRET,
         options: {},

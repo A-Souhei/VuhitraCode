@@ -8,6 +8,10 @@ import { ProviderAuth } from "../../provider/auth"
 import { mapValues } from "remeda"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { Env } from "../../env"
+import { Instance } from "../../project/instance"
+import path from "path"
+import fs from "fs"
 
 export const ProviderRoutes = lazy(() =>
   new Hono()
@@ -78,6 +82,121 @@ export const ProviderRoutes = lazy(() =>
       }),
       async (c) => {
         return c.json(await ProviderAuth.methods())
+      },
+    )
+    .get(
+      "/ollama/models",
+      describeRoute({
+        summary: "List Ollama models",
+        description: "Fetch available models from the Ollama server.",
+        operationId: "provider.ollama.models",
+        responses: {
+          200: {
+            description: "List of Ollama models",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    models: z.array(
+                      z.object({
+                        id: z.string(),
+                        name: z.string(),
+                        size: z.number(),
+                      }),
+                    ),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const rawOllamaURL = Env.get("OLLAMA_URL") ?? "http://localhost:11434"
+        const ollamaAPIURL = rawOllamaURL.replace(/\/+$/, "")
+
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 5000)
+
+        const response = await fetch(`${ollamaAPIURL}/api/tags`, {
+          signal: controller.signal,
+        }).catch(() => null)
+        clearTimeout(timeout)
+
+        if (!response || !response.ok) {
+          return c.json({ models: [] })
+        }
+
+        const data = (await response.json()) as {
+          models: Array<{ name: string; size: number; digest: string; modified_at: string }>
+        }
+
+        const models = (data.models ?? []).map((m) => ({
+          id: m.name,
+          name: m.name,
+          size: m.size,
+        }))
+
+        return c.json({ models })
+      },
+    )
+    .patch(
+      "/ollama/config",
+      describeRoute({
+        summary: "Configure Ollama settings",
+        description: "Update Ollama configuration including enabled models and secret model.",
+        operationId: "provider.ollama.config",
+        responses: {
+          200: {
+            description: "Configuration updated successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          enabledModels: z.array(z.string()).optional(),
+          secretModel: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const { enabledModels, secretModel } = c.req.valid("json")
+
+        const envPath = path.join(Instance.directory, ".vuhitra", "env.json")
+        let envJson: Record<string, string> = {}
+        if (fs.existsSync(envPath)) {
+          const content = fs.readFileSync(envPath, "utf-8")
+          envJson = JSON.parse(content)
+        }
+
+        if (enabledModels !== undefined) {
+          const value = enabledModels.length > 0 ? enabledModels.join(",") : ""
+          Env.set("OLLAMA_ENABLED_MODELS", value)
+          if (value) {
+            envJson["OLLAMA_ENABLED_MODELS"] = value
+          } else {
+            delete envJson["OLLAMA_ENABLED_MODELS"]
+          }
+        }
+
+        if (secretModel !== undefined) {
+          if (secretModel) {
+            Env.set("OLLAMA_SECRET_MODEL", secretModel)
+            envJson["OLLAMA_SECRET_MODEL"] = secretModel
+          } else {
+            Env.remove("OLLAMA_SECRET_MODEL")
+            delete envJson["OLLAMA_SECRET_MODEL"]
+          }
+        }
+
+        fs.writeFileSync(envPath, JSON.stringify(envJson, null, 2))
+
+        return c.json(true)
       },
     )
     .post(
