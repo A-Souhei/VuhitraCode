@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Indexer } from "../../src/indexer"
 import path from "path"
 import { mkdir } from "fs/promises"
+import fs from "fs"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 
@@ -563,5 +564,108 @@ describe("Indexer persistence helpers (unit)", () => {
 
   test.skip("deleteCollection clears status and cache files", async () => {
     throw new Error("not implemented: requires live services")
+  })
+})
+
+describe("Indexer — cross-project isolation", () => {
+  test("each project uses its own Qdrant URL, API key, and collection name", async () => {
+    const captured: { url: string; headers: Record<string, string> }[] = []
+
+    const origFetch = globalThis.fetch
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      captured.push({ url, headers: (init?.headers ?? {}) as Record<string, string> })
+
+      // Health check endpoint
+      if (url.includes("/healthz")) {
+        return new Response(null, { status: 200 })
+      }
+
+      // Embedding tags endpoint
+      if (url.includes("/api/tags")) {
+        return new Response(JSON.stringify({ models: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      // Collection endpoints - return success for GET/PUT
+      if (url.includes("/collections/")) {
+        return new Response(JSON.stringify({ result: { status: "ok" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      // Default response
+      return new Response(JSON.stringify({}), { status: 200 })
+    }) as unknown as typeof fetch
+
+    try {
+      // Each project needs a git repo to get unique project IDs (derived from git root commit)
+      await using tmpA = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const d = path.join(dir, ".vuhitra")
+          fs.mkdirSync(d, { recursive: true })
+          fs.writeFileSync(
+            path.join(d, "env.json"),
+            JSON.stringify({ QDRANT_URL: "http://qdrant-a:6333", QDRANT_API_KEY: "key-a" }),
+          )
+          fs.writeFileSync(path.join(d, "settings.json"), JSON.stringify({ indexing: { enabled: true } }))
+        },
+      })
+
+      await using tmpB = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const d = path.join(dir, ".vuhitra")
+          fs.mkdirSync(d, { recursive: true })
+          fs.writeFileSync(
+            path.join(d, "env.json"),
+            JSON.stringify({ QDRANT_URL: "http://qdrant-b:6333", QDRANT_API_KEY: "key-b" }),
+          )
+          fs.writeFileSync(path.join(d, "settings.json"), JSON.stringify({ indexing: { enabled: true } }))
+        },
+      })
+
+      await Instance.provide({
+        directory: tmpA.path,
+        fn: () => Indexer.init(),
+      })
+
+      await Instance.provide({
+        directory: tmpB.path,
+        fn: () => Indexer.init(),
+      })
+
+      // Wait for async work in init() to complete (init is fire-and-forget)
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    } finally {
+      globalThis.fetch = origFetch
+    }
+
+    // Filter to collection-related requests (which pass headers)
+    const collectionRequests = captured.filter((r) => r.url.includes("/collections/"))
+
+    // Project A collection requests must use qdrant-a URL
+    const aCollectionRequests = collectionRequests.filter((r) => r.url.includes("qdrant-a"))
+    // Project B collection requests must use qdrant-b URL
+    const bCollectionRequests = collectionRequests.filter((r) => r.url.includes("qdrant-b"))
+
+    expect(aCollectionRequests.length).toBeGreaterThan(0)
+    expect(bCollectionRequests.length).toBeGreaterThan(0)
+
+    // API keys must not cross over
+    for (const r of aCollectionRequests) expect(r.headers["api-key"]).toBe("key-a")
+    for (const r of bCollectionRequests) expect(r.headers["api-key"]).toBe("key-b")
+
+    // Collection names in URLs must differ (each contains the project-specific path segment)
+    const aCollections = aCollectionRequests.map((r) => r.url.match(/\/collections\/([^/]+)/)?.[1]).filter(Boolean)
+    const bCollections = bCollectionRequests.map((r) => r.url.match(/\/collections\/([^/]+)/)?.[1]).filter(Boolean)
+
+    if (aCollections.length > 0 && bCollections.length > 0) {
+      expect(aCollections[0]).not.toBe(bCollections[0])
+    }
   })
 })
