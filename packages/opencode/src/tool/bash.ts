@@ -60,6 +60,12 @@ const INTERPRETER_CMDS = new Set([
   "php",
   "Rscript",
   "R",
+  "julia",
+  "elixir",
+  "pwsh",
+  "powershell",
+  "lua",
+  "dash",
 ])
 
 // Helper to check if command is an interpreter (handles versioned names)
@@ -68,7 +74,6 @@ const isInterpreterCmd = (cmd: string): boolean => {
   // Handle versioned interpreter names
   if (cmd.startsWith("python")) return true // python2, python3.11, etc.
   if (cmd === "nodejs" || cmd === "bun" || cmd === "deno") return true
-  if (cmd === "Rscript" || cmd === "R") return true
   return false
 }
 
@@ -76,9 +81,9 @@ const isInterpreterCmd = (cmd: string): boolean => {
 const getInlineFlag = (cmd: string): string[] => {
   if (cmd.startsWith("python")) return ["-c"]
   if (cmd === "php") return ["-r"]
-  if (cmd === "bash" || cmd === "sh" || cmd === "zsh" || cmd === "fish") return ["-c"]
-  // node, bun, deno, perl, ruby, R, Rscript use -e
-  if (cmd === "R" || cmd === "Rscript") return ["-e"]
+  if (cmd === "bash" || cmd === "sh" || cmd === "zsh" || cmd === "fish" || cmd === "dash") return ["-c"]
+  if (cmd === "pwsh" || cmd === "powershell") return ["-c"]
+  // node, bun, deno, perl, ruby, R, Rscript, julia, elixir, lua use -e
   return ["-e"]
 }
 
@@ -178,6 +183,34 @@ export const BashTool = Tool.define("bash", async () => {
           ["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0]) ||
           FILE_READ_CMDS.has(command[0])
         ) {
+          // base64 decode mode can read files and should be blocked
+          // but base64 encode mode is for encoding output, not reading files
+          if (command[0] === "base64") {
+            const hasDecodeFlag = command
+              .slice(1)
+              .some((arg) => arg === "-d" || arg === "--decode" || arg === "--decode=ignore-garbage" || arg === "-D")
+            if (hasDecodeFlag) {
+              for (const arg of command.slice(1)) {
+                if (arg.startsWith("-")) continue
+                const resolved = await $`realpath ${arg}`
+                  .cwd(cwd)
+                  .quiet()
+                  .nothrow()
+                  .text()
+                  .then((x) => x.trim())
+                if (resolved) {
+                  if (await isGitignored(resolved)) {
+                    const rel = path.relative(Instance.worktree, resolved)
+                    throw new Error(
+                      `Access denied: "${rel}" is gitignored (private).\n` +
+                        `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
+                    )
+                  }
+                }
+              }
+            }
+            continue
+          }
           for (const arg of command.slice(1)) {
             if (arg.startsWith("-") || (command[0] === "chmod" && arg.startsWith("+"))) continue
             const resolved = await $`realpath ${arg}`
@@ -218,17 +251,38 @@ export const BashTool = Tool.define("bash", async () => {
               const codeArg = command[i + 1]
               if (!codeArg) continue
               // Remove surrounding quotes (single, double, or backticks)
-              const code =
+              let code =
                 (codeArg.startsWith("'") && codeArg.endsWith("'")) || (codeArg.startsWith('"') && codeArg.endsWith('"'))
                   ? codeArg.slice(1, -1)
                   : codeArg
+
+              // Unescape shell escape sequences that may be present in the code string
+              // This handles cases like: python -c "open(\"file.txt\")" or elixir -e "File.read!(\"file.txt\")"
+              // where the quotes are escaped for shell but we need to extract the actual paths
+              code = code
+                .replace(/\\\\/g, "\x00") // Temporarily replace \\ with null char
+                .replace(/\\"/g, '"') // Unescape \"
+                .replace(/\\'/g, "'") // Unescape \'
+                .replace(/\x00/g, "\\") // Restore backslashes
 
               // Extract paths from quoted strings (for all interpreters)
               const extractedPaths = extractPathsFromCode(code)
 
               // For shell interpreters, also extract bare file paths
               // Shell commands often have unquoted file arguments
-              const isShellInterpreter = ["bash", "sh", "zsh", "fish"].includes(command[0])
+              // Also include PowerShell interpreters since they use bare paths in commands
+              const isShellInterpreter = [
+                "bash",
+                "sh",
+                "zsh",
+                "fish",
+                "dash",
+                "ash",
+                "mksh",
+                "yash",
+                "pwsh",
+                "powershell",
+              ].includes(command[0])
               if (isShellInterpreter) {
                 const barePaths = extractBarePaths(code)
                 extractedPaths.push(...barePaths)

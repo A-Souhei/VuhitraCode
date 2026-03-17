@@ -579,7 +579,7 @@ describe("tool.bash gitignore", () => {
     })
   })
 
-  test("throws when base64 targets a gitignored file", async () => {
+  test("throws when base64 -d targets a gitignored file", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -591,9 +591,29 @@ describe("tool.bash gitignore", () => {
       fn: async () => {
         const bash = await BashTool.init()
         const filepath = path.join(tmp.path, "secret.env")
-        await expect(bash.execute({ command: `base64 ${filepath}`, description: "Read secret" }, ctx)).rejects.toThrow(
-          "gitignored (private)",
-        )
+        await expect(
+          bash.execute({ command: `base64 -d ${filepath}`, description: "Decode secret" }, ctx),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("allows base64 encode mode on gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        // base64 encode mode should be allowed (not blocked)
+        await expect(
+          bash.execute({ command: `base64 ${filepath}`, description: "Encode secret" }, ctx),
+        ).resolves.toBeDefined()
       },
     })
   })
@@ -925,6 +945,281 @@ describe("tool.bash gitignore interpreter commands", () => {
             {
               command: `Rscript -e "readLines('${filepath}')"`,
               description: "Read secret via Rscript",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when zsh -c reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `zsh -c "cat ${filepath}"`,
+              description: "Read secret via zsh",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when fish -c reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `fish -c "cat ${filepath}"`,
+              description: "Read secret via fish",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when php -r reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `php -r "readfile('${filepath}');"`,
+              description: "Read secret via php",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when bun -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `bun -e "console.log(require('fs').readFileSync('${filepath}', 'utf8'))"`,
+              description: "Read secret via bun",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when deno -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `deno -e "console.log(Deno.readTextFileSync('${filepath}'))"`,
+              description: "Read secret via deno",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when julia -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `julia -e "print(read('${filepath}', String))"`,
+              description: "Read secret via julia",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when elixir -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `elixir -e "File.read!(\\"${filepath}\\")"`,
+              description: "Read secret via elixir",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when lua -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `lua -e "print(io.open('${filepath}'):read('*a'))"`,
+              description: "Read secret via lua",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when powershell -c reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `powershell -c "Get-Content ${filepath}"`,
+              description: "Read secret via powershell",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when pwsh -c reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `pwsh -c "Get-Content ${filepath}"`,
+              description: "Read secret via pwsh",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
+
+  test("throws when dash -c reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `dash -c "cat ${filepath}"`,
+              description: "Read secret via dash",
             },
             ctx,
           ),

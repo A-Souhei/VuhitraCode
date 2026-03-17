@@ -36,8 +36,8 @@ export function extractPathsFromCode(code: string): string[] {
     /'([^'\\]*(?:\\.[^'\\]*)*)'/g,
     // Double-quoted strings (with escape handling for \" and \\)
     /"([^"\\]*(?:\\.[^"\\]*)*)"/g,
-    // Template literals (with escape handling)
-    /`([^`\\]*(?:\\.[^`\\]*)*)`/g,
+    // Template literals (with escape handling and ${} expression support)
+    /`((?:[^`\\$]|\\.|\$(?!\{)|\$\{[^}]*\})*)`/g,
   ]
 
   // Common file extensions that indicate a file path
@@ -109,7 +109,6 @@ export function extractBarePaths(code: string): string[] {
   // Shell keywords that should be excluded
   const shellKeywords = new Set([
     "if",
-    "then",
     "else",
     "elif",
     "fi",
@@ -268,14 +267,19 @@ export function extractBarePaths(code: string): string[] {
   // Common file extensions pattern
   const fileExtensionPattern = /\.[a-zA-Z0-9]{1,10}$/
 
-  // Split by whitespace (shell word splitting - simplified)
-  // This handles basic splitting but doesn't handle all shell quoting edge cases
-  // which is fine since we're being conservative about what we consider a file path
-  const tokens = code.split(/\s+/)
+  // Shell operators
+  const shellOperators = new Set(["|", "||", "&&", ";", "&", ">", ">>", "<", "<<", "2>", "2>>"])
+
+  // Tokenize shell commands, handling quoted strings
+  // Matches: unquoted words, double-quoted strings, single-quoted strings
+  const tokens = code.match(/(?:[^\s"']|"[^"]*"|'[^']*')+/g) || []
 
   for (const token of tokens) {
     // Skip empty tokens
     if (!token) continue
+
+    // Skip comments (shell comments start with #)
+    if (token.startsWith("#")) continue
 
     // Skip shell keywords
     if (shellKeywords.has(token)) continue
@@ -290,13 +294,15 @@ export function extractBarePaths(code: string): string[] {
     if (token.startsWith("$")) continue
 
     // Skip shell operators
-    if (["|", "||", "&&", ";", "&", ">", ">>", "<", "<<", ">", ">>", "2>", "2>>"].includes(token)) continue
+    if (shellOperators.has(token)) continue
 
     // Check if this looks like a file path:
     // 1. Contains path separator
     // 2. OR has a file extension
-    const hasSeparator = token.includes("/")
-    const hasExtension = fileExtensionPattern.test(token)
+    const hasSeparator = token.includes("/") || token.includes("\\")
+    // Strip surrounding quotes for extension check
+    const strippedToken = token.replace(/^["']|["']$/g, "")
+    const hasExtension = fileExtensionPattern.test(strippedToken)
 
     if (hasSeparator || hasExtension) {
       paths.push(token)

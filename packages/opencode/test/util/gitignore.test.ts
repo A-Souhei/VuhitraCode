@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { extractPathsFromCode, isGitignored } from "../../src/util/gitignore"
+import { extractPathsFromCode, extractBarePaths, isGitignored } from "../../src/util/gitignore"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import * as fs from "fs/promises"
@@ -227,5 +227,73 @@ describe("isGitignored", () => {
         expect(result).toBe(false)
       },
     })
+  })
+})
+
+describe("extractBarePaths", () => {
+  test("extracts simple bare path", () => {
+    const result = extractBarePaths("cat file.txt")
+    expect(result).toContain("file.txt")
+  })
+
+  test("extracts path with separators", () => {
+    const result = extractBarePaths("cat dir/file.txt")
+    expect(result).toContain("dir/file.txt")
+  })
+
+  test("extracts relative paths", () => {
+    const result = extractBarePaths("cat ./secret.env")
+    expect(result).toContain("./secret.env")
+  })
+
+  test("extracts parent directory paths", () => {
+    const result = extractBarePaths("cat ../secret.env")
+    expect(result).toContain("../secret.env")
+  })
+
+  test("extracts Windows paths", () => {
+    const result = extractBarePaths("type C:\\Users\\secret.env")
+    expect(result).toContain("C:\\Users\\secret.env")
+  })
+
+  test("extracts multiple paths", () => {
+    const result = extractBarePaths("diff file1.txt file2.txt")
+    expect(result).toContain("file1.txt")
+    expect(result).toContain("file2.txt")
+  })
+
+  test("excludes shell keywords", () => {
+    const result = extractBarePaths("if cat file.txt")
+    expect(result).toContain("file.txt")
+    expect(result).not.toContain("if")
+  })
+
+  test("excludes commands and arguments", () => {
+    const result = extractBarePaths("cat file.txt | grep pattern")
+    expect(result).toContain("file.txt")
+    expect(result).not.toContain("grep")
+    expect(result).not.toContain("pattern")
+  })
+
+  test("excludes flags", () => {
+    const result = extractBarePaths("cat -n file.txt")
+    expect(result).toContain("file.txt")
+    expect(result).not.toContain("-n")
+  })
+
+  test("excludes variables", () => {
+    const result = extractBarePaths("cat $HOME/file.txt")
+    expect(result).not.toContain("$HOME/file.txt")
+    expect(result).not.toContain("HOME/file.txt")
+  })
+
+  test("extracts path with extension", () => {
+    const result = extractBarePaths("python script.py")
+    expect(result).toContain("script.py")
+  })
+
+  test("handles quoted paths", () => {
+    const result = extractBarePaths('cat "my file.txt"')
+    expect(result).toContain('"my file.txt"')
   })
 })
