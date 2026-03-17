@@ -47,7 +47,20 @@ const FILE_READ_CMDS = new Set([
 
 // Commands that can run inline code (-c, -e, or -r flags)
 // These need special handling to extract file paths from code strings
-const INTERPRETER_CMDS = new Set(["python", "python3", "node", "perl", "ruby", "bash", "sh", "zsh", "fish", "php"])
+const INTERPRETER_CMDS = new Set([
+  "python",
+  "python3",
+  "node",
+  "perl",
+  "ruby",
+  "bash",
+  "sh",
+  "zsh",
+  "fish",
+  "php",
+  "Rscript",
+  "R",
+])
 
 // Helper to check if command is an interpreter (handles versioned names)
 const isInterpreterCmd = (cmd: string): boolean => {
@@ -55,6 +68,7 @@ const isInterpreterCmd = (cmd: string): boolean => {
   // Handle versioned interpreter names
   if (cmd.startsWith("python")) return true // python2, python3.11, etc.
   if (cmd === "nodejs" || cmd === "bun" || cmd === "deno") return true
+  if (cmd === "Rscript" || cmd === "R") return true
   return false
 }
 
@@ -63,7 +77,8 @@ const getInlineFlag = (cmd: string): string[] => {
   if (cmd.startsWith("python")) return ["-c"]
   if (cmd === "php") return ["-r"]
   if (cmd === "bash" || cmd === "sh" || cmd === "zsh" || cmd === "fish") return ["-c"]
-  // node, bun, deno, perl, ruby use -e
+  // node, bun, deno, perl, ruby, R, Rscript use -e
+  if (cmd === "R" || cmd === "Rscript") return ["-e"]
   return ["-e"]
 }
 

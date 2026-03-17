@@ -907,4 +907,29 @@ describe("tool.bash gitignore interpreter commands", () => {
       },
     })
   })
+
+  test("throws when Rscript -e reads a gitignored file", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await setupGitignore(dir)
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const filepath = path.join(tmp.path, "secret.env")
+        await expect(
+          bash.execute(
+            {
+              command: `Rscript -e "readLines('${filepath}')"`,
+              description: "Read secret via Rscript",
+            },
+            ctx,
+          ),
+        ).rejects.toThrow("gitignored (private)")
+      },
+    })
+  })
 })
