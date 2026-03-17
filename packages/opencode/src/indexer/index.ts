@@ -92,53 +92,40 @@ export namespace Indexer {
     return (s.collectionName ??= "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
   }
 
-  let _qdrantUrl: string | undefined
   function qdrantUrl() {
-    return (_qdrantUrl ??= Env.get("QDRANT_URL") || "http://localhost:6333")
+    return Env.get("QDRANT_URL") || "http://localhost:6333"
   }
 
-  let _embeddingUrl: string | undefined
   function embeddingUrl() {
-    return (_embeddingUrl ??= Env.get("EMBEDDING_URL") || "http://localhost:11434")
+    return Env.get("EMBEDDING_URL") || "http://localhost:11434"
   }
 
-  let _embeddingModel: string | undefined
   function embeddingModel() {
-    return (_embeddingModel ??= Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest")
+    return Env.get("EMBEDDING_MODEL") || "nomic-embed-text:latest"
   }
 
-  // PERF-7: Memoized maxFileSizeBytes
-  let _maxFileSizeBytes: number | undefined
   function maxFileSizeBytes() {
-    if (_maxFileSizeBytes !== undefined) return _maxFileSizeBytes
     const val = Env.get("INDEXER_MAX_FILE_SIZE")
     if (val) {
       const parsed = parseInt(val, 10)
-      if (!isNaN(parsed) && parsed > 0 && parsed <= 100 * 1024 * 1024) return (_maxFileSizeBytes = parsed)
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 100 * 1024 * 1024) return parsed
     }
-    return (_maxFileSizeBytes = 1024 * 1024)
+    return 1024 * 1024
   }
 
-  // PERF-4: Memoized qdrantHeaders
-  let _qdrantHeaders: Record<string, string> | undefined
   function qdrantHeaders() {
-    if (_qdrantHeaders) return _qdrantHeaders
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     const key = Env.get("QDRANT_API_KEY")
     if (key) headers["api-key"] = key
-    return (_qdrantHeaders = headers)
+    return headers
   }
 
-  // PERF-3: Memoized useRedis
-  let _useRedis: boolean | undefined
   function useRedis() {
-    return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
+    return !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST"))
   }
 
-  let _redisUrl: string | undefined
   function redisUrl() {
-    return (_redisUrl ??=
-      Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`)
+    return Env.get("REDIS_URL") || `redis://${Env.get("REDIS_HOST") || "localhost"}:${Env.get("REDIS_PORT") || "6379"}`
   }
 
   function getRedisClient(): Redis {
@@ -330,10 +317,8 @@ export namespace Indexer {
     return results
   }
 
-  // PERF-8: Cache embedding endpoint URL
-  let _embedEndpoint: string | undefined
   async function embed(text: string, signal?: AbortSignal): Promise<number[]> {
-    const url = (_embedEndpoint ??= `${embeddingUrl()}/api/embeddings`)
+    const url = `${embeddingUrl()}/api/embeddings`
     const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
     const response = await fetch(url, {
       method: "POST",
@@ -421,8 +406,8 @@ export namespace Indexer {
           }
         }
         for (const point of data.result.points) {
-          const { file_path, mtime } = point.payload
-          if (file_path && mtime !== undefined && !mtimes.has(file_path)) mtimes.set(file_path, mtime)
+          if (point.payload.file_path && point.payload.mtime !== undefined && !mtimes.has(point.payload.file_path))
+            mtimes.set(point.payload.file_path, point.payload.mtime)
         }
         offset = data.result.next_page_offset
       } while (offset !== null)
@@ -1186,12 +1171,13 @@ export namespace Indexer {
     try {
       s.abortController.abort()
       s.abortController = new AbortController()
+      s.collectionName = undefined
       await store.deleteAll()
       deleteMtimeCache()
       deleteStatusFromDisk()
-      const newStatus: Status = { type: "disabled", reason: "deleted" }
-      s.status = newStatus
-      await Bus.publish(Event.Updated, newStatus)
+      const status = { type: "disabled" as const, reason: "deleted" as const }
+      s.status = status
+      await Bus.publish(Event.Updated, status)
     } finally {
       s.deleting = false
     }
