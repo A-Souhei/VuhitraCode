@@ -17,7 +17,7 @@ import { Shell } from "@/shell/shell"
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
-import { isGitignored } from "@/util/gitignore"
+import { isGitignored, extractPathsFromCode } from "@/util/gitignore"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -44,6 +44,28 @@ const FILE_READ_CMDS = new Set([
   "perl",
   "ruby",
 ])
+
+// Commands that can run inline code (-c, -e, or -r flags)
+// These need special handling to extract file paths from code strings
+const INTERPRETER_CMDS = new Set(["python", "python3", "node", "perl", "ruby", "bash", "sh", "zsh", "fish", "php"])
+
+// Helper to check if command is an interpreter (handles versioned names)
+const isInterpreterCmd = (cmd: string): boolean => {
+  if (INTERPRETER_CMDS.has(cmd)) return true
+  // Handle versioned interpreter names
+  if (cmd.startsWith("python")) return true // python2, python3.11, etc.
+  if (cmd === "nodejs" || cmd === "bun" || cmd === "deno") return true
+  return false
+}
+
+// Get the inline code flag for an interpreter
+const getInlineFlag = (cmd: string): string[] => {
+  if (cmd.startsWith("python")) return ["-c"]
+  if (cmd === "php") return ["-r"]
+  if (cmd === "bash" || cmd === "sh" || cmd === "zsh" || cmd === "fish") return ["-c"]
+  // node, bun, deno, perl, ruby use -e
+  return ["-e"]
+}
 
 export const log = Log.create({ service: "bash-tool" })
 
@@ -166,6 +188,46 @@ export const BashTool = Tool.define("bash", async () => {
                   `Access denied: "${rel}" is gitignored (private).\n` +
                     `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
                 )
+              }
+            }
+          }
+        }
+
+        // Check interpreter commands with inline code for gitignored file access
+        // python -c "...", node -e "...", bash -c "...", php -r "...", etc.
+        if (isInterpreterCmd(command[0])) {
+          const inlineFlags = getInlineFlag(command[0])
+          for (let i = 0; i < command.length - 1; i++) {
+            if (inlineFlags.includes(command[i])) {
+              // The code string is the next argument - strip quotes if present
+              const codeArg = command[i + 1]
+              if (!codeArg) continue
+              // Remove surrounding quotes (single, double, or backticks)
+              const code =
+                (codeArg.startsWith("'") && codeArg.endsWith("'")) || (codeArg.startsWith('"') && codeArg.endsWith('"'))
+                  ? codeArg.slice(1, -1)
+                  : codeArg
+              const extractedPaths = extractPathsFromCode(code)
+              for (const extractedPath of extractedPaths) {
+                const resolved = await $`realpath ${extractedPath}`
+                  .cwd(cwd)
+                  .quiet()
+                  .nothrow()
+                  .text()
+                  .then((x) => x.trim())
+                if (resolved) {
+                  const normalized =
+                    process.platform === "win32" && resolved.match(/^\/[a-z]\//)
+                      ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
+                      : resolved
+                  if (await isGitignored(normalized)) {
+                    const rel = path.relative(Instance.worktree, normalized)
+                    throw new Error(
+                      `Access denied: "${rel}" is gitignored (private).\n` +
+                        `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
+                    )
+                  }
+                }
               }
             }
           }
