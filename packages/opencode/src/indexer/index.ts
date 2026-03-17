@@ -57,6 +57,7 @@ export namespace Indexer {
     mtimeCache: Map<string, number> | null
     mtimeCacheDirty: boolean
     mtimeCacheFlushTimer: ReturnType<typeof setTimeout> | null
+    collectionName?: string
   }
 
   const state = Instance.state<State>(
@@ -85,10 +86,10 @@ export namespace Indexer {
 
   // ─── Config helpers ──────────────────────────────────────────────────────────
 
-  // PERF-1: Memoized collectionName
-  let _collectionName: string | undefined
+  // Fix: collectionName is stored per-instance in state to avoid cross-project leaks
   function collectionName() {
-    return (_collectionName ??= "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
+    const s = state()
+    return (s.collectionName ??= "opencode_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
   }
 
   let _qdrantUrl: string | undefined
@@ -740,7 +741,7 @@ export namespace Indexer {
         ? await Promise.race([
             ping,
             new Promise<never>((_, reject) => {
-              signal.addEventListener("abort", () => reject(new Error("aborted")))
+              signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
             }),
           ])
         : await ping
