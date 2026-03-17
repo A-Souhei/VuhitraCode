@@ -92,3 +92,216 @@ export function extractPathsFromCode(code: string): string[] {
 
   return paths
 }
+
+/**
+ * Extracts potential bare file paths from shell command code.
+ * Used for shell interpreters like bash, sh, zsh, fish where arguments
+ * are often not quoted.
+ *
+ * A token is considered a potential file path if:
+ * - It contains a path separator (/)
+ * - OR it has a file extension pattern (.xxx)
+ * - AND it's not a shell keyword or common command
+ */
+export function extractBarePaths(code: string): string[] {
+  const paths: string[] = []
+
+  // Shell keywords that should be excluded
+  const shellKeywords = new Set([
+    "if",
+    "then",
+    "else",
+    "elif",
+    "fi",
+    "case",
+    "esac",
+    "for",
+    "while",
+    "until",
+    "do",
+    "done",
+    "in",
+    "select",
+    "function",
+    "time",
+    "coproc",
+    "!",
+  ])
+
+  // Common shell commands that should be excluded (not file paths)
+  const commonCommands = new Set([
+    "cat",
+    "ls",
+    "echo",
+    "printf",
+    "read",
+    "cd",
+    "pwd",
+    "pushd",
+    "popd",
+    "mkdir",
+    "rmdir",
+    "rm",
+    "cp",
+    "mv",
+    "touch",
+    "chmod",
+    "chown",
+    "ln",
+    "head",
+    "tail",
+    "less",
+    "more",
+    "wc",
+    "sort",
+    "uniq",
+    "cut",
+    "paste",
+    "grep",
+    "sed",
+    "awk",
+    "find",
+    "xargs",
+    "tee",
+    "tr",
+    "basename",
+    "dirname",
+    "realpath",
+    "readlink",
+    "stat",
+    "file",
+    "du",
+    "df",
+    "mount",
+    "umount",
+    "ps",
+    "kill",
+    "killall",
+    "top",
+    "htop",
+    "bg",
+    "fg",
+    "jobs",
+    "nohup",
+    "tar",
+    "gzip",
+    "gunzip",
+    "zip",
+    "unzip",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "rsync",
+    "git",
+    "svn",
+    "hg",
+    "diff",
+    "patch",
+    "make",
+    "cmake",
+    "gcc",
+    "g++",
+    "clang",
+    "node",
+    "python",
+    "python3",
+    "ruby",
+    "perl",
+    "php",
+    "java",
+    "javac",
+    "go",
+    "rustc",
+    "cargo",
+    "npm",
+    "yarn",
+    "pnpm",
+    "bun",
+    "pip",
+    "pip3",
+    "gem",
+    "composer",
+    "docker",
+    "docker-compose",
+    "kubectl",
+    "systemctl",
+    "journalctl",
+    "iptables",
+    "ufw",
+    "crontab",
+    "at",
+    "watch",
+    "env",
+    "export",
+    "unset",
+    "set",
+    "source",
+    "alias",
+    "unalias",
+    "type",
+    "which",
+    "whereis",
+    "man",
+    "info",
+    "help",
+    "history",
+    "clear",
+    "exit",
+    "true",
+    "false",
+    "test",
+    "[",
+    "[[",
+    "return",
+    "break",
+    "continue",
+    "shift",
+    "getopts",
+    "eval",
+    "exec",
+    "trap",
+    "wait",
+    "suspend",
+  ])
+
+  // Common file extensions pattern
+  const fileExtensionPattern = /\.[a-zA-Z0-9]{1,10}$/
+
+  // Split by whitespace (shell word splitting - simplified)
+  // This handles basic splitting but doesn't handle all shell quoting edge cases
+  // which is fine since we're being conservative about what we consider a file path
+  const tokens = code.split(/\s+/)
+
+  for (const token of tokens) {
+    // Skip empty tokens
+    if (!token) continue
+
+    // Skip shell keywords
+    if (shellKeywords.has(token)) continue
+
+    // Skip common commands
+    if (commonCommands.has(token)) continue
+
+    // Skip flags/options (starting with -)
+    if (token.startsWith("-")) continue
+
+    // Skip shell variables (starting with $)
+    if (token.startsWith("$")) continue
+
+    // Skip shell operators
+    if (["|", "||", "&&", ";", "&", ">", ">>", "<", "<<", ">", ">>", "2>", "2>>"].includes(token)) continue
+
+    // Check if this looks like a file path:
+    // 1. Contains path separator
+    // 2. OR has a file extension
+    const hasSeparator = token.includes("/")
+    const hasExtension = fileExtensionPattern.test(token)
+
+    if (hasSeparator || hasExtension) {
+      paths.push(token)
+    }
+  }
+
+  return paths
+}

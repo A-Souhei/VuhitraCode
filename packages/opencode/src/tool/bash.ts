@@ -17,7 +17,7 @@ import { Shell } from "@/shell/shell"
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
-import { isGitignored, extractPathsFromCode } from "@/util/gitignore"
+import { isGitignored, extractPathsFromCode, extractBarePaths } from "@/util/gitignore"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -207,7 +207,18 @@ export const BashTool = Tool.define("bash", async () => {
                 (codeArg.startsWith("'") && codeArg.endsWith("'")) || (codeArg.startsWith('"') && codeArg.endsWith('"'))
                   ? codeArg.slice(1, -1)
                   : codeArg
+
+              // Extract paths from quoted strings (for all interpreters)
               const extractedPaths = extractPathsFromCode(code)
+
+              // For shell interpreters, also extract bare file paths
+              // Shell commands often have unquoted file arguments
+              const isShellInterpreter = ["bash", "sh", "zsh", "fish"].includes(command[0])
+              if (isShellInterpreter) {
+                const barePaths = extractBarePaths(code)
+                extractedPaths.push(...barePaths)
+              }
+
               for (const extractedPath of extractedPaths) {
                 const resolved = await $`realpath ${extractedPath}`
                   .cwd(cwd)
