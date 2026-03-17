@@ -122,6 +122,8 @@ import type {
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
   ProviderOauthCallbackResponses,
+  ProviderOllamaConfigResponses,
+  ProviderOllamaModelsResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyCreateErrors,
@@ -2509,6 +2511,64 @@ export class Question extends HeyApiClient {
   }
 }
 
+export class Ollama extends HeyApiClient {
+  /**
+   * List Ollama models
+   *
+   * Fetch available models from the Ollama server.
+   */
+  public models<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ProviderOllamaModelsResponses, unknown, ThrowOnError>({
+      url: "/provider/ollama/models",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Configure Ollama settings
+   *
+   * Update Ollama configuration including enabled models and secret model.
+   */
+  public config<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      enabledModels?: Array<string>
+      secretModel?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "enabledModels" },
+            { in: "body", key: "secretModel" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<ProviderOllamaConfigResponses, unknown, ThrowOnError>({
+      url: "/provider/ollama/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Oauth extends HeyApiClient {
   /**
    * OAuth authorize
@@ -2632,6 +2692,11 @@ export class Provider extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _ollama?: Ollama
+  get ollama(): Ollama {
+    return (this._ollama ??= new Ollama({ client: this.client }))
   }
 
   private _oauth?: Oauth

@@ -4806,6 +4806,51 @@ export type ProviderAuthResponses = {
 
 export type ProviderAuthResponse = ProviderAuthResponses[keyof ProviderAuthResponses]
 
+export type ProviderOllamaModelsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/ollama/models"
+}
+
+export type ProviderOllamaModelsResponses = {
+  /**
+   * List of Ollama models
+   */
+  200: {
+    models: Array<{
+      id: string
+      name: string
+      size: number
+    }>
+  }
+}
+
+export type ProviderOllamaModelsResponse = ProviderOllamaModelsResponses[keyof ProviderOllamaModelsResponses]
+
+export type ProviderOllamaConfigData = {
+  body?: {
+    enabledModels?: Array<string>
+    secretModel?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/provider/ollama/config"
+}
+
+export type ProviderOllamaConfigResponses = {
+  /**
+   * Configuration updated successfully
+   */
+  200: boolean
+}
+
+export type ProviderOllamaConfigResponse = ProviderOllamaConfigResponses[keyof ProviderOllamaConfigResponses]
+
 export type ProviderOauthAuthorizeData = {
   body?: {
     /**
