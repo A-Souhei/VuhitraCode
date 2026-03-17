@@ -254,6 +254,30 @@ export namespace Biblion {
       return data.result?.count ?? 0
     },
 
+    async sumTokenCount(): Promise<number> {
+      const name = collectionName()
+      const url = qdrantUrl()
+      let total = 0
+      let offset: unknown = null
+      do {
+        const body: Record<string, unknown> = { limit: 100, with_payload: ["token_count"], with_vector: false }
+        if (offset !== null) body.offset = offset
+        const response = await fetch(`${url}/collections/${name}/points/scroll`, {
+          method: "POST",
+          headers: qdrantHeaders(),
+          signal: AbortSignal.timeout(30_000),
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) return total
+        const data = (await response.json()) as {
+          result: { points: { payload?: { token_count?: number } }[]; next_page_offset?: unknown }
+        }
+        for (const p of data.result.points) total += p.payload?.token_count ?? 0
+        offset = data.result.next_page_offset ?? null
+      } while (offset !== null)
+      return total
+    },
+
     async checkHealth(signal?: AbortSignal) {
       const combined = signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
       const r = await fetch(`${qdrantUrl()}/healthz`, { signal: combined })
@@ -441,6 +465,27 @@ export namespace Biblion {
       return (result[0] as number) ?? 0
     },
 
+    async sumTokenCount(): Promise<number> {
+      const client = getRedisClient()
+      const prefix = redis.keyPrefix()
+      let total = 0
+      let cursor = "0"
+      do {
+        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
+        cursor = next
+        if (keys.length > 0) {
+          const pipeline = client.pipeline()
+          for (const key of keys) pipeline.hget(key, "token_count")
+          const results = ((await pipeline.exec()) ?? []) as ([Error | null, string | null] | null)[]
+          for (const res of results) {
+            if (!res || res[0]) continue
+            total += parseInt(res[1] ?? "0", 10) || 0
+          }
+        }
+      } while (cursor !== "0")
+      return total
+    },
+
     async checkHealth(signal?: AbortSignal) {
       const client = getRedisClient()
       await client.connect().catch(() => {})
@@ -517,6 +562,9 @@ export namespace Biblion {
     },
     async count() {
       return useRedis() ? redis.count() : qdrant.count()
+    },
+    async sumTokenCount() {
+      return useRedis() ? redis.sumTokenCount() : qdrant.sumTokenCount()
     },
     async checkHealth(signal?: AbortSignal) {
       return useRedis() ? redis.checkHealth(signal) : qdrant.checkHealth(signal)
@@ -661,15 +709,15 @@ export namespace Biblion {
         if (state() !== initialState) return
         await store.ensureIndex()
         if (state() !== initialState) return
-        const entryCount = await store.count()
+        const [entryCount, tokenCount] = await Promise.all([store.count(), store.sumTokenCount()])
         if (state() !== initialState) return
         const s2 = state()
         s2.entryCount = entryCount
-        s2.tokenCount = 0
+        s2.tokenCount = tokenCount
         s2.status = {
           type: "ready",
           entry_count: entryCount,
-          token_count: 0,
+          token_count: tokenCount,
           backend: activeBackend(),
           embedding_url: safeUrl(embeddingUrl()),
           embedding_model: embeddingModel(),
