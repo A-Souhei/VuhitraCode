@@ -183,29 +183,26 @@ export const BashTool = Tool.define("bash", async () => {
           ["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown"].includes(command[0]) ||
           FILE_READ_CMDS.has(command[0])
         ) {
-          // base64 decode mode can read files and should be blocked
-          // but base64 encode mode is for encoding output, not reading files
+          // base64 can read files in both encode and decode modes
+          // "base64 file" encodes file content (exposes data)
+          // "base64 -d file" decodes file content (exposes data)
+          // Both should be blocked for gitignored files
           if (command[0] === "base64") {
-            const hasDecodeFlag = command
-              .slice(1)
-              .some((arg) => arg === "-d" || arg === "--decode" || arg === "--decode=ignore-garbage" || arg === "-D")
-            if (hasDecodeFlag) {
-              for (const arg of command.slice(1)) {
-                if (arg.startsWith("-")) continue
-                const resolved = await $`realpath ${arg}`
-                  .cwd(cwd)
-                  .quiet()
-                  .nothrow()
-                  .text()
-                  .then((x) => x.trim())
-                if (resolved) {
-                  if (await isGitignored(resolved)) {
-                    const rel = path.relative(Instance.worktree, resolved)
-                    throw new Error(
-                      `Access denied: "${rel}" is gitignored (private).\n` +
-                        `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
-                    )
-                  }
+            for (const arg of command.slice(1)) {
+              if (arg.startsWith("-")) continue
+              const resolved = await $`realpath ${arg}`
+                .cwd(cwd)
+                .quiet()
+                .nothrow()
+                .text()
+                .then((x) => x.trim())
+              if (resolved) {
+                if (await isGitignored(resolved)) {
+                  const rel = path.relative(Instance.worktree, resolved)
+                  throw new Error(
+                    `Access denied: "${rel}" is gitignored (private).\n` +
+                      `This file may contain sensitive data. Use the Read tool to access it safely instead.`,
+                  )
                 }
               }
             }

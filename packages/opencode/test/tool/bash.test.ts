@@ -598,7 +598,7 @@ describe("tool.bash gitignore", () => {
     })
   })
 
-  test("allows base64 encode mode on gitignored file", async () => {
+  test("throws when base64 encode mode targets a gitignored file", async () => {
     await using tmp = await tmpdir({
       git: true,
       init: async (dir) => {
@@ -610,10 +610,10 @@ describe("tool.bash gitignore", () => {
       fn: async () => {
         const bash = await BashTool.init()
         const filepath = path.join(tmp.path, "secret.env")
-        // base64 encode mode should be allowed (not blocked)
+        // base64 encode mode also reads files and should be blocked
         await expect(
           bash.execute({ command: `base64 ${filepath}`, description: "Encode secret" }, ctx),
-        ).resolves.toBeDefined()
+        ).rejects.toThrow("gitignored (private)")
       },
     })
   })
