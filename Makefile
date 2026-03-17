@@ -99,3 +99,26 @@ install-electron:
 		scripts/vuhitracode-electron.sh > ~/.local/bin/vuhitracode-electron
 	@chmod +x ~/.local/bin/vuhitracode-electron
 	@echo "Installed: vuhitracode-electron → ~/.local/bin/vuhitracode-electron"
+	@cp scripts/vuhitracode-electron-launch.sh ~/.local/bin/vuhitracode-electron-launch
+	@chmod +x ~/.local/bin/vuhitracode-electron-launch
+	@echo "Installed: vuhitracode-electron-launch → ~/.local/bin/vuhitracode-electron-launch"
+	@mkdir -p ~/.local/share/applications
+	@mkdir -p ~/.local/share/icons/hicolor/512x512/apps
+	@cp scripts/vuhitracode-electron.desktop ~/.local/share/applications/vuhitracode-electron.desktop
+	@mkdir -p ~/Desktop
+	@cp scripts/vuhitracode-electron.desktop ~/Desktop/vuhitracode-electron.desktop
+	@chmod +x ~/Desktop/vuhitracode-electron.desktop
+	@cp packages/desktop/src-tauri/icons/prod/icon.png ~/.local/share/icons/hicolor/512x512/apps/vuhitracode-electron.png
+	@update-desktop-database ~/.local/share/applications 2>/dev/null || true
+	@echo "Installed: desktop shortcut → ~/.local/share/applications/vuhitracode-electron.desktop"
+	@echo "Installed: desktop icon → ~/Desktop/vuhitracode-electron.desktop"
+	@echo "Installed: icon → ~/.local/share/icons/hicolor/512x512/apps/vuhitracode-electron.png"
+	@# Pin to GNOME dash (adds if not already present)
+	@python3 -c "\
+import subprocess, json; \
+cur = subprocess.check_output(['gsettings','get','org.gnome.shell','favorite-apps']).decode().strip(); \
+favs = json.loads(cur.replace(\"'\",'\"')); \
+entry = 'vuhitracode-electron.desktop'; \
+(favs.append(entry) if entry not in favs else None); \
+subprocess.run(['gsettings','set','org.gnome.shell','favorite-apps', str(favs).replace('\"',\"'\")])" 2>/dev/null || true
+	@echo "Pinned: vuhitracode-electron.desktop → GNOME dash"
