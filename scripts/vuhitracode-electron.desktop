@@ -2,7 +2,7 @@
 Version=1.0
 Name=VuhitraCode
 Comment=AI-powered code editor
-Exec=/home/toavina/.local/bin/vuhitracode-electron-launch
+Exec=vuhitracode-electron-launch
 Icon=vuhitracode-electron
 Type=Application
 Categories=Development;IDE;

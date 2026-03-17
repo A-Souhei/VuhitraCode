@@ -105,6 +105,7 @@ install-electron:
 	@mkdir -p ~/.local/share/applications
 	@mkdir -p ~/.local/share/icons/hicolor/512x512/apps
 	@cp scripts/vuhitracode-electron.desktop ~/.local/share/applications/vuhitracode-electron.desktop
+	@mkdir -p ~/Desktop
 	@cp scripts/vuhitracode-electron.desktop ~/Desktop/vuhitracode-electron.desktop
 	@chmod +x ~/Desktop/vuhitracode-electron.desktop
 	@cp packages/desktop/src-tauri/icons/prod/icon.png ~/.local/share/icons/hicolor/512x512/apps/vuhitracode-electron.png

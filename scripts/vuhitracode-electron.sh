@@ -10,9 +10,15 @@ ELECTRONDIR="$(cd "$(dirname "$0")/../packages/electron" 2>/dev/null && pwd)"
 # Ensure nvm-managed node is on PATH (desktop sessions skip ~/.bashrc / ~/.profile)
 NVM_DEFAULT="$HOME/.nvm/alias/default"
 if [ -f "$NVM_DEFAULT" ]; then
-  NVM_VER=$(cat "$NVM_DEFAULT")
+  NVM_VER=$(cat "$NVM_DEFAULT" | tr -d '[:space:]')
+  # Strip leading 'v' if present, then re-add it for the directory lookup
+  NVM_VER="${NVM_VER#v}"
   NVM_NODE=$(ls -d "$HOME/.nvm/versions/node/v${NVM_VER}"* 2>/dev/null | sort -V | tail -1)
-  [ -d "$NVM_NODE/bin" ] && export PATH="$NVM_NODE/bin:$PATH"
+  # If direct version lookup failed, alias may be symbolic (e.g. "lts/*", "node") — resolve via nvm
+  if [ ! -d "${NVM_NODE:-}/bin" ] && [ -s "$HOME/.nvm/nvm.sh" ]; then
+    NVM_NODE=$(bash -c ". \"$HOME/.nvm/nvm.sh\" --no-use && nvm which default 2>/dev/null" | xargs dirname 2>/dev/null)
+  fi
+  [ -d "${NVM_NODE:-}/bin" ] && export PATH="${NVM_NODE}/bin:$PATH"
 fi
 # Also ensure bun is on PATH
 export PATH="$HOME/.bun/bin:$PATH"
@@ -125,7 +131,8 @@ start() {
     echo "Stop with: vuhitracode-electron stop"
   else
     echo "Starting backend on :4096 and web dev on :4444 ..."
-    trap 'echo ""; echo "Shutting down..."; kill "$BUN_BACKEND_PID" "$BUN_WEB_PID" 2>/dev/null' INT TERM EXIT
+    BUN_BACKEND_PID=""
+    BUN_WEB_PID=""
 
     "$BUN" run --cwd "$PKGDIR" --conditions=browser src/index.ts serve --port 4096 \
       >> "$LOGFILE" 2>&1 &
@@ -133,6 +140,8 @@ start() {
     "$BUN" --cwd "$WEBDIR" dev -- --port 4444 \
       >> "$LOGFILE" 2>&1 &
     BUN_WEB_PID=$!
+
+    trap 'echo ""; echo "Shutting down..."; [ -n "$BUN_BACKEND_PID" ] && kill "$BUN_BACKEND_PID" 2>/dev/null; [ -n "$BUN_WEB_PID" ] && kill "$BUN_WEB_PID" 2>/dev/null' INT TERM EXIT
 
     wait_ready || { kill "$BUN_BACKEND_PID" "$BUN_WEB_PID" 2>/dev/null; exit 1; }
 

@@ -48,7 +48,7 @@ make install-electron
 
 This will:
 
-1. Copy the launcher script to `~/.local/bin/vuhitracode-electron-launch.sh`
+1. Copy the launcher script to `~/.local/bin/vuhitracode-electron-launch`
 2. Install the `.desktop` entry to `~/.local/share/applications/`
 3. Copy the app icon to `~/.local/share/icons/`
 4. Copy a desktop shortcut to `~/Desktop/`
@@ -73,13 +73,16 @@ After installation, you can launch VuhitraCode from the GNOME Activities overvie
 Desktop sessions launched from GNOME do not inherit the user's shell environment. In particular:
 
 - `WAYLAND_DISPLAY` / `DISPLAY` / `XAUTHORITY` are not set
-- `nvm` is not initialized, so the system Node (often v18) is used instead of the project's required v20+
+- `nvm` is not initialized in desktop sessions, so the system Node (often v18) is used instead of the project's required v20+
 
-`vuhitracode-electron-launch.sh` solves both problems:
+`vuhitracode-electron-launch` resolves the display environment and delegates to `vuhitracode-electron`:
 
 1. Reads display environment variables from `systemctl --user show-environment`
-2. Reads the nvm default alias from `~/.nvm/alias/default` and prepends the correct Node binary to `PATH`
-3. Delegates execution to `systemd-run --scope` with all required `--setenv=` flags, isolating the app from the GNOME session cgroup
+2. Delegates execution to `systemd-run --scope` with all required `--setenv=` flags, isolating the app from the GNOME session cgroup (falls back to direct exec if `systemd-run` is unavailable)
+
+`vuhitracode-electron` (the main wrapper script) handles the nvm PATH problem:
+
+3. Reads `~/.nvm/alias/default` and resolves the correct Node binary path, handling both versioned aliases (e.g. `v20.12.0`) and symbolic aliases (e.g. `lts/*`, `node`) via `nvm which default`
 
 This means a crash in the app cannot propagate to the GNOME session.
 

@@ -8,8 +8,16 @@ const URL = "http://localhost:4444" // local dev server — plain HTTP is intent
 function probe() {
   return new Promise((resolve) => {
     const req = net.request(URL)
-    req.on("response", () => resolve(true))
+    req.setTimeout(2000)
+    req.on("response", (res) => {
+      res.resume() // drain so socket is released
+      resolve(true)
+    })
     req.on("error", () => resolve(false))
+    req.on("timeout", () => {
+      req.abort()
+      resolve(false)
+    })
     req.end()
   })
 }
