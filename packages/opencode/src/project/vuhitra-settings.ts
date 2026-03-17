@@ -54,23 +54,11 @@ export namespace VuHitraSettings {
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
     await fs.promises.writeFile(filePath, JSON.stringify(merged, null, 2) + "\n", "utf-8")
     try {
-      const instanceDir = Instance.directory
-      // Normalize paths for comparison (resolve relative paths)
-      let normalizedDir = dir ? path.resolve(dir) : undefined
-      let normalizedInstanceDir = path.resolve(instanceDir)
-      // Resolve symlinks for accurate comparison
-      try {
-        if (normalizedDir) normalizedDir = fs.realpathSync(normalizedDir)
-        normalizedInstanceDir = fs.realpathSync(normalizedInstanceDir)
-      } catch {
-        // realpathSync can fail if path doesn't exist; fall back to path.resolve result
-      }
-      if (!normalizedDir || normalizedDir === normalizedInstanceDir) {
+      if (!dir || path.resolve(dir) === path.resolve(Instance.directory)) {
         Object.assign(state(), merged)
       }
     } catch {
-      // TUI context: Instance.directory not available; in-memory state not updated.
-      // Server will re-read from disk on next access.
+      // Instance context unavailable (e.g. TUI main thread); state update skipped.
     }
   }
 
