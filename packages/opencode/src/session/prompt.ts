@@ -1258,7 +1258,7 @@ export namespace SessionPrompt {
 
               if (await isGitignored(filepath)) {
                 // Secret agent bypasses gitignore checks entirely
-                if (input.agent !== "secret" && input.agent !== "analyse") {
+                if (input.agent !== "secret" && input.agent !== "analyse" && input.agent !== "data-explore") {
                   const rel = path.relative(Instance.worktree, filepath)
                   const stat = await fs.stat(filepath)
                   const binary = await isBinaryFile(filepath, Number(stat.size))

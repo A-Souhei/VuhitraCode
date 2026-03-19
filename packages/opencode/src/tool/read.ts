@@ -77,11 +77,11 @@ export const ReadTool = Tool.define("read", {
     let shouldFake = false
     const gitignored = await isGitignored(resolvedFilepath)
     if (gitignored) {
-      if (ctx.agent === "analyse") {
+      if (ctx.agent === "analyse" || ctx.agent === "data-explore") {
         // Analyse agent: full bypass — reads raw content, no faking (runs locally on ollama)
       } else {
         const ollamaModel = Env.get("OLLAMA_MODEL")
-        if (ctx.agent !== "secret") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           // Regular agents: redirect to secret agent if model is set (they have credentials)
           if (ollamaModel) {
             throw new Error(
@@ -126,7 +126,7 @@ export const ReadTool = Tool.define("read", {
     if (stat.isDirectory()) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret" && ctx.agent !== "analyse") {
+        if (ctx.agent !== "secret" && ctx.agent !== "analyse" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
           )
@@ -195,7 +195,7 @@ export const ReadTool = Tool.define("read", {
     if (isImage || isPdf) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret" && ctx.agent !== "analyse") {
+        if (ctx.agent !== "secret" && ctx.agent !== "analyse" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
           )
