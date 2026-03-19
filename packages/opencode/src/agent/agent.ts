@@ -761,6 +761,7 @@ export namespace Agent {
           }),
           user,
         ),
+        model_lock: true,
         model: {
           providerID: "ollama",
           modelID: ollamaModel,
