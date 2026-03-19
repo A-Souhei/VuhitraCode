@@ -160,6 +160,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
 
       const set = (model: ModelKey | undefined, options?: { recent?: boolean }) => {
+        if (agent.current()?.model) return
         batch(() => {
           const currentAgent = agent.current()
           const next = model ?? fallbackModel()
@@ -171,11 +172,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       setModel = set
 
+      const locked = createMemo(() => !!agent.current()?.model)
+
       return {
         ready: models.ready,
         current,
         recent,
         list: models.list,
+        locked,
         cycle,
         set,
         visible(model: ModelKey) {

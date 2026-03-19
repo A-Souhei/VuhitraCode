@@ -1443,6 +1443,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         size: "normal",
                         style: { height: "28px" },
                         class: "min-w-0 max-w-[320px] text-13-regular group",
+                        disabled: local.model.locked(),
                       }}
                     >
                       <Show when={local.model.current()?.provider?.id}>

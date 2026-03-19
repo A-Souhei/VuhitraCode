@@ -2,6 +2,7 @@ import { NamedError } from "@opencode-ai/util/error"
 import matter from "gray-matter"
 import { z } from "zod"
 import { Filesystem } from "../util/filesystem"
+import { Env } from "../env"
 
 export namespace ConfigMarkdown {
   export const FILE_REGEX = /(?<![\w`])@(\.?[^\s`,.]*(?:\.[^\s`,.]+)*)/g
@@ -69,7 +70,8 @@ export namespace ConfigMarkdown {
   }
 
   export async function parse(filePath: string) {
-    const template = await Filesystem.readText(filePath)
+    let template = await Filesystem.readText(filePath)
+    template = template.replace(/\{env:([^}]+)\}/g, (_, v) => Env.get(v) ?? "")
 
     try {
       const md = matter(template)

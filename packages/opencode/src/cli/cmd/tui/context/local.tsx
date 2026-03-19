@@ -470,6 +470,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }),
         cycle(direction: 1 | -1) {
+          if (agent.current().model) return
           if (modelLock.enabled) {
             toast.show({
               message: `Model is locked to ${modelLock.model}. Edit .vuhitra/settings.json to unlock.`,
@@ -491,6 +492,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setModelStore("model", agent.current().name, { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
+          if (agent.current().model) return
           if (modelLock.enabled) {
             toast.show({
               message: `Model is locked to ${modelLock.model}. Edit .vuhitra/settings.json to unlock.`,
@@ -532,6 +534,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           save()
         },
         set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
+          if (agent.current().model) return
           batch(() => {
             if (modelLock.enabled && modelLock.model?.includes("/")) {
               const { providerID, modelID } = Provider.parseModel(modelLock.model)
