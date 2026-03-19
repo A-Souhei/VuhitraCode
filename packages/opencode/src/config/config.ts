@@ -685,6 +685,10 @@ export namespace Config {
   export const Agent = z
     .object({
       model: ModelId.optional(),
+      model_lock: z
+        .boolean()
+        .optional()
+        .describe("When true, prevents the agent's model from being overridden by user or profile settings"),
       variant: z
         .string()
         .optional()
@@ -722,6 +726,7 @@ export namespace Config {
       const knownKeys = new Set([
         "name",
         "model",
+        "model_lock",
         "variant",
         "prompt",
         "description",

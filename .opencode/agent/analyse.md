@@ -2,6 +2,7 @@
 description: Local data analyst agent — runs on ollama, writes and executes Python code for data analysis
 mode: primary
 model: ollama/{env:OLLAMA_MODEL}
+model_lock: true
 permission:
   bash: "allow"
 ---

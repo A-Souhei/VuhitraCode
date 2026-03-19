@@ -2,6 +2,7 @@
 description: Subagent for analyzing sensitive data and returning insights only (no raw data values)
 mode: subagent
 model: ollama/{env:OLLAMA_MODEL}
+model_lock: true
 permission:
   bash: "allow"
 ---

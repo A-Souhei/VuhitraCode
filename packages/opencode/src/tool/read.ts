@@ -77,25 +77,23 @@ export const ReadTool = Tool.define("read", {
     let shouldFake = false
     const gitignored = await isGitignored(resolvedFilepath)
     if (gitignored) {
-      if (ctx.agent === "analyse" || ctx.agent === "data-explore") {
-        // Analyse agent: full bypass — reads raw content, no faking (runs locally on ollama)
+      if (ctx.agent === "data-explore") {
+        // data-explore agent: full bypass — reads raw content, no faking (runs locally on ollama, insights-only output)
+      } else if (ctx.agent === "secret") {
+        // Secret agent: always apply faking for defense-in-depth
+        shouldFake = true
       } else {
+        // Regular agents: redirect to secret agent if running on ollama
         const ollamaModel = Env.get("OLLAMA_MODEL")
-        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
-          // Regular agents: redirect to secret agent if model is set (they have credentials)
-          if (ollamaModel) {
-            throw new Error(
-              `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
-                `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
-                `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
-            )
-          }
-          // No model set: apply faking as defense-in-depth
-          shouldFake = true
-        } else {
-          // Secret agent: always apply faking for defense-in-depth
-          shouldFake = true
+        if (ollamaModel) {
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+              `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
+              `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
+          )
         }
+        // No model set: apply faking as defense-in-depth
+        shouldFake = true
       }
     }
 
@@ -126,12 +124,12 @@ export const ReadTool = Tool.define("read", {
     if (stat.isDirectory()) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret" && ctx.agent !== "analyse" && ctx.agent !== "data-explore") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
           )
         }
-        // Secret and analyse agents can read gitignored directories
+        // Secret and data-explore agents can read gitignored directories
       }
 
       const dirents = await fs.readdir(filepath, { withFileTypes: true })
@@ -195,12 +193,12 @@ export const ReadTool = Tool.define("read", {
     if (isImage || isPdf) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret" && ctx.agent !== "analyse" && ctx.agent !== "data-explore") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
           )
         }
-        // Secret and analyse agents can read gitignored images/PDFs
+        // Secret and data-explore agents can read gitignored images/PDFs
       }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {

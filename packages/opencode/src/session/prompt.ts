@@ -976,7 +976,10 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
-    const model = input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID))
+    const model =
+      agent.model_lock && agent.model
+        ? agent.model
+        : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const full =
       !input.variant && agent.variant
         ? await Provider.getModel(model.providerID, model.modelID).catch(() => undefined)
@@ -1258,7 +1261,7 @@ export namespace SessionPrompt {
 
               if (await isGitignored(filepath)) {
                 // Secret agent bypasses gitignore checks entirely
-                if (input.agent !== "secret" && input.agent !== "analyse" && input.agent !== "data-explore") {
+                if (input.agent !== "secret" && input.agent !== "data-explore") {
                   const rel = path.relative(Instance.worktree, filepath)
                   const stat = await fs.stat(filepath)
                   const binary = await isBinaryFile(filepath, Number(stat.size))
@@ -1586,7 +1589,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
-    const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
+    const model =
+      agent.model_lock && agent.model ? agent.model : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
