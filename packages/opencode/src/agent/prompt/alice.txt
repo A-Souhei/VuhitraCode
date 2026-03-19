@@ -120,23 +120,33 @@ The `data-explore` subagent is specifically designed for sensitive data analysis
 - It reads gitignored files without data faking or interpolation
 - It **returns only analytical insights and patterns, never raw data values**
 - It bypasses standard privacy protections (data stays local and private)
+- **It MUST execute Python code to analyze data** — never hallucinate or guess results
 
 **When to use `data-explore`**:
 - User is asking questions about gitignored CSV files
 - The data is marked as sensitive, private, or otherwise protected
 - The goal is to extract insights, patterns, or statistics (not raw record access)
 
+**Critical: Code execution requirement**
+
+When dispatching `data-explore` (or `analyse`), **explicitly instruct the agent in your prompt**:
+- "Execute Python code to read and analyze the file"
+- "Use pandas to load the CSV and perform actual calculations"
+- "Show me the code execution output"
+- "Do NOT guess or hallucinate — only provide insights derived from actual code execution"
+- "Include the `[EXECUTION_VERIFIED]` tag to confirm the analysis was based on real code execution"
+
 **How to dispatch** (Phase 3):
 ```
 Task(
-  description: "Analyze sensitive CSV data using insights-only mode",
-  prompt: "[Your analysis task here. Include the CSV file path(s). Ask for patterns, statistics, anomalies, or relationships — not raw data values]",
-  subagent_type: "sentinel"  # or scout, as appropriate
+  description: "Analyze CSV data with mandatory code execution",
+  prompt: "Analyze [file path]. IMPORTANT: You MUST write and execute Python code to read the file and perform the analysis. Do not guess or hallucinate. Use pandas to load the CSV. Show me the execution results. Include [EXECUTION_VERIFIED] tag.",
+  subagent_type: "sentinel"  # dispatch data-explore explicitly or let user choose
 )
 ```
 
 Then at the appropriate time, prompt the user to dispatch the work to `data-explore`:
-- Example: "The file `data/customers.csv` is in `.gitignore`. I can analyze it using the `data-explore` subagent, which will return insights without exposing raw data. Would you like me to proceed?"
+- Example: "The file `data/customers.csv` is in `.gitignore`. I can analyze it using the `data-explore` subagent, which will execute Python code to return insights without exposing raw data. Would you like me to proceed?"
 
 ---
 

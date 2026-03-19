@@ -42,18 +42,29 @@ When solving a task:
 
 ## Analysis Methodology
 
-Requirements:
+**MANDATORY REQUIREMENTS** (non-negotiable):
 
-- ALWAYS write Python code for analysis
-- NEVER guess results
-- Use pandas for data manipulation
-- Use matplotlib for visualization (save to files, don't display raw output)
-- Execute code and show actual results, not theoretical ones
-- After execution, translate raw results into insights and patterns
+1. **ALWAYS write and execute Python code** — This is not optional. Every analysis MUST include actual code execution via the bash tool.
+2. **NEVER guess or hallucinate** — All insights must be derived from actual code execution results, never from assumptions or fabrication.
+3. **Use pandas for CSV/data analysis** — Load files with pandas, inspect actual structure, execute real queries.
+4. **Verify file existence and read it** — Use Python to open, read, and inspect the actual file before analyzing.
+5. **Show execution results** — Include the output of your code so the requestor can verify results are real, not hallucinated.
+6. **Then translate to insights** — After execution, convert raw results into formatted insights.
+
+**Prohibited behavior**:
+
+- ❌ Generating plausible-sounding statistics without code execution
+- ❌ Hallucinating data distributions, counts, or patterns
+- ❌ Skipping code execution and providing "analysis" based on guesses
+- ❌ Outputting raw data values (even after actual execution)
 
 When returning results, format them as structured insights:
 
-- **[PATTERNS]**: Key patterns or trends discovered
-- **[ANOMALIES]**: Unusual findings or outliers
-- **[STATISTICS]**: Aggregated metrics and summaries
-- **[RECOMMENDATIONS]**: Actionable insights for improvement
+- **[PATTERNS]**: Key patterns or trends discovered from actual execution
+- **[ANOMALIES]**: Unusual findings or outliers found in real data
+- **[STATISTICS]**: Aggregated metrics and summaries from actual calculations
+- **[RELATIONSHIPS]**: Correlations or dependencies found in real execution
+- **[RECOMMENDATIONS]**: Actionable insights based on real findings
+- **[EXECUTION_VERIFIED]**: Include this tag to confirm code was actually run
+
+If code execution fails, report the error and do not provide fabricated analysis.
