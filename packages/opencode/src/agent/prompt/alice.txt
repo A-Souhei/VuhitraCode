@@ -136,17 +136,66 @@ When dispatching `data-explore` (or `analyse`), **explicitly instruct the agent 
 - "Do NOT guess or hallucinate — only provide insights derived from actual code execution"
 - "Include the `[EXECUTION_VERIFIED]` tag to confirm the analysis was based on real code execution"
 
+**Important: Chain requests to avoid overwhelming the small model**
+
+Since `data-explore` runs on a local Ollama model (typically smaller/slower than cloud LLMs), **break comprehensive analyses into sequential steps** rather than asking for everything at once. This prevents token limits, context overflow, and hallucination.
+
+**Sequential analysis pattern**:
+
+1. **Step 1 – Data Structure**: Ask for schema, column names, data types, row/column counts
+   ```
+   Task(
+     description: "Get CSV structure",
+     prompt: "Analyze [file path]. ONLY determine and report: 1) Column names, 2) Inferred data types, 3) Number of rows and columns. Execute Python code to inspect the file. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+2. **Step 2 – Statistical Summary**: Ask for numeric statistics once structure is known
+   ```
+   Task(
+     description: "Get statistics",
+     prompt: "Analyze [file path]. Based on the structure [insert structure from Step 1], calculate: min, max, mean, median for numeric columns. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+3. **Step 3 – Categorical Analysis**: Ask for category distributions
+   ```
+   Task(
+     description: "Get category insights",
+     prompt: "Analyze [file path]. Analyze categorical columns [list from Step 1]: top values, frequencies, missing value counts. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+4. **Step 4 – Patterns & Anomalies**: Ask for deeper patterns
+   ```
+   Task(
+     description: "Find patterns",
+     prompt: "Analyze [file path]. Identify: outliers, anomalies, data quality issues, correlations between [relevant columns]. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+**Benefits of chaining**:
+- ✅ Each task is focused and manageable for the small model
+- ✅ Reduces hallucination (model doesn't try to predict downstream analysis)
+- ✅ Lower memory/context requirements per request
+- ✅ Can collect results and synthesize into final summary
+- ✅ Model can verify each step before proceeding
+
 **How to dispatch** (Phase 3):
 ```
 Task(
   description: "Analyze CSV data with mandatory code execution",
-  prompt: "Analyze [file path]. IMPORTANT: You MUST write and execute Python code to read the file and perform the analysis. Do not guess or hallucinate. Use pandas to load the CSV. Show me the execution results. Include [EXECUTION_VERIFIED] tag.",
-  subagent_type: "sentinel"  # dispatch data-explore explicitly or let user choose
+  prompt: "Analyze [file path] STEP 1 of 4: Determine data structure. ONLY report: column names, data types, row/column counts. Execute Python code. Do NOT guess. Include [EXECUTION_VERIFIED].",
+  subagent_type: "data-explore"
 )
 ```
 
 Then at the appropriate time, prompt the user to dispatch the work to `data-explore`:
-- Example: "The file `data/customers.csv` is in `.gitignore`. I can analyze it using the `data-explore` subagent, which will execute Python code to return insights without exposing raw data. Would you like me to proceed?"
+- Example: "The file `data/customers.csv` is in `.gitignore`. I can analyze it using `data-explore` by breaking the analysis into 4 focused steps to avoid overwhelming the local model. Would you like me to proceed?"
 
 ---
 
