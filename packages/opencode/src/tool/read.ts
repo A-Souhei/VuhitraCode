@@ -76,15 +76,15 @@ export const ReadTool = Tool.define("read", {
     let shouldFake = false
     const gitignored = await isGitignored(resolvedFilepath)
     if (gitignored) {
-      if (ctx.agent === "secret") {
-        // Secret agent: full bypass — reads raw content, no faking
-        shouldFake = true
+      if (ctx.agent === "secret" || ctx.agent === "data-explore") {
+        // Secret and data-explore agents: full bypass — read raw content without faking
       } else {
         throw new Error(
           `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
             `This file contains sensitive data. To analyze it securely and privately, use:\n` +
             `- @secret agent: for direct secure access (local Ollama, private)\n` +
-            `Call the task tool with subagent_type: "secret" and describe what you need.`,
+            `- @data-explore agent: for data analysis with insights-only output\n` +
+            `Call the task tool with the appropriate subagent_type and describe what you need.`,
         )
       }
     }
@@ -116,12 +116,12 @@ export const ReadTool = Tool.define("read", {
     if (stat.isDirectory()) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
           )
         }
-        // Secret agent can read gitignored directories
+        // Secret and data-explore agents can read gitignored directories
       }
 
       const dirents = await fs.readdir(filepath, { withFileTypes: true })
@@ -185,12 +185,12 @@ export const ReadTool = Tool.define("read", {
     if (isImage || isPdf) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
           )
         }
-        // Secret agent can read gitignored images/PDFs
+        // Secret and data-explore agents can read gitignored images/PDFs
       }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {
