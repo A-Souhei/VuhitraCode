@@ -14,6 +14,7 @@ import { Filesystem } from "../util/filesystem"
 import { Faker } from "../util/faker"
 import { isGitignored } from "../util/gitignore"
 import { validateSecretAgentOutput } from "../util/secret-output-validator"
+import { Env } from "../env"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -76,16 +77,30 @@ export const ReadTool = Tool.define("read", {
     let shouldFake = false
     const gitignored = await isGitignored(resolvedFilepath)
     if (gitignored) {
-      if (ctx.agent === "secret" || ctx.agent === "data-explore") {
-        // Secret and data-explore agents: full bypass — read raw content without faking
-      } else {
+      // Scout and Sentinel agents cannot access gitignored files
+      if (ctx.agent === "scout" || ctx.agent === "sentinel") {
         throw new Error(
           `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
-            `This file contains sensitive data. To analyze it securely and privately, use:\n` +
-            `- @secret agent: for direct secure access (local Ollama, private)\n` +
-            `- @data-explore agent: for data analysis with insights-only output\n` +
-            `Call the task tool with the appropriate subagent_type and describe what you need.`,
+            `Scout and Sentinel agents cannot access gitignored files for security reasons.`,
         )
+      }
+
+      if (ctx.agent === "data-explore") {
+        // data-explore agent: full bypass — read raw content without faking
+      } else if (ctx.agent === "secret") {
+        // Secret agent: apply faking for defense-in-depth
+        shouldFake = true
+      } else {
+        // Regular agents: check if OLLAMA_MODEL is set
+        if (Env.get("OLLAMA_MODEL")) {
+          // If OLLAMA_MODEL is set, regular agents must use secret agent instead
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+              `To access this file securely, use the @secret agent for direct secure access (local Ollama, private).`,
+          )
+        }
+        // Apply faking for safety when OLLAMA_MODEL is not set
+        shouldFake = true
       }
     }
 

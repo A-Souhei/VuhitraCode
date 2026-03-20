@@ -197,7 +197,7 @@ export const BashTool = Tool.define("bash", async () => {
                 .text()
                 .then((x) => x.trim())
               if (resolved) {
-                if (await isGitignored(resolved)) {
+                if ((await isGitignored(resolved)) && ctx.agent !== "secret" && ctx.agent !== "data-explore") {
                   const rel = path.relative(Instance.worktree, resolved)
                   throw new Error(
                     `Access denied: "${rel}" is gitignored (private).\n` +
@@ -227,7 +227,12 @@ export const BashTool = Tool.define("bash", async () => {
                 const dir = (await Filesystem.isDir(normalized)) ? normalized : path.dirname(normalized)
                 directories.add(dir)
               }
-              if (FILE_READ_CMDS.has(command[0]) && (await isGitignored(normalized))) {
+              if (
+                FILE_READ_CMDS.has(command[0]) &&
+                (await isGitignored(normalized)) &&
+                ctx.agent !== "secret" &&
+                ctx.agent !== "data-explore"
+              ) {
                 const rel = path.relative(Instance.worktree, normalized)
                 throw new Error(
                   `Access denied: "${rel}" is gitignored (private).\n` +
@@ -297,7 +302,7 @@ export const BashTool = Tool.define("bash", async () => {
                     process.platform === "win32" && resolved.match(/^\/[a-z]\//)
                       ? resolved.replace(/^\/([a-z])\//, (_, drive) => `${drive.toUpperCase()}:\\`).replace(/\//g, "\\")
                       : resolved
-                  if (await isGitignored(normalized)) {
+                  if ((await isGitignored(normalized)) && ctx.agent !== "secret" && ctx.agent !== "data-explore") {
                     const rel = path.relative(Instance.worktree, normalized)
                     throw new Error(
                       `Access denied: "${rel}" is gitignored (private).\n` +

@@ -1623,6 +1623,10 @@ export type PermissionConfig =
 export type AgentConfig = {
   model?: string
   /**
+   * When true, prevents the agent's model from being overridden by user or profile settings
+   */
+  model_lock?: boolean
+  /**
    * Default model variant for this agent (applies only when using the agent's configured model).
    */
   variant?: string
@@ -1664,11 +1668,11 @@ export type AgentConfig = {
   [key: string]:
     | unknown
     | string
+    | boolean
     | number
     | {
         [key: string]: boolean
       }
-    | boolean
     | "subagent"
     | "primary"
     | "all"
@@ -2443,6 +2447,7 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  model_lock?: boolean
   variant?: string
   prompt?: string
   options: {
