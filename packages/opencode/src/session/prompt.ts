@@ -1928,6 +1928,40 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
     const templateParts = await resolvePromptParts(template)
     const isSubtask = (agent.mode === "subagent" && command.subtask !== false) || command.subtask === true
+
+    // For primary data-analysis agents (e.g. analyse), auto-inject file content from
+    // plain paths in the prompt — same pattern as the subagent injection in task.ts.
+    const DATA_AGENTS_PRIMARY = new Set(["analyse"])
+    if (!isSubtask && DATA_AGENTS_PRIMARY.has(agent.name)) {
+      const DATA_PATH_REGEX =
+        /(?<![`@\w])((?:\/|~\/|\.\/|\.\.\/|[a-zA-Z0-9_.-]+\/)[a-zA-Z0-9_.\/-]+\.(?:csv|tsv|json|jsonl|ndjson|parquet|xlsx|xls|txt|feather|arrow))(?![\w/])/gi
+      const alreadyInjected = new Set(
+        templateParts
+          .filter((p): p is Extract<typeof p, { type: "file" }> => p.type === "file" && p.url.startsWith("file:"))
+          .map((p) => fileURLToPath(p.url)),
+      )
+      const seen = new Set<string>()
+      for (const match of template.matchAll(DATA_PATH_REGEX)) {
+        const rawPath = match[1].trim()
+        const filepath = rawPath.startsWith("/")
+          ? rawPath
+          : rawPath.startsWith("~/")
+            ? path.join(os.homedir(), rawPath.slice(2))
+            : path.resolve(Instance.worktree, rawPath)
+        if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
+        seen.add(filepath)
+        const stats = await fs.stat(filepath).catch(() => undefined)
+        if (stats?.isFile()) {
+          templateParts.push({
+            type: "file",
+            url: pathToFileURL(filepath).href,
+            filename: rawPath,
+            mime: "text/plain",
+          })
+        }
+      }
+    }
+
     const parts = isSubtask
       ? [
           {

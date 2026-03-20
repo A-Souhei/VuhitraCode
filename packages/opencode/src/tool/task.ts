@@ -1,6 +1,10 @@
 import { Tool } from "./tool"
 import DESCRIPTION from "./task.txt"
 import z from "zod"
+import path from "path"
+import fs from "fs/promises"
+import os from "os"
+import { pathToFileURL, fileURLToPath } from "url"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
@@ -16,6 +20,11 @@ import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import { Bridge } from "../bridge"
+
+// Matches file paths with data extensions — used by data-explore auto-injection.
+// Requires at least one directory separator so bare filenames are not matched.
+const DATA_PATH_REGEX =
+  /(?<![`@\w])((?:\/|~\/|\.\/|\.\.\/|[a-zA-Z0-9_.-]+\/)[a-zA-Z0-9_.\/-]+\.(?:csv|tsv|json|jsonl|ndjson|parquet|xlsx|xls|txt|feather|arrow))(?![\w/])/gi
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -220,6 +229,38 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       ctx.abort.addEventListener("abort", cancel)
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
+
+      // data-explore / secret / analyse: embed file content directly in the prompt
+      // so the model can analyze without tool calls. Small models (7B) don't
+      // reliably issue tool calls — pre-injecting mirrors OpenWebUI's file upload approach.
+      // secret agent gets faked content (read.ts applies shouldFake); data-explore gets real content.
+      if (agent.name === "data-explore" || agent.name === "secret" || agent.name === "analyse") {
+        const alreadyInjected = new Set(
+          promptParts
+            .filter((p): p is Extract<typeof p, { type: "file" }> => p.type === "file" && p.url.startsWith("file:"))
+            .map((p) => fileURLToPath(p.url)),
+        )
+        const seen = new Set<string>()
+        for (const match of params.prompt.matchAll(DATA_PATH_REGEX)) {
+          const rawPath = match[1].trim()
+          const filepath = rawPath.startsWith("/")
+            ? rawPath
+            : rawPath.startsWith("~/")
+              ? path.join(os.homedir(), rawPath.slice(2))
+              : path.resolve(Instance.worktree, rawPath)
+          if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
+          seen.add(filepath)
+          const stats = await fs.stat(filepath).catch(() => undefined)
+          if (stats?.isFile()) {
+            promptParts.push({
+              type: "file",
+              url: pathToFileURL(filepath).href,
+              filename: rawPath,
+              mime: "text/plain",
+            })
+          }
+        }
+      }
 
       const result = await SessionPrompt.prompt({
         messageID,
