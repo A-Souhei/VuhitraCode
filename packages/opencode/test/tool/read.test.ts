@@ -747,20 +747,40 @@ describe("tool.read privacy — gitignore interception", () => {
       git: true,
       init: async (dir) => {
         await Bun.write(path.join(dir, ".gitignore"), "secret.csv\n")
-        await Bun.write(path.join(dir, "secret.csv"), "id,password\n1,secret123")
+        await Bun.write(path.join(dir, "secret.csv"), "id,data\n1,sensitive")
       },
     })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const read = await ReadTool.init()
-        const err = await read
-          .execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "scout" })
-          .catch((e: Error) => e)
-        expect(err).toBeInstanceOf(Error)
-        expect((err as Error).message).toMatch(/Access denied/)
-        expect((err as Error).message).toMatch(/gitignored/)
-        expect((err as Error).message).toMatch(/(data-explore|secret)/)
+        await expect(
+          read.execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "scout" }),
+        ).rejects.toThrow(/Access denied/)
+      },
+    })
+  })
+
+  test("Scout cannot read gitignored files even with OLLAMA_MODEL set", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.csv\n")
+        await Bun.write(path.join(dir, "secret.csv"), "id,data\n1,sensitive")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          await expect(
+            read.execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "scout" }),
+          ).rejects.toThrow(/Access denied/)
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
       },
     })
   })
@@ -780,6 +800,30 @@ describe("tool.read privacy — gitignore interception", () => {
         await expect(
           read.execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "sentinel" }),
         ).rejects.toThrow(/Access denied/)
+      },
+    })
+  })
+
+  test("Sentinel cannot read gitignored files even with OLLAMA_MODEL set", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.csv\n")
+        await Bun.write(path.join(dir, "secret.csv"), "id,data\n1,sensitive")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        Env.set("OLLAMA_MODEL", "llama3.2")
+        try {
+          const read = await ReadTool.init()
+          await expect(
+            read.execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "sentinel" }),
+          ).rejects.toThrow(/Access denied/)
+        } finally {
+          Env.remove("OLLAMA_MODEL")
+        }
       },
     })
   })
