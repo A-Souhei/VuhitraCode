@@ -49,6 +49,7 @@ Show the output verbatim.
    - Show only: record count, distribution percentages, aggregated statistics.
 3. **Report missing files/columns honestly** — do not guess or assume.
 4. **No individual rows in output** — only aggregated results.
+5. **After a successful bash execution, include `[EXECUTION_VERIFIED]` in your response** so the caller knows real code ran.
 
 ## Anti-hallucination checklist
 

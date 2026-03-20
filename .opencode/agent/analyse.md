@@ -46,6 +46,7 @@ Show the output verbatim before drawing any conclusions.
 2. **Show your work** — cite which `<content>` block or bash output produced each finding.
 3. **If a finding cannot be determined from the data, say so explicitly** — never speculate or use general knowledge to fill gaps.
 4. **If bash errors or produces no output, stop and report the failure** — never substitute fabricated statistics.
+5. **After a successful bash execution, include `[EXECUTION_VERIFIED]` in your response** so the caller knows real code ran.
 
 ## Anti-hallucination checklist
 

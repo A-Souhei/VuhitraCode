@@ -5,6 +5,7 @@ import path from "path"
 import fs from "fs/promises"
 import os from "os"
 import { pathToFileURL, fileURLToPath } from "url"
+import { Faker } from "@/util/faker"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
@@ -251,12 +252,35 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
           seen.add(filepath)
           const stats = await fs.stat(filepath).catch(() => undefined)
-          if (stats?.isFile()) {
+          if (!stats?.isFile()) continue
+
+          if (agent.name === "secret") {
+            // secret: let ReadTool handle it (applies faking via shouldFake)
             promptParts.push({
               type: "file",
               url: pathToFileURL(filepath).href,
               filename: rawPath,
               mime: "text/plain",
+            })
+          } else {
+            // data-explore / analyse: apply faker here so the subagent never sees raw PII
+            const raw = await fs.readFile(filepath, "utf-8")
+            const faked = await Faker.fakeContent(raw, filepath)
+            const lines = faked.split("\n")
+            const numbered = lines.map((l, i) => `${i + 1}: ${l}`).join("\n")
+            promptParts.push({
+              type: "text",
+              text: [
+                `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+                `<path>${filepath}</path>`,
+                `<type>file</type>`,
+                `<content>`,
+                numbered,
+                ``,
+                `(End of file - total ${lines.length} lines)`,
+                `</content>`,
+                `<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`,
+              ].join("\n"),
             })
           }
         }

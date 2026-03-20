@@ -1951,14 +1951,26 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
         seen.add(filepath)
         const stats = await fs.stat(filepath).catch(() => undefined)
-        if (stats?.isFile()) {
-          templateParts.push({
-            type: "file",
-            url: pathToFileURL(filepath).href,
-            filename: rawPath,
-            mime: "text/plain",
-          })
-        }
+        if (!stats?.isFile()) continue
+
+        const raw = await fs.readFile(filepath, "utf-8")
+        const faked = await Faker.fakeContent(raw, filepath)
+        const lines = faked.split("\n")
+        const numbered = lines.map((l, i) => `${i + 1}: ${l}`).join("\n")
+        templateParts.push({
+          type: "text",
+          text: [
+            `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+            `<path>${filepath}</path>`,
+            `<type>file</type>`,
+            `<content>`,
+            numbered,
+            ``,
+            `(End of file - total ${lines.length} lines)`,
+            `</content>`,
+            `<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`,
+          ].join("\n"),
+        })
       }
     }
 
