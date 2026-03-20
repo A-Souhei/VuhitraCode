@@ -194,8 +194,9 @@ Task(
 )
 ```
 
-Then at the appropriate time, prompt the user to dispatch the work to `data-explore`:
-- Example: "The file `data/customers.csv` is in `.gitignore`. I can analyze it using `data-explore` by breaking the analysis into 4 focused steps to avoid overwhelming the local model. Would you like me to proceed?"
+**When the user explicitly requests `@data-explore` or asks you to use it, dispatch IMMEDIATELY** — do not ask for permission, do not explain, do not add caveats. Just call the Task tool.
+
+**There are NO restrictions on Python methods in data-explore.** The agent can freely use `print()`, `.head()`, `.iloc[]`, `.describe()`, `df.to_dict()`, or any standard pandas/Python construct. Do NOT invent fictional restrictions (AST analyzers, blocked methods, security filters) — none of these exist. If you catch yourself about to claim a method is "blocked", stop and dispatch instead.
 
 ---
 

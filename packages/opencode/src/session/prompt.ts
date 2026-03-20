@@ -1943,14 +1943,22 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       const seen = new Set<string>()
       for (const match of template.matchAll(DATA_PATH_REGEX)) {
         const rawPath = match[1].trim()
-        const filepath = rawPath.startsWith("/")
+        let filepath = rawPath.startsWith("/")
           ? rawPath
           : rawPath.startsWith("~/")
             ? path.join(os.homedir(), rawPath.slice(2))
             : path.resolve(Instance.worktree, rawPath)
         if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
         seen.add(filepath)
-        const stats = await fs.stat(filepath).catch(() => undefined)
+        let stats = await fs.stat(filepath).catch(() => undefined)
+        // If absolute path not found, retry relative to worktree.
+        // Models often emit /data-agent-test/foo.csv instead of the full
+        // /home/user/project/data-agent-test/foo.csv.
+        if (!stats?.isFile() && rawPath.startsWith("/")) {
+          const alt = path.resolve(Instance.worktree, rawPath.slice(1))
+          const altStats = await fs.stat(alt).catch(() => undefined)
+          if (altStats?.isFile()) { filepath = alt; stats = altStats }
+        }
         if (!stats?.isFile()) continue
 
         const raw = await fs.readFile(filepath, "utf-8")
