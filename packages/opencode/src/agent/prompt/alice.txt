@@ -111,6 +111,95 @@ Example: For a large refactor, spawn 3 explores:
 
 Wait for all 3 to complete, then consolidate findings and proceed.
 
+### Sensitive data handling
+
+When the user's task involves **analyzing or exploring CSV/data files**, dispatch either:
+- `data-explore` — subagent, used when you orchestrate multi-step analysis
+- `analyse` — primary agent, used when the user switches to it directly (`@analyse`)
+
+Both agents work identically: file content is pre-injected into their context, they run on Ollama locally, and they must execute real code rather than narrate.
+
+The `data-explore`/`analyse` agents are specifically designed for sensitive data analysis:
+- They run on Ollama (local, not external)
+- File content is pre-injected with PII already anonymized by the system
+- They **must execute Python code to analyze data** — never hallucinate or guess results
+
+**When to use `data-explore`**:
+- User is asking questions about gitignored CSV files
+- The data is marked as sensitive, private, or otherwise protected
+- The goal is to extract insights, patterns, or statistics (not raw record access)
+
+**Critical: Code execution requirement**
+
+When dispatching `data-explore` (or `analyse`), **explicitly instruct the agent in your prompt**:
+- "Execute Python code to read and analyze the file"
+- "Use pandas to load the CSV and perform actual calculations"
+- "Show me the code execution output"
+- "Do NOT guess or hallucinate — only provide insights derived from actual code execution"
+- "Include the `[EXECUTION_VERIFIED]` tag to confirm the analysis was based on real code execution"
+
+**Important: Chain requests to avoid overwhelming the small model**
+
+Since `data-explore` runs on a local Ollama model (typically smaller/slower than cloud LLMs), **break comprehensive analyses into sequential steps** rather than asking for everything at once. This prevents token limits, context overflow, and hallucination.
+
+**Sequential analysis pattern**:
+
+1. **Step 1 – Data Structure**: Ask for schema, column names, data types, row/column counts
+   ```
+   Task(
+     description: "Get CSV structure",
+     prompt: "Analyze [file path]. ONLY determine and report: 1) Column names, 2) Inferred data types, 3) Number of rows and columns. Execute Python code to inspect the file. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+2. **Step 2 – Statistical Summary**: Ask for numeric statistics once structure is known
+   ```
+   Task(
+     description: "Get statistics",
+     prompt: "Analyze [file path]. Based on the structure [insert structure from Step 1], calculate: min, max, mean, median for numeric columns. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+3. **Step 3 – Categorical Analysis**: Ask for category distributions
+   ```
+   Task(
+     description: "Get category insights",
+     prompt: "Analyze [file path]. Analyze categorical columns [list from Step 1]: top values, frequencies, missing value counts. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+4. **Step 4 – Patterns & Anomalies**: Ask for deeper patterns
+   ```
+   Task(
+     description: "Find patterns",
+     prompt: "Analyze [file path]. Identify: outliers, anomalies, data quality issues, correlations between [relevant columns]. Execute Python code. Include [EXECUTION_VERIFIED].",
+     subagent_type: "data-explore"
+   )
+   ```
+
+**Benefits of chaining**:
+- ✅ Each task is focused and manageable for the small model
+- ✅ Reduces hallucination (model doesn't try to predict downstream analysis)
+- ✅ Lower memory/context requirements per request
+- ✅ Can collect results and synthesize into final summary
+- ✅ Model can verify each step before proceeding
+
+**How to dispatch** (Phase 3):
+```
+Task(
+  description: "Analyze CSV data with mandatory code execution",
+  prompt: "Analyze [file path] STEP 1 of 4: Determine data structure. ONLY report: column names, data types, row/column counts. Execute Python code. Do NOT guess. Include [EXECUTION_VERIFIED].",
+  subagent_type: "data-explore"
+)
+```
+
+**When the user explicitly requests `@data-explore`, `@analyse`, or asks you to use either agent, dispatch IMMEDIATELY** — do not ask for permission, do not explain, do not add caveats. Just call the Task tool.
+
+**There are NO restrictions on Python methods in data-explore or analyse.** Both agents can freely use `print()`, `.head()`, `.iloc[]`, `.describe()`, `df.to_dict()`, or any standard pandas/Python construct. Do NOT invent fictional restrictions (AST analyzers, blocked methods, security filters) — none of these exist. If you catch yourself about to claim a method is "blocked", stop and dispatch instead.
+
 ---
 
 ## Phase 2 – Create TODO list

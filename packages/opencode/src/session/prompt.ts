@@ -976,7 +976,10 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
-    const model = input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID))
+    const model =
+      agent.model_lock && agent.model
+        ? agent.model
+        : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const full =
       !input.variant && agent.variant
         ? await Provider.getModel(model.providerID, model.modelID).catch(() => undefined)
@@ -1258,7 +1261,7 @@ export namespace SessionPrompt {
 
               if (await isGitignored(filepath)) {
                 // Secret agent bypasses gitignore checks entirely
-                if (input.agent !== "secret") {
+                if (input.agent !== "secret" && input.agent !== "data-explore") {
                   const rel = path.relative(Instance.worktree, filepath)
                   const stat = await fs.stat(filepath)
                   const binary = await isBinaryFile(filepath, Number(stat.size))
@@ -1586,7 +1589,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
-    const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
+    const model =
+      agent.model_lock && agent.model ? agent.model : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -1924,6 +1928,59 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
     const templateParts = await resolvePromptParts(template)
     const isSubtask = (agent.mode === "subagent" && command.subtask !== false) || command.subtask === true
+
+    // For primary data-analysis agents (e.g. analyse), auto-inject file content from
+    // plain paths in the prompt — same pattern as the subagent injection in task.ts.
+    const DATA_AGENTS_PRIMARY = new Set(["analyse"])
+    if (!isSubtask && DATA_AGENTS_PRIMARY.has(agent.name)) {
+      const DATA_PATH_REGEX =
+        /(?<![`@\w])((?:\/|~\/|\.\/|\.\.\/|[a-zA-Z0-9_.-]+\/)[a-zA-Z0-9_.\/-]+\.(?:csv|tsv|json|jsonl|ndjson|parquet|xlsx|xls|txt|feather|arrow))(?![\w/])/gi
+      const alreadyInjected = new Set(
+        templateParts
+          .filter((p): p is Extract<typeof p, { type: "file" }> => p.type === "file" && p.url.startsWith("file:"))
+          .map((p) => fileURLToPath(p.url)),
+      )
+      const seen = new Set<string>()
+      for (const match of template.matchAll(DATA_PATH_REGEX)) {
+        const rawPath = match[1].trim()
+        let filepath = rawPath.startsWith("/")
+          ? rawPath
+          : rawPath.startsWith("~/")
+            ? path.join(os.homedir(), rawPath.slice(2))
+            : path.resolve(Instance.worktree, rawPath)
+        if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
+        seen.add(filepath)
+        let stats = await fs.stat(filepath).catch(() => undefined)
+        // If absolute path not found, retry relative to worktree.
+        // Models often emit /data-agent-test/foo.csv instead of the full
+        // /home/user/project/data-agent-test/foo.csv.
+        if (!stats?.isFile() && rawPath.startsWith("/")) {
+          const alt = path.resolve(Instance.worktree, rawPath.slice(1))
+          const altStats = await fs.stat(alt).catch(() => undefined)
+          if (altStats?.isFile()) { filepath = alt; stats = altStats }
+        }
+        if (!stats?.isFile()) continue
+
+        const raw = await fs.readFile(filepath, "utf-8")
+        const faked = await Faker.fakeContent(raw, filepath)
+        const lines = faked.split("\n")
+        const numbered = lines.map((l, i) => `${i + 1}: ${l}`).join("\n")
+        templateParts.push({
+          type: "text",
+          text: [
+            `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+            `<path>${filepath}</path>`,
+            `<type>file</type>`,
+            `<content>`,
+            numbered,
+            ``,
+            `(End of file - total ${lines.length} lines)`,
+            `</content>`,
+          ].join("\n"),
+        })
+      }
+    }
+
     const parts = isSubtask
       ? [
           {

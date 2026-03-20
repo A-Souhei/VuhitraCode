@@ -11,10 +11,10 @@ import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
 import { Filesystem } from "../util/filesystem"
-import { Env } from "../env"
 import { Faker } from "../util/faker"
 import { isGitignored } from "../util/gitignore"
 import { validateSecretAgentOutput } from "../util/secret-output-validator"
+import { Env } from "../env"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -77,20 +77,29 @@ export const ReadTool = Tool.define("read", {
     let shouldFake = false
     const gitignored = await isGitignored(resolvedFilepath)
     if (gitignored) {
-      const ollamaModel = Env.get("OLLAMA_MODEL")
-      if (ctx.agent !== "secret") {
-        // Regular agents: redirect to secret agent if model is set (they have credentials)
-        if (ollamaModel) {
-          throw new Error(
-            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
-              `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
-              `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
-          )
-        }
-        // No model set: apply faking as defense-in-depth
+      // Scout and Sentinel agents cannot access gitignored files
+      if (ctx.agent === "scout" || ctx.agent === "sentinel") {
+        throw new Error(
+          `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+            `Scout and Sentinel agents cannot access gitignored files for security reasons.`,
+        )
+      }
+
+      if (ctx.agent === "data-explore") {
+        // data-explore agent: full bypass — read raw content without faking
+      } else if (ctx.agent === "secret") {
+        // Secret agent: apply faking for defense-in-depth
         shouldFake = true
       } else {
-        // Secret agent: always apply faking for defense-in-depth
+        // Regular agents: check if OLLAMA_MODEL is set
+        if (Env.get("OLLAMA_MODEL")) {
+          // If OLLAMA_MODEL is set, regular agents must use secret agent instead
+          throw new Error(
+            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+              `To access this file securely, use the @secret agent for direct secure access (local Ollama, private).`,
+          )
+        }
+        // Apply faking for safety when OLLAMA_MODEL is not set
         shouldFake = true
       }
     }
@@ -122,12 +131,12 @@ export const ReadTool = Tool.define("read", {
     if (stat.isDirectory()) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, filepath)}" is a gitignored directory (private).`,
           )
         }
-        // Secret agent can read gitignored directories (no faking for directories, but access is allowed)
+        // Secret and data-explore agents can read gitignored directories
       }
 
       const dirents = await fs.readdir(filepath, { withFileTypes: true })
@@ -191,12 +200,12 @@ export const ReadTool = Tool.define("read", {
     if (isImage || isPdf) {
       const gitignored = await isGitignored(resolvedFilepath)
       if (gitignored) {
-        if (ctx.agent !== "secret") {
+        if (ctx.agent !== "secret" && ctx.agent !== "data-explore") {
           throw new Error(
             `Access denied: "${path.relative(Instance.worktree, resolvedFilepath)}" is gitignored (private).`,
           )
         }
-        // Secret agent can read gitignored images/PDFs
+        // Secret and data-explore agents can read gitignored images/PDFs
       }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {

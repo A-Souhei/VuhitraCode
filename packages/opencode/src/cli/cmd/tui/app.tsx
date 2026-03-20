@@ -504,6 +504,7 @@ function App() {
       keybind: "model_list",
       suggested: true,
       category: "Agent",
+      enabled: !local.agent.current()?.model,
       slash: {
         name: "models",
       },

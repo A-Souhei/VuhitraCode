@@ -1,6 +1,11 @@
 import { Tool } from "./tool"
 import DESCRIPTION from "./task.txt"
 import z from "zod"
+import path from "path"
+import fs from "fs/promises"
+import os from "os"
+import { pathToFileURL, fileURLToPath } from "url"
+import { Faker } from "@/util/faker"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "../id/id"
@@ -16,6 +21,11 @@ import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import { Bridge } from "../bridge"
+
+// Matches file paths with data extensions — used by data-explore auto-injection.
+// Requires at least one directory separator so bare filenames are not matched.
+const DATA_PATH_REGEX =
+  /(?<![`@\w])((?:\/|~\/|\.\/|\.\.\/|[a-zA-Z0-9_.-]+\/)[a-zA-Z0-9_.\/-]+\.(?:csv|tsv|json|jsonl|ndjson|parquet|xlsx|xls|txt|feather|arrow))(?![\w/])/gi
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -220,6 +230,68 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       ctx.abort.addEventListener("abort", cancel)
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
+
+      // data-explore / secret / analyse: embed file content directly in the prompt
+      // so the model can analyze without tool calls. Small models (7B) don't
+      // reliably issue tool calls — pre-injecting mirrors OpenWebUI's file upload approach.
+      // secret agent gets faked content (read.ts applies shouldFake); data-explore gets real content.
+      if (agent.name === "data-explore" || agent.name === "secret" || agent.name === "analyse") {
+        const alreadyInjected = new Set(
+          promptParts
+            .filter((p): p is Extract<typeof p, { type: "file" }> => p.type === "file" && p.url.startsWith("file:"))
+            .map((p) => fileURLToPath(p.url)),
+        )
+        const seen = new Set<string>()
+        for (const match of params.prompt.matchAll(DATA_PATH_REGEX)) {
+          const rawPath = match[1].trim()
+          let filepath = rawPath.startsWith("/")
+            ? rawPath
+            : rawPath.startsWith("~/")
+              ? path.join(os.homedir(), rawPath.slice(2))
+              : path.resolve(Instance.worktree, rawPath)
+          if (seen.has(filepath) || alreadyInjected.has(filepath)) continue
+          seen.add(filepath)
+          let stats = await fs.stat(filepath).catch(() => undefined)
+          // If absolute path not found, retry relative to worktree.
+          // Models often emit /data-agent-test/foo.csv instead of the full
+          // /home/user/project/data-agent-test/foo.csv.
+          if (!stats?.isFile() && rawPath.startsWith("/")) {
+            const alt = path.resolve(Instance.worktree, rawPath.slice(1))
+            const altStats = await fs.stat(alt).catch(() => undefined)
+            if (altStats?.isFile()) { filepath = alt; stats = altStats }
+          }
+          if (!stats?.isFile()) continue
+
+          if (agent.name === "secret") {
+            // secret: let ReadTool handle it (applies faking via shouldFake)
+            promptParts.push({
+              type: "file",
+              url: pathToFileURL(filepath).href,
+              filename: rawPath,
+              mime: "text/plain",
+            })
+          } else {
+            // data-explore / analyse: apply faker here so the subagent never sees raw PII
+            const raw = await fs.readFile(filepath, "utf-8")
+            const faked = await Faker.fakeContent(raw, filepath)
+            const lines = faked.split("\n")
+            const numbered = lines.map((l, i) => `${i + 1}: ${l}`).join("\n")
+            promptParts.push({
+              type: "text",
+              text: [
+                `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+                `<path>${filepath}</path>`,
+                `<type>file</type>`,
+                `<content>`,
+                numbered,
+                ``,
+                `(End of file - total ${lines.length} lines)`,
+                `</content>`,
+              ].join("\n"),
+            })
+          }
+        }
+      }
 
       const result = await SessionPrompt.prompt({
         messageID,
