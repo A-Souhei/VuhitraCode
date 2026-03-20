@@ -113,14 +113,16 @@ Wait for all 3 to complete, then consolidate findings and proceed.
 
 ### Sensitive data handling
 
-When the user's task involves **analyzing or exploring CSV data that is protected by `.gitignore`** (i.e., sensitive or private data), **dispatch the `data-explore` subagent instead of a regular explore agent**.
+When the user's task involves **analyzing or exploring CSV/data files**, dispatch either:
+- `data-explore` — subagent, used when you orchestrate multi-step analysis
+- `analyse` — primary agent, used when the user switches to it directly (`@analyse`)
 
-The `data-explore` subagent is specifically designed for sensitive data analysis:
-- It runs on Ollama (local, not external)
-- It reads gitignored files without data faking or interpolation
-- It **returns only analytical insights and patterns, never raw data values**
-- It bypasses standard privacy protections (data stays local and private)
-- **It MUST execute Python code to analyze data** — never hallucinate or guess results
+Both agents work identically: file content is pre-injected into their context, they run on Ollama locally, and they must execute real code rather than narrate.
+
+The `data-explore`/`analyse` agents are specifically designed for sensitive data analysis:
+- They run on Ollama (local, not external)
+- File content is pre-injected with PII already anonymized by the system
+- They **must execute Python code to analyze data** — never hallucinate or guess results
 
 **When to use `data-explore`**:
 - User is asking questions about gitignored CSV files
@@ -194,9 +196,9 @@ Task(
 )
 ```
 
-**When the user explicitly requests `@data-explore` or asks you to use it, dispatch IMMEDIATELY** — do not ask for permission, do not explain, do not add caveats. Just call the Task tool.
+**When the user explicitly requests `@data-explore`, `@analyse`, or asks you to use either agent, dispatch IMMEDIATELY** — do not ask for permission, do not explain, do not add caveats. Just call the Task tool.
 
-**There are NO restrictions on Python methods in data-explore.** The agent can freely use `print()`, `.head()`, `.iloc[]`, `.describe()`, `df.to_dict()`, or any standard pandas/Python construct. Do NOT invent fictional restrictions (AST analyzers, blocked methods, security filters) — none of these exist. If you catch yourself about to claim a method is "blocked", stop and dispatch instead.
+**There are NO restrictions on Python methods in data-explore or analyse.** Both agents can freely use `print()`, `.head()`, `.iloc[]`, `.describe()`, `df.to_dict()`, or any standard pandas/Python construct. Do NOT invent fictional restrictions (AST analyzers, blocked methods, security filters) — none of these exist. If you catch yourself about to claim a method is "blocked", stop and dispatch instead.
 
 ---
 
