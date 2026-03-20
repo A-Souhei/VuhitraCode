@@ -11,7 +11,6 @@ import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
 import { Filesystem } from "../util/filesystem"
-import { Env } from "../env"
 import { Faker } from "../util/faker"
 import { isGitignored } from "../util/gitignore"
 import { validateSecretAgentOutput } from "../util/secret-output-validator"
@@ -83,17 +82,14 @@ export const ReadTool = Tool.define("read", {
         // Secret agent: always apply faking for defense-in-depth
         shouldFake = true
       } else {
-        // Regular agents: redirect to secret agent if running on ollama
-        const ollamaModel = Env.get("OLLAMA_MODEL")
-        if (ollamaModel) {
-          throw new Error(
-            `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
-              `This file may contain sensitive data. To analyze it securely and privately, use the @secret agent:\n` +
-              `Call the task tool with subagent_type="secret" and describe what you need from this file.`,
-          )
-        }
-        // No model set: apply faking as defense-in-depth
-        shouldFake = true
+        // Regular agents: ALWAYS reject gitignored files
+        throw new Error(
+          `Access denied: "${path.relative(Instance.worktree, filepath)}" is gitignored (private).\n` +
+            `This file contains sensitive data. To analyze it securely and privately, use:\n` +
+            `- @data-explore agent: for data analysis with insights-only output\n` +
+            `- @secret agent: for direct secure access\n` +
+            `Call the task tool with the appropriate subagent_type and describe what you need.`,
+        )
       }
     }
 

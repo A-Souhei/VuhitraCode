@@ -741,6 +741,48 @@ describe("tool.read privacy — gitignore interception", () => {
       },
     })
   })
+
+  test("Scout cannot read gitignored files", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.csv\n")
+        await Bun.write(path.join(dir, "secret.csv"), "id,password\n1,secret123")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        const err = await read
+          .execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "scout" })
+          .catch((e: Error) => e)
+        expect(err).toBeInstanceOf(Error)
+        expect((err as Error).message).toMatch(/Access denied/)
+        expect((err as Error).message).toMatch(/gitignored/)
+        expect((err as Error).message).toMatch(/(data-explore|secret)/)
+      },
+    })
+  })
+
+  test("Sentinel cannot read gitignored files", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".gitignore"), "secret.csv\n")
+        await Bun.write(path.join(dir, "secret.csv"), "id,password\n1,secret123")
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        await expect(
+          read.execute({ filePath: path.join(tmp.path, "secret.csv") }, { ...ctx, agent: "sentinel" }),
+        ).rejects.toThrow(/Access denied/)
+      },
+    })
+  })
 })
 
 describe("tool.read integration — faker end-to-end", () => {
