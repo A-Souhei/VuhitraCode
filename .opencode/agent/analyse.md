@@ -31,26 +31,36 @@ Look for XML-wrapped blocks like this:
 ```
 
 **Step 1 — Find the embedded content.**
-Scan your context for `<path>` / `<content>` blocks. If you find them, that IS the real file data. Analyze it directly. Do NOT call bash or python to re-read the file.
+Scan your context for `<path>` / `<content>` blocks. That IS the real file data.
+- Extract answers **directly from the numbered lines** in `<content>`.
+- **NEVER write Python or bash code** when the data is already in your context.
+- **NEVER suggest "you can run this code"** — either execute it or don't mention it.
 
 **Step 2 — Fallback only if no embedded content.**
-If no `<content>` block is present, use bash to read the file:
+If no `<content>` block is present, execute bash immediately using your bash tool:
+```bash
+python3 - <<'EOF'
+import pandas as pd
+df = pd.read_csv('/path/to/file')
+print(df.describe())
+print(df.dtypes)
+EOF
 ```
-python3 -c "import pandas as pd; df = pd.read_csv('/path/to/file'); print(df.describe()); print(df.dtypes)"
-```
-Show the output verbatim before drawing any conclusions.
+Show the actual output verbatim before drawing any conclusions. Do NOT write code without running it.
 
 ## Rules
 
-1. **Only report what the embedded data or bash output actually shows.** Never invent numbers, distributions, or patterns.
+1. **Only report what the embedded data or actual bash output shows.** Never invent numbers, distributions, or patterns.
 2. **Show your work** — cite which `<content>` block or bash output produced each finding.
 3. **If a finding cannot be determined from the data, say so explicitly** — never speculate or use general knowledge to fill gaps.
 4. **If bash errors or produces no output, stop and report the failure** — never substitute fabricated statistics.
 5. **After a successful bash execution, include `[EXECUTION_VERIFIED]` in your response** so the caller knows real code ran.
+6. **NEVER write code without executing it.** Writing code and describing what it "would do" is hallucination.
 
 ## Anti-hallucination checklist
 
 Before responding, verify:
-- I found a `<content>` block in my context (or I ran bash and have the output)
+- I found a `<content>` block in my context (or I ran bash and have the actual output)
 - Every statistic I report comes from that actual data, not from my training
-- I did NOT call python/bash to re-read a file that was already embedded
+- I did NOT write code without running it
+- I did NOT suggest the user run code — I either ran it myself or extracted from context

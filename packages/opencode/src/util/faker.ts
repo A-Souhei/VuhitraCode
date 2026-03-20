@@ -8,7 +8,7 @@ const SENSITIVE_KEY =
 
 // Column headers that suggest PII in tabular data (fallback when no pii.yml)
 const PII_COLUMN =
-  /\b(?:first[_\-.]?name|last[_\-.]?name|full[_\-.]?name|display[_\-.]?name|email|phone|mobile|tel(?:ephone)?|address|street|city|zip|postal|dob|birth(?:day|date)?|ssn|social[_\-.]?security|credit[_\-.]?card|card[_\-.]?number|iban|ip[_\-.]?(?:addr(?:ess)?)?|user(?:name)?|login|account[_\-.]?(?:name|number))\b/i
+  /\b(?:first[_\-.]?name|last[_\-.]?name|full[_\-.]?name|display[_\-.]?name|name|email|phone|mobile|tel(?:ephone)?|address|street|city|zip|postal|dob|birth(?:day|date)?|ssn|social[_\-.]?security|credit[_\-.]?card|card[_\-.]?number|iban|ip[_\-.]?(?:addr(?:ess)?)?|user(?:name)?|login|account[_\-.]?(?:name|number))\b/i
 
 /**
  * Load PII column config.

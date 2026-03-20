@@ -1968,7 +1968,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             ``,
             `(End of file - total ${lines.length} lines)`,
             `</content>`,
-            `<privacy-notice>This file is gitignored. Sensitive values have been replaced with fake data so you can reason about the logic and structure safely. Do not treat these values as real.</privacy-notice>`,
           ].join("\n"),
         })
       }
