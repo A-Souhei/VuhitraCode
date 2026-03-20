@@ -8,7 +8,7 @@ import { PlaceholderGuard } from "./PlaceholderGuard"
 import type { GroundingConfig, SourceContext, GroundedPrompt, OllamaRequest, HallucinationCheckResult } from "./types"
 
 export class HallucinationGrounder {
-  private config: Required<GroundingConfig>
+  private config: Required<Omit<GroundingConfig, "seed">> & Pick<GroundingConfig, "seed">
 
   constructor(config: GroundingConfig = {}) {
     this.config = {
@@ -65,7 +65,7 @@ ${query}`
    * Get Ollama API request parameters for anti-hallucination
    * These parameters are tuned to reduce hallucination while maintaining coherence
    */
-  getOllamaParams(): OllamaRequest["options"] {
+  getOllamaParams(): NonNullable<OllamaRequest["options"]> {
     return {
       temperature: this.config.temperature,
       top_p: this.config.topP,
