@@ -357,10 +357,21 @@ export default function Page() {
           }
         }
 
-        // Restore model
+        // Restore model only if agent doesn't have a locked model and models are ready
         const modelKey = saved.model
-        if (modelKey) {
+        if (modelKey && !local.model.locked() && local.model.ready()) {
           local.model.set(modelKey)
+        }
+
+        // Restore profile
+        const profileName = saved.profile
+        if (profileName && profileName !== "default" && params.id) {
+          const available = sync.data.profiles ?? ["default"]
+          if (available.includes(profileName)) {
+            void sdk.client.session.update({ sessionID: params.id, profile: profileName }).catch(() => {
+              // Silently fail profile restore
+            })
+          }
         }
 
         // Update prev values after restoration
@@ -398,10 +409,11 @@ export default function Page() {
         prevAgentName = agentName
         prevModelKey = modelKey
 
-        // Save the selection
+        // Save the selection (only save model if not locked)
         const selection = {
           agent: agentName,
-          model: modelKey,
+          model: local.model.locked() ? undefined : modelKey,
+          profile: sync.data.active_profile !== "default" ? sync.data.active_profile : undefined,
         }
 
         if (selection.agent || selection.model) {
