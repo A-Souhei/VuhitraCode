@@ -207,6 +207,8 @@ export namespace Agent {
         description:
           "Parallel implementation agent. Orchestrates Sentinels and Scouts for concurrent TODO execution (Scouts for simple tasks, Sentinels for complex tasks). Uses Keeper for verification and Audit for code review.",
         options: {},
+        // Tool-level restrictions enforced AFTER user config so they cannot be overridden.
+        // Alice is a pure orchestrator: she plans and dispatches, but never implements.
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({
@@ -215,9 +217,17 @@ export namespace Agent {
             task: "allow",
             memento_read: "allow",
             memento_write: "deny",
+            biblion_read: "allow",
             bridge_dispatch: "allow",
           }),
           user,
+          // Critical: Deny implementation tools at the end so user config cannot override.
+          // Alice MUST delegate all implementation to Scout/Sentinel/chore agents.
+          PermissionNext.fromConfig({
+            bash: "deny",
+            edit: "deny",
+            write: "deny",
+          }),
         ),
         prompt: PROMPT_ALICE + reviewSettings,
         mode: "primary",
