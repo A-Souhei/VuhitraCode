@@ -238,7 +238,19 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/search`, {
@@ -249,9 +261,22 @@ export namespace Biblion {
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { id: string; score: number; payload: { type: string; tags: string; content: string } }[]
+        result: { id: string; score: number; payload: Record<string, unknown> }[]
       }
-      return data.result.map((r) => ({ id: String(r.id), score: r.score, ...r.payload }))
+      return data.result.map(
+        (r) =>
+          ({ id: String(r.id), score: r.score, ...r.payload }) as {
+            id: string
+            score: number
+            type: string
+            tags: string
+            content: string
+            quality?: number
+            used_count?: number
+            query?: string
+            created_at?: string
+          },
+      )
     },
 
     async count(): Promise<number> {
@@ -440,7 +465,19 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
@@ -453,17 +490,32 @@ export namespace Biblion {
         "vec",
         vecBuf,
         "RETURN",
-        "4",
+        "9",
         "type",
         "tags",
         "content",
         "score",
+        "quality",
+        "used_count",
+        "created_at",
+        "query",
+        "id",
         "SORTBY",
         "score",
         "DIALECT",
         "2",
       )) as unknown[]
-      const hits: { id: string; score: number; type: string; tags: string; content: string }[] = []
+      const hits: {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
         const docId = result[i] as string
@@ -472,19 +524,38 @@ export namespace Biblion {
         let type = "",
           tags = "",
           content = "",
-          scoreStr = "0"
+          scoreStr = "0",
+          qualityStr = "",
+          usedCountStr = "",
+          query = "",
+          created_at = ""
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
           if (fields[j] === "score") scoreStr = fields[j + 1]
+          if (fields[j] === "quality") qualityStr = fields[j + 1]
+          if (fields[j] === "used_count") usedCountStr = fields[j + 1]
+          if (fields[j] === "query") query = fields[j + 1]
+          if (fields[j] === "created_at") created_at = fields[j + 1]
         }
         const prefix = redis.keyPrefix()
         const id = typeof docId === "string" && docId.startsWith(prefix) ? docId.slice(prefix.length) : String(docId)
         // Redis KNN returns cosine distance (0=identical, 2=opposite); convert to similarity
         const dist = parseFloat(scoreStr) || 0
         const score = 1 - dist / 2
-        if (content) hits.push({ id, score, type, tags, content })
+        if (content)
+          hits.push({
+            id,
+            score,
+            type,
+            tags,
+            content,
+            quality: qualityStr !== "" ? parseFloat(qualityStr) : undefined,
+            used_count: usedCountStr !== "" ? parseInt(usedCountStr, 10) : undefined,
+            query: query || undefined,
+            created_at: created_at || undefined,
+          })
       }
       return hits
     },
@@ -594,7 +665,19 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
     },
     async count() {
@@ -764,14 +847,20 @@ export namespace Biblion {
     const vector = await embed(query)
     const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
 
+    // For Redis backend, fetch fresh used_count from meta keys in parallel
+    const usedCounts = useRedis()
+      ? await Promise.all(hits.map((h) => getUsedCount(h.id)))
+      : hits.map((h) => h.used_count ?? 0)
+
     // Build entries with similarity scores for hybrid scoring
-    const entries = hits.map((h) => ({
+    const entries = hits.map((h, i) => ({
       entry: {
         id: h.id,
         type: h.type,
         tags: h.tags.split(",").filter(Boolean),
         content: h.content,
-        used_count: 0,
+        used_count: usedCounts[i],
+        quality: h.quality ?? Scoring.DEFAULT_QUALITY,
       },
       similarity: h.score,
     }))
@@ -806,15 +895,20 @@ export namespace Biblion {
     const vector = await embed(query)
     const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
 
-    const entries = hits.map((h) => ({
+    // For Redis backend, fetch fresh used_count from meta keys in parallel
+    const usedCounts = useRedis()
+      ? await Promise.all(hits.map((h) => getUsedCount(h.id)))
+      : hits.map((h) => h.used_count ?? 0)
+
+    const entries = hits.map((h, i) => ({
       entry: {
         id: h.id,
         type: h.type as EntryType,
-        query: "",
+        query: h.query ?? "",
         content: h.content,
         tags: h.tags.split(",").filter(Boolean),
-        quality: Scoring.DEFAULT_QUALITY,
-        used_count: 0,
+        quality: h.quality ?? Scoring.DEFAULT_QUALITY,
+        used_count: usedCounts[i],
       },
       similarity: h.score,
     }))

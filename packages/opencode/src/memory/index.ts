@@ -244,7 +244,19 @@ export namespace Memory {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/search`, {
@@ -255,9 +267,31 @@ export namespace Memory {
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { id: string; score: number; payload: { type: string; tags: string; content: string } }[]
+        result: {
+          id: string
+          score: number
+          payload: {
+            type: string
+            tags: string
+            content: string
+            quality?: number
+            used_count?: number
+            query?: string
+            created_at?: string
+          }
+        }[]
       }
-      return data.result.map((r) => ({ id: String(r.id), score: r.score, ...r.payload }))
+      return data.result.map((r) => ({
+        id: String(r.id),
+        score: r.score,
+        type: r.payload.type,
+        tags: r.payload.tags,
+        content: r.payload.content,
+        quality: r.payload.quality ?? Scoring.DEFAULT_QUALITY,
+        used_count: r.payload.used_count ?? 0,
+        query: r.payload.query ?? "",
+        created_at: r.payload.created_at ?? "",
+      }))
     },
 
     async count(): Promise<number> {
@@ -414,7 +448,19 @@ export namespace Memory {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
@@ -427,17 +473,31 @@ export namespace Memory {
         "vec",
         vecBuf,
         "RETURN",
-        "4",
+        "8",
         "type",
         "tags",
         "content",
         "score",
+        "quality",
+        "used_count",
+        "query",
+        "created_at",
         "SORTBY",
         "score",
         "DIALECT",
         "2",
       )) as unknown[]
-      const hits: { id: string; score: number; type: string; tags: string; content: string }[] = []
+      const hits: {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
         const key = result[i] as string
@@ -446,15 +506,23 @@ export namespace Memory {
         let type = "",
           tags = "",
           content = "",
-          score = 0
+          score = 0,
+          quality = Scoring.DEFAULT_QUALITY,
+          used_count = 0,
+          query = "",
+          created_at = ""
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
           if (fields[j] === "score") score = parseFloat(fields[j + 1]) || 0
+          if (fields[j] === "quality") quality = parseFloat(fields[j + 1]) || Scoring.DEFAULT_QUALITY
+          if (fields[j] === "used_count") used_count = parseInt(fields[j + 1], 10) || 0
+          if (fields[j] === "query") query = fields[j + 1]
+          if (fields[j] === "created_at") created_at = fields[j + 1]
         }
         const id = key.replace(redis.keyPrefix(), "")
-        if (content) hits.push({ id, score, type, tags, content })
+        if (content) hits.push({ id, score, type, tags, content, quality, used_count, query, created_at })
       }
       return hits
     },
@@ -530,7 +598,19 @@ export namespace Memory {
     async search(
       vector: number[],
       topK: number,
-    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
     },
     async count() {
@@ -703,15 +783,21 @@ export namespace Memory {
       entry: {
         id: h.id,
         type: h.type,
-        tags: h.tags.split(","),
+        tags: h.tags.split(",").filter(Boolean),
         content: h.content,
-        used_count: 0,
+        quality: h.quality,
+        used_count: h.used_count,
       },
       similarity: h.score,
     }))
 
     // Apply scoring and sort
     const scored = Scoring.scoreEntries(entries)
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch(() => {})
+    })
 
     return scored.slice(0, topK).map((s) => {
       let result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
@@ -734,8 +820,39 @@ export namespace Memory {
   export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    // Requires updating store.search to return IDs and scores
-    return []
+    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+
+    const entries = hits.map((h) => ({
+      entry: {
+        id: h.id,
+        type: h.type as EntryType,
+        query: h.query,
+        content: h.content,
+        tags: h.tags.split(",").filter(Boolean),
+        quality: h.quality,
+        used_count: h.used_count,
+      },
+      similarity: h.score,
+    }))
+
+    const scored = Scoring.scoreEntries(entries)
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch(() => {})
+    })
+
+    return scored.slice(0, topK).map((s) => ({
+      id: s.entry.id,
+      type: s.entry.type,
+      query: s.entry.query,
+      content: s.entry.content,
+      tags: s.entry.tags,
+      quality: s.entry.quality,
+      used_count: s.entry.used_count,
+      similarity: s.similarity,
+      score: s.score,
+    }))
   }
 
   export async function clear(): Promise<void> {

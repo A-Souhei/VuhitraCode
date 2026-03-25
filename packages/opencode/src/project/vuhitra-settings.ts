@@ -147,6 +147,9 @@ export namespace VuHitraSettings {
   }
 
   export async function setReviewMaxRounds(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`review_max_rounds must be a positive integer, got ${n}`)
+    }
     await writeToDisk({ review_max_rounds: n })
   }
 
@@ -155,6 +158,9 @@ export namespace VuHitraSettings {
   }
 
   export async function setExploreMaxInstances(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`explore_max_instances must be a positive integer, got ${n}`)
+    }
     await writeToDisk({ explore_max_instances: n })
   }
 
@@ -191,26 +197,44 @@ export namespace VuHitraSettings {
   }
 
   export async function setCacheSimilarityWeight(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_similarity_weight must be a number between 0 and 1, got ${n}`)
+    }
     await writeToDisk({ cache_similarity_weight: n })
   }
 
   export async function setCacheUsageWeight(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_usage_weight must be a number between 0 and 1, got ${n}`)
+    }
     await writeToDisk({ cache_usage_weight: n })
   }
 
   export async function setCacheDedupThreshold(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_dedup_threshold must be a number between 0 and 1, got ${n}`)
+    }
     await writeToDisk({ cache_dedup_threshold: n })
   }
 
   export async function setCacheMinSimilarity(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_min_similarity must be a number between 0 and 1, got ${n}`)
+    }
     await writeToDisk({ cache_min_similarity: n })
   }
 
   export async function setCacheMaxCandidates(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`cache_max_candidates must be a positive integer, got ${n}`)
+    }
     await writeToDisk({ cache_max_candidates: n })
   }
 
   export async function setCacheDefaultQuality(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_default_quality must be a number between 0 and 1, got ${n}`)
+    }
     await writeToDisk({ cache_default_quality: n })
   }
 }

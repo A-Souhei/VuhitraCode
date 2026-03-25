@@ -23,16 +23,6 @@ describe("Canonicalize", () => {
       expect(result).toContain("UserSchema")
     })
 
-    test("extracts multiple entity names for structure type", () => {
-      const result = Canonicalize.extractQuery(
-        "UserSchema and ProductSchema define the data models with their relationships",
-        "structure",
-      )
-      // UPPER_CAMEL matches multi-word capitalized sequences
-      // May only extract one if pattern doesn't match both
-      expect(result).toContain("UserSchema")
-    })
-
     test("extracts pattern names for pattern type", () => {
       const result = Canonicalize.extractQuery(
         "The retry-with-backoff pattern handles transient failures gracefully",

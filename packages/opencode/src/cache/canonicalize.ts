@@ -111,15 +111,13 @@ export namespace Canonicalize {
   // ─── Regex patterns ───────────────────────────────────────────────────────────
 
   const UPPER_CAMEL = /[A-Z][a-z]+(?:[A-Z][a-z]+)+/
-  const ENTITY_NAME = /\b([A-Z][a-zA-Z0-9]*)\b/
   const PATTERN_NAME = /\b([a-z]+(?:-[a-z]+)+)\b/
-  const NUMBER = /\d+/
   const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
   const TIMESTAMP = /\d{4}-\d{2}-\d{2}|\d{2}:\d{2}:\d{2}|\d+\s*(?:ms|s|min|hour|day)/gi
   const SESSION_ID = /ses_[a-z0-9]+/gi
-  const FILE_PATH = /\/[a-zA-Z0-9_./-]+/
+  const FILE_PATH = /\/[a-zA-Z0-9_./-]+/g
   const URL_PATTERN = /https?:\/\/[^\s]+/gi
-  const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
+  const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
   const REDACTED = /\[REDACTED\]/gi
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -284,7 +282,7 @@ export namespace Canonicalize {
           .split(" ")
           .filter((w) => w.length > 2)
           .slice(0, 6)
-        query = words.join(" ") + " script" || inferred
+        query = (words.join(" ") + " script").trim() || inferred
         break
       }
       case "log":
