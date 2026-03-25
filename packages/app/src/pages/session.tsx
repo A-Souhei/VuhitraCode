@@ -1,4 +1,4 @@
-import { onCleanup, Show, Match, Switch, createMemo, createEffect, on, onMount } from "solid-js"
+import { onCleanup, Show, Match, Switch, createMemo, createEffect, on, onMount, batch } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
@@ -323,6 +323,102 @@ export default function Page() {
       () => {
         setStore("messageId", undefined)
         setStore("changes", "session")
+      },
+      { defer: true },
+    ),
+  )
+
+  // Track previous values to detect actual changes
+  let prevAgentName: string | undefined
+  let prevModelKey: { providerID: string; modelID: string } | undefined
+
+  // Restore selection when session gets focus
+  createEffect(
+    on(
+      sessionKey,
+      (key) => {
+        if (!key) return
+        const saved = view().selection.get()
+        if (!saved) {
+          // No saved selection, initialize prev values from current
+          const currentAgent = local.agent.current()
+          const currentModel = local.model.current()
+          prevAgentName = currentAgent?.name
+          prevModelKey = currentModel ? { providerID: currentModel.provider.id, modelID: currentModel.id } : undefined
+          return
+        }
+
+        // Restore agent if valid
+        const agentName = saved.agent
+        if (agentName) {
+          const available = local.agent.list()
+          if (available.some((a) => a.name === agentName)) {
+            local.agent.set(agentName)
+          }
+        }
+
+        // Restore model only if agent doesn't have a locked model and models are ready
+        const modelKey = saved.model
+        if (modelKey && !local.model.locked() && local.model.ready()) {
+          local.model.set(modelKey)
+        }
+
+        // Restore profile
+        const profileName = saved.profile
+        if (profileName && profileName !== "default" && params.id) {
+          const available = sync.data.profiles ?? ["default"]
+          if (available.includes(profileName)) {
+            void sdk.client.session.update({ sessionID: params.id, profile: profileName }).catch(() => {
+              // Silently fail profile restore
+            })
+          }
+        }
+
+        // Update prev values after restoration
+        prevAgentName = agentName
+        prevModelKey = modelKey
+      },
+      { defer: true },
+    ),
+  )
+
+  // Save selection when agent or model changes
+  createEffect(
+    on(
+      [() => local.agent.current()?.name, () => local.model.current()],
+      ([agentName, model]) => {
+        const session = sessionKey()
+        if (!session) return
+
+        // Skip if this is the initial render before restoration
+        if (prevAgentName === undefined && prevModelKey === undefined) {
+          prevAgentName = agentName
+          prevModelKey = model ? { providerID: model.provider.id, modelID: model.id } : undefined
+          return
+        }
+
+        // Only save if values actually changed
+        const modelKey = model ? { providerID: model.provider.id, modelID: model.id } : undefined
+        const agentChanged = agentName !== prevAgentName
+        const modelChanged =
+          modelKey?.providerID !== prevModelKey?.providerID || modelKey?.modelID !== prevModelKey?.modelID
+
+        if (!agentChanged && !modelChanged) return
+
+        // Update prev values
+        prevAgentName = agentName
+        prevModelKey = modelKey
+
+        // Save the selection (only save model if not locked)
+        const selection = {
+          agent: agentName,
+          model: local.model.locked() ? undefined : modelKey,
+          profile: sync.data.active_profile !== "default" ? sync.data.active_profile : undefined,
+        }
+
+        if (selection.agent || selection.model) {
+          view().selection.set(selection)
+        }
       },
       { defer: true },
     ),

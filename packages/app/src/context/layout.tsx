@@ -39,7 +39,14 @@ type SessionView = {
   reviewOpen?: string[]
   pendingMessage?: string
   pendingMessageAt?: number
+  selection?: {
+    agent?: string
+    model?: ModelKey
+    profile?: string
+  }
 }
+
+type ModelKey = { providerID: string; modelID: string }
 
 type TabHandoff = {
   dir: string
@@ -775,6 +782,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
               if (same(current.reviewOpen, open)) return
               setStore("sessionView", session, "reviewOpen", open)
+            },
+          },
+          selection: {
+            get(): SessionView["selection"] {
+              return s().selection
+            },
+            set(selection: SessionView["selection"]) {
+              const session = key()
+              const current = store.sessionView[session]
+              if (!current) {
+                setStore("sessionView", session, {
+                  scroll: {},
+                  selection,
+                })
+                return
+              }
+              setStore("sessionView", session, "selection", selection)
             },
           },
         }
