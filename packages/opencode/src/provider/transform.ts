@@ -269,7 +269,7 @@ export namespace ProviderTransform {
         model.id.includes("claude") ||
         model.id.includes("minimax") ||
         model.api.npm === "@ai-sdk/anthropic") &&
-      (model.api.npm !== "@ai-sdk/gateway" || model.api.id.includes("minimax") || model.id.includes("minimax"))
+      (model.api.npm !== "@ai-sdk/gateway" || model.providerID === "minimax")
     ) {
       msgs = applyCaching(msgs, model)
     }
