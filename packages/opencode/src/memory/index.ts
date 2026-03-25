@@ -646,7 +646,8 @@ export namespace Memory {
       const client = getRedisClient()
       const count = await client.hget(metaKey(id), "used_count")
       return parseInt(count || "0", 10)
-    } catch {
+    } catch (e) {
+      log.warn("failed to get used_count from redis", { id, error: String(e) })
       return 0
     }
   }
@@ -657,8 +658,8 @@ export namespace Memory {
     try {
       const client = getRedisClient()
       await client.hincrby(metaKey(id), "used_count", 1)
-    } catch {
-      // Silently fail - usage tracking is not critical
+    } catch (e) {
+      log.warn("failed to increment used_count in redis", { id, error: String(e) })
     }
   }
 
@@ -674,8 +675,8 @@ export namespace Memory {
         query: entry.query ?? "",
         created_at: entry.created_at ?? new Date().toISOString(),
       })
-    } catch {
-      // Silently fail - metadata storage is not critical
+    } catch (e) {
+      log.warn("failed to store metadata in redis", { id, error: String(e) })
     }
   }
 
@@ -807,7 +808,7 @@ export namespace Memory {
     })
 
     return scored.slice(0, topK).map((s) => {
-      let result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
+      const result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
       return result
     })
   }
