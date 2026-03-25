@@ -350,6 +350,18 @@ export namespace Memory {
       })
       if (!response.ok) throw new Error(`Failed to delete all points: ${response.status} ${response.statusText}`)
     },
+
+    async updateQuality(id: string, quality: number) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/payload`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ payload: { quality }, points: [id] }),
+      })
+      if (!response.ok) throw new Error(`Failed to update quality: ${response.status} ${response.statusText}`)
+    },
   }
 
   // ─── Redis backend ────────────────────────────────────────────────────────────
@@ -589,6 +601,15 @@ export namespace Memory {
         } while (cursor !== "0")
       }
     },
+
+    async updateQuality(id: string, quality: number) {
+      const client = getRedisClient()
+      const prefix = redis.keyPrefix()
+      const pipeline = client.pipeline()
+      pipeline.hset(`${prefix}${id}`, "quality", String(quality))
+      pipeline.hset(`${collectionName()}:meta:${id}`, "quality", String(quality))
+      await pipeline.exec()
+    },
   }
 
   // ─── Store dispatch ───────────────────────────────────────────────────────────
@@ -629,6 +650,9 @@ export namespace Memory {
     },
     async deleteAll() {
       return useRedis() ? redis.deleteAll() : qdrant.deleteAll()
+    },
+    async updateQuality(id: string, quality: number) {
+      return useRedis() ? redis.updateQuality(id, quality) : qdrant.updateQuality(id, quality)
     },
   }
 
@@ -716,9 +740,9 @@ export namespace Memory {
   }
 
   // Fix #2: re-acquire state after awaits to avoid mutating orphaned state on disposal mid-flight
-  export async function write(entry: Omit<MemoryEntry, "token_count">): Promise<void> {
+  export async function write(entry: Omit<MemoryEntry, "token_count">): Promise<string | undefined> {
     const s = state()
-    if (s.status.type !== "ready") return
+    if (s.status.type !== "ready") return undefined
     try {
       const content = sanitize(entry.content)
       const token_count = Math.ceil(content.length / 4)
@@ -729,13 +753,20 @@ export namespace Memory {
 
       // Merge canonical data with entry
       const query = entry.query ?? canonical.query
-      const tags = entry.tags ?? canonical.tags
+      const tags = entry.tags?.length ? entry.tags : canonical.tags
       const quality = entry.quality ?? Scoring.DEFAULT_QUALITY
       const used_count = entry.used_count ?? 0
       const created_at = entry.created_at ?? new Date().toISOString()
 
       // Embed the canonical query for better similarity matching
       const vector = await embed(query)
+
+      // Deduplication: skip if a sufficiently similar entry already exists
+      const similar = await store.search(vector, 1)
+      if (similar.length > 0 && similar[0].score >= Canonicalize.SIMILARITY_THRESHOLD) {
+        log.info("dedup: memory entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
+        return similar[0].id
+      }
 
       const payload: Record<string, unknown> = {
         type: entry.type,
@@ -764,7 +795,7 @@ export namespace Memory {
 
       // Re-acquire state after awaits
       const s2 = state()
-      if (s2.status.type !== "ready") return
+      if (s2.status.type !== "ready") return undefined
       s2.entryCount++
       s2.tokenCount += token_count
       s2.status = { ...s2.status, entry_count: s2.entryCount, token_count: s2.tokenCount }
@@ -774,8 +805,19 @@ export namespace Memory {
         message: `New ${entry.type} recorded`,
         variant: "info",
       })
+      return id
     } catch (e) {
       log.warn("failed to write memory entry", { type: entry.type, error: String(e) })
+      return undefined
+    }
+  }
+
+  export async function updateQuality(id: string, quality: number): Promise<void> {
+    if (state().status.type !== "ready") return
+    try {
+      await store.updateQuality(id, quality)
+    } catch (e) {
+      log.warn("failed to update memory entry quality", { id, error: String(e) })
     }
   }
 
@@ -954,8 +996,8 @@ export namespace Memory {
       // Normalize quality from 0-10 to 0-1
       const initialQuality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
 
-      // Write the entry with the initial quality
-      await write({
+      // Write the entry with the initial quality; capture the ID for a possible quality update
+      const entryId = await write({
         type: params.type,
         content: params.content,
         tags: params.tags ?? [],
@@ -1013,16 +1055,8 @@ export namespace Memory {
           if (!isNaN(rating) && rating >= 0 && rating <= 10) {
             const normalizedQuality = rating / 10
 
-            // Re-write the entry with the user-provided quality rating
-            await write({
-              type: params.type,
-              content: params.content,
-              tags: params.tags ?? [],
-              session_id: params.session_id ?? ctx.sessionID,
-              branch: params.branch ?? "",
-              timestamp: Date.now(),
-              quality: normalizedQuality,
-            })
+            // Update quality in-place on the existing entry (avoids triggering dedup on re-write)
+            if (entryId) await updateQuality(entryId, normalizedQuality)
 
             return {
               title: `Memory: ${params.type}`,

@@ -806,6 +806,13 @@ export namespace Biblion {
       // Embed the canonical query for better similarity matching
       const vector = await embed(query)
 
+      // Deduplication: skip if a sufficiently similar entry already exists
+      const similar = await store.search(vector, 1)
+      if (similar.length > 0 && similar[0].score >= Canonicalize.SIMILARITY_THRESHOLD) {
+        log.info("dedup: biblion entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
+        return
+      }
+
       const payload: Record<string, unknown> = {
         type: entry.type,
         content,
