@@ -10,6 +10,7 @@ import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
 import { Scoring } from "@/cache/scoring"
 import { Canonicalize } from "@/cache/canonicalize"
+import { Question } from "@/question"
 
 export namespace Memory {
   const log = Log.create({ service: "memory" })
@@ -576,13 +577,17 @@ export namespace Memory {
 
     async deleteAll() {
       const client = getRedisClient()
-      const prefix = redis.keyPrefix()
-      let cursor = "0"
-      do {
-        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
-        cursor = next
-        if (keys.length > 0) await client.del(...keys)
-      } while (cursor !== "0")
+      const collection = collectionName()
+      // Delete both point keys and metadata keys
+      const patterns = [`${collection}:point:*`, `${collection}:meta:*`]
+      for (const pattern of patterns) {
+        let cursor = "0"
+        do {
+          const [next, keys] = (await client.scan(cursor, "MATCH", pattern, "COUNT", "100")) as [string, string[]]
+          cursor = next
+          if (keys.length > 0) await client.del(...keys)
+        } while (cursor !== "0")
+      }
     },
   }
 
@@ -942,7 +947,12 @@ export namespace Memory {
         }
       }
       // Normalize quality from 0-10 to 0-1
-      const quality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
+      const initialQuality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
+
+      // Generate a unique ID for the entry
+      const id = crypto.randomUUID()
+
+      // Write the entry with the initial quality
       await write({
         type: params.type,
         content: params.content,
@@ -950,12 +960,89 @@ export namespace Memory {
         session_id: params.session_id ?? ctx.sessionID,
         branch: params.branch ?? "",
         timestamp: Date.now(),
-        quality,
+        quality: initialQuality,
       })
-      return {
-        title: `Memory: ${params.type}`,
-        metadata: { quality },
-        output: `Memory entry written (type: ${params.type}, quality: ${quality.toFixed(2)})`,
+
+      // If quality was explicitly provided, use it and don't prompt
+      if (params.quality !== undefined) {
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written (type: ${params.type}, quality: ${initialQuality.toFixed(2)})`,
+        }
+      }
+
+      // Prompt the user for a quality rating
+      try {
+        const answers = await Question.ask({
+          sessionID: ctx.sessionID,
+          questions: [
+            {
+              question: `Rate the quality of this memory entry (0-10, where 0=poor, 10=excellent):`,
+              header: "Quality Rating",
+              options: [
+                { label: "10 - Excellent", description: "Highly valuable,well-structured, immediately useful" },
+                { label: "8 - Very Good", description: "Valuable content with good structure" },
+                { label: "5 - Average", description: "Moderately useful, standard quality" },
+                { label: "3 - Below Average", description: "Limited usefulness or needs refinement" },
+                { label: "0 - Poor", description: "Low value, consider ifmemory is needed" },
+              ],
+              custom: true, // Allow custom input for specific ratings
+            },
+          ],
+        })
+
+        // Parse the answer - it's an array of selected labels
+        const answer = answers[0]?.[0]
+        if (answer) {
+          // Extract numeric rating from the answer
+          let rating: number | undefined
+
+          // Check if it's one of the preset options
+          if (answer.includes(" - ")) {
+            const numStr = answer.split(" - ")[0]
+            rating = parseInt(numStr, 10)
+          } else {
+            // Try to parse as a direct number
+            rating = parseInt(answer, 10)
+          }
+
+          // Validate the rating
+          if (!isNaN(rating) && rating >= 0 && rating <= 10) {
+            const normalizedQuality = rating / 10
+
+            // Re-write the entry with the user-provided quality rating
+            await write({
+              type: params.type,
+              content: params.content,
+              tags: params.tags ?? [],
+              session_id: params.session_id ?? ctx.sessionID,
+              branch: params.branch ?? "",
+              timestamp: Date.now(),
+              quality: normalizedQuality,
+            })
+
+            return {
+              title: `Memory: ${params.type}`,
+              metadata: { quality: normalizedQuality },
+              output: `Memory entry written with quality rating ${rating}/10 (${normalizedQuality.toFixed(2)})`,
+            }
+          }
+        }
+
+        // If no valid rating was provided, use the default
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written with default quality (${initialQuality.toFixed(2)})`,
+        }
+      } catch (e) {
+        // If the question was rejected or timed out, use the default quality
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written with default quality (${initialQuality.toFixed(2)})`,
+        }
       }
     },
   })
