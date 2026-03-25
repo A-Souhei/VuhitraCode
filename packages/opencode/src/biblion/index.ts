@@ -608,13 +608,17 @@ export namespace Biblion {
 
     async deleteAll() {
       const client = getRedisClient()
-      const prefix = redis.keyPrefix()
-      let cursor = "0"
-      do {
-        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
-        cursor = next
-        if (keys.length > 0) await client.del(...keys)
-      } while (cursor !== "0")
+      const collection = collectionName()
+      // Delete both point keys and metadata keys
+      const patterns = [`${collection}:point:*`, `${collection}:meta:*`]
+      for (const pattern of patterns) {
+        let cursor = "0"
+        do {
+          const [next, keys] = (await client.scan(cursor, "MATCH", pattern, "COUNT", "100")) as [string, string[]]
+          cursor = next
+          if (keys.length > 0) await client.del(...keys)
+        } while (cursor !== "0")
+      }
     },
 
     async delete(id: string) {
@@ -869,7 +873,9 @@ export namespace Biblion {
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
-      incrementUsedCount(s.entry.id).catch(() => {})
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
     })
 
     return scored.slice(0, topK).map((s) => {
@@ -917,7 +923,9 @@ export namespace Biblion {
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
-      incrementUsedCount(s.entry.id).catch(() => {})
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
     })
 
     return scored.slice(0, topK).map((s) => ({

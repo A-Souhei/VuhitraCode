@@ -801,7 +801,9 @@ export namespace Memory {
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
-      incrementUsedCount(s.entry.id).catch(() => {})
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
     })
 
     return scored.slice(0, topK).map((s) => {
@@ -844,7 +846,9 @@ export namespace Memory {
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
-      incrementUsedCount(s.entry.id).catch(() => {})
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
     })
 
     return scored.slice(0, topK).map((s) => ({
@@ -948,9 +952,6 @@ export namespace Memory {
       }
       // Normalize quality from 0-10 to 0-1
       const initialQuality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
-
-      // Generate a unique ID for the entry
-      const id = crypto.randomUUID()
 
       // Write the entry with the initial quality
       await write({

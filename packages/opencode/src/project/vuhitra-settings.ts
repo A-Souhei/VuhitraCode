@@ -177,7 +177,7 @@ export namespace VuHitraSettings {
   }
 
   export function cacheUsageWeight(): number {
-    return state().cache_usage_weight ?? 0.3
+    return state().cache_usage_weight ?? 0.2
   }
 
   export function cacheDedupThreshold(): number {
