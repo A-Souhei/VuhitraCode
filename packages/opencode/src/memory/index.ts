@@ -8,6 +8,8 @@ import { Log } from "@/util/log"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
+import { Scoring } from "@/cache/scoring"
+import { Canonicalize } from "@/cache/canonicalize"
 
 export namespace Memory {
   const log = Log.create({ service: "memory" })
@@ -46,6 +48,15 @@ export namespace Memory {
     timestamp: number
     tags: string[]
     token_count: number
+    query?: string
+    answer?: string
+    quality?: number
+    used_count?: number
+    created_at?: string
+    problem?: string
+    context?: string
+    solution?: string
+    steps?: string[]
   }
 
   interface State {
@@ -230,7 +241,10 @@ export namespace Memory {
       if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/search`, {
@@ -241,9 +255,9 @@ export namespace Memory {
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { payload: { type: string; tags: string; content: string } }[]
+        result: { id: string; score: number; payload: { type: string; tags: string; content: string } }[]
       }
-      return data.result.map((r) => r.payload)
+      return data.result.map((r) => ({ id: String(r.id), score: r.score, ...r.payload }))
     },
 
     async count(): Promise<number> {
@@ -382,6 +396,14 @@ export namespace Memory {
           String(p.payload.session_id ?? ""),
           "branch",
           String(p.payload.branch ?? ""),
+          "query",
+          String(p.payload.query ?? ""),
+          "quality",
+          String(p.payload.quality ?? Scoring.DEFAULT_QUALITY),
+          "used_count",
+          String(p.payload.used_count ?? 0),
+          "created_at",
+          String(p.payload.created_at ?? ""),
           "vector",
           redis.encodeVector(p.vector),
         )
@@ -389,7 +411,10 @@ export namespace Memory {
       await pipeline.exec()
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
@@ -402,29 +427,34 @@ export namespace Memory {
         "vec",
         vecBuf,
         "RETURN",
-        "3",
+        "4",
         "type",
         "tags",
         "content",
+        "score",
         "SORTBY",
         "score",
         "DIALECT",
         "2",
       )) as unknown[]
-      const hits: { type: string; tags: string; content: string }[] = []
+      const hits: { id: string; score: number; type: string; tags: string; content: string }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
+        const key = result[i] as string
         const fields = result[i + 1] as string[]
         if (!Array.isArray(fields)) continue
         let type = "",
           tags = "",
-          content = ""
+          content = "",
+          score = 0
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
+          if (fields[j] === "score") score = parseFloat(fields[j + 1]) || 0
         }
-        if (content) hits.push({ type, tags, content })
+        const id = key.replace(redis.keyPrefix(), "")
+        if (content) hits.push({ id, score, type, tags, content })
       }
       return hits
     },
@@ -497,7 +527,10 @@ export namespace Memory {
     async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
       return useRedis() ? redis.upsert(points) : qdrant.upsert(points)
     },
-    async search(vector: number[], topK: number) {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<{ id: string; score: number; type: string; tags: string; content: string }[]> {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
     },
     async count() {
@@ -515,6 +548,51 @@ export namespace Memory {
   }
 
   // ─── Services check ───────────────────────────────────────────────────────────
+
+  // Metadata prefix for Redis
+  function metaKey(id: string) {
+    return `${collectionName()}:meta:${id}`
+  }
+
+  // Get used_count from Redis (with fallback)
+  async function getUsedCount(id: string): Promise<number> {
+    if (!useRedis()) return 0
+    try {
+      const client = getRedisClient()
+      const count = await client.hget(metaKey(id), "used_count")
+      return parseInt(count || "0", 10)
+    } catch {
+      return 0
+    }
+  }
+
+  // Increment used_count in Redis (with fallback)
+  async function incrementUsedCount(id: string): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hincrby(metaKey(id), "used_count", 1)
+    } catch {
+      // Silently fail - usage tracking is not critical
+    }
+  }
+
+  // Store metadata on write
+  async function storeMetadata(id: string, entry: Partial<MemoryEntry>): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hset(metaKey(id), {
+        used_count: String(entry.used_count ?? 0),
+        quality: String(entry.quality ?? Scoring.DEFAULT_QUALITY),
+        tags: (entry.tags ?? []).join(","),
+        query: entry.query ?? "",
+        created_at: entry.created_at ?? new Date().toISOString(),
+      })
+    } catch {
+      // Silently fail - metadata storage is not critical
+    }
+  }
 
   async function checkServices() {
     await Promise.all([
@@ -559,29 +637,52 @@ export namespace Memory {
       const content = sanitize(entry.content)
       const token_count = Math.ceil(content.length / 4)
       const id = crypto.randomUUID()
-      const vector = await embed(content)
-      await store.upsert([
-        {
-          id,
-          vector,
-          payload: {
-            type: entry.type,
-            content,
-            tags: entry.tags.join(","),
-            timestamp: entry.timestamp,
-            token_count,
-            session_id: entry.session_id,
-            branch: entry.branch,
-          },
-        },
-      ])
-      const s2 = state() // re-acquire after awaits
-      if (s2.status.type !== "ready") return // disposed mid-flight
+
+      // Canonicalize to extract query and tags
+      const canonical = Canonicalize.createCanonicalResult(content, entry.type, entry.tags)
+
+      // Merge canonical data with entry
+      const query = entry.query ?? canonical.query
+      const tags = entry.tags ?? canonical.tags
+      const quality = entry.quality ?? Scoring.DEFAULT_QUALITY
+      const used_count = entry.used_count ?? 0
+      const created_at = entry.created_at ?? new Date().toISOString()
+
+      // Embed the canonical query for better similarity matching
+      const vector = await embed(query)
+
+      const payload: Record<string, unknown> = {
+        type: entry.type,
+        content,
+        query,
+        tags: tags.join(","),
+        quality,
+        used_count,
+        created_at,
+        timestamp: entry.timestamp,
+        token_count,
+        session_id: entry.session_id,
+        branch: entry.branch,
+      }
+
+      // Add optional fields
+      if (entry.problem) payload.problem = entry.problem
+      if (entry.context) payload.context = entry.context
+      if (entry.solution) payload.solution = entry.solution
+      if (entry.steps) payload.steps = entry.steps.join(",")
+
+      await store.upsert([{ id, vector, payload }])
+
+      // Store metadata in Redis
+      await storeMetadata(id, { ...entry, query, tags, quality, used_count, created_at })
+
+      // Re-acquire state after awaits
+      const s2 = state()
+      if (s2.status.type !== "ready") return
       s2.entryCount++
       s2.tokenCount += token_count
       s2.status = { ...s2.status, entry_count: s2.entryCount, token_count: s2.tokenCount }
       Bus.publish(Event.Updated, s2.status)
-      // Fix #8: show human-readable entry type in toast message
       Bus.publish(TuiEvent.ToastShow, {
         title: `◈ Memory — ${s2.entryCount} ${s2.entryCount === 1 ? "entry" : "entries"}`,
         message: `New ${entry.type} recorded`,
@@ -595,8 +696,46 @@ export namespace Memory {
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, topK)
-    return hits.map((r) => `[${r.type}] tags: ${r.tags}\n${r.content}`)
+    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+
+    // Build entries with similarity scores
+    const entries = hits.map((h) => ({
+      entry: {
+        id: h.id,
+        type: h.type,
+        tags: h.tags.split(","),
+        content: h.content,
+        used_count: 0,
+      },
+      similarity: h.score,
+    }))
+
+    // Apply scoring and sort
+    const scored = Scoring.scoreEntries(entries)
+
+    return scored.slice(0, topK).map((s) => {
+      let result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
+      return result
+    })
+  }
+
+  export interface SearchEntry {
+    id: string
+    type: EntryType
+    query: string
+    content: string
+    tags: string[]
+    quality: number
+    used_count: number
+    similarity: number
+    score: number
+  }
+
+  export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
+    if (state().status.type !== "ready") return []
+    const vector = await embed(query)
+    // Requires updating store.search to return IDs and scores
+    return []
   }
 
   export async function clear(): Promise<void> {
@@ -669,17 +808,24 @@ export namespace Memory {
       content: z.string().describe("The content to memorize. Will be sanitized of credentials before storage."),
       tags: z.array(z.string()).optional().describe("Optional tags for categorization"),
       session_id: z.string().optional().describe("Session ID (auto-populated if omitted)"),
-      // Fix #7: remove misleading "(auto-populated if omitted)" claim; fallback changed from "unknown" to ""
       branch: z.string().optional().describe("Git branch name (leave empty if unknown)"),
+      quality: z
+        .number()
+        .min(0)
+        .max(10)
+        .optional()
+        .describe("Quality score from 0-10 (user-provided). If omitted, defaults to 5 (neutral)."),
     }),
     async execute(params, ctx) {
       if (status().type !== "ready") {
         return {
           title: `Memory: ${params.type}`,
-          metadata: {},
+          metadata: {} as { quality?: number },
           output: "Memory is not available — backend is not configured or unreachable. Entry was not stored.",
         }
       }
+      // Normalize quality from 0-10 to 0-1
+      const quality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
       await write({
         type: params.type,
         content: params.content,
@@ -687,11 +833,12 @@ export namespace Memory {
         session_id: params.session_id ?? ctx.sessionID,
         branch: params.branch ?? "",
         timestamp: Date.now(),
+        quality,
       })
       return {
         title: `Memory: ${params.type}`,
-        metadata: {},
-        output: `Memory entry written (type: ${params.type})`,
+        metadata: { quality },
+        output: `Memory entry written (type: ${params.type}, quality: ${quality.toFixed(2)})`,
       }
     },
   })

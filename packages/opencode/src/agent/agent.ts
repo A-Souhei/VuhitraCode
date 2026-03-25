@@ -268,6 +268,7 @@ export namespace Agent {
             task: "deny",
             memento_read: "allow",
             memento_write: "allow",
+            biblion_read: "allow",
             external_directory: {
               "*": "deny",
             },
@@ -293,6 +294,7 @@ export namespace Agent {
             task: "deny",
             memento_read: "allow",
             memento_write: "allow",
+            biblion_read: "allow",
             external_directory: {
               "*": "deny",
             },
