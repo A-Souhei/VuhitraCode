@@ -175,7 +175,7 @@ export namespace ProviderTransform {
     const system = msgs.filter((msg) => msg.role === "system").slice(0, 2)
     const final = msgs.filter((msg) => msg.role !== "system").slice(-2)
 
-    const providerOptions = {
+    const providerOptions: Record<string, any> = {
       anthropic: {
         cacheControl: { type: "ephemeral" },
       },
@@ -191,6 +191,13 @@ export namespace ProviderTransform {
       copilot: {
         copilot_cache_control: { type: "ephemeral" },
       },
+    }
+
+    // Only add minimax cache control for minimax provider
+    if (model.providerID === "minimax") {
+      providerOptions.minimax = {
+        cacheControl: { type: "ephemeral" },
+      }
     }
 
     for (const msg of unique([...system, ...final])) {
@@ -254,12 +261,15 @@ export namespace ProviderTransform {
     msgs = normalizeMessages(msgs, model, options)
     if (
       (model.providerID === "anthropic" ||
+        model.providerID === "minimax" ||
         model.api.id.includes("anthropic") ||
         model.api.id.includes("claude") ||
+        model.api.id.includes("minimax") ||
         model.id.includes("anthropic") ||
         model.id.includes("claude") ||
+        model.id.includes("minimax") ||
         model.api.npm === "@ai-sdk/anthropic") &&
-      model.api.npm !== "@ai-sdk/gateway"
+      (model.api.npm !== "@ai-sdk/gateway" || model.providerID === "minimax")
     ) {
       msgs = applyCaching(msgs, model)
     }
@@ -272,7 +282,10 @@ export namespace ProviderTransform {
         if (!(model.providerID in opts)) return opts
         const result = { ...opts }
         result[key] = result[model.providerID]
-        delete result[model.providerID]
+        // Preserve minimax key alongside the SDK key (minimax uses anthropic SDK)
+        if (model.providerID !== "minimax") {
+          delete result[model.providerID]
+        }
         return result
       }
 

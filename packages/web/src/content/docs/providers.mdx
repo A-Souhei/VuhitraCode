@@ -1196,6 +1196,23 @@ To use Kimi K2 from Moonshot AI:
    /models
    ```
 
+#### Prompt Caching
+
+MiniMax models support automatic prompt caching using the Anthropic API-compatible endpoint. This reduces costs and latency for repeated requests:
+
+- **Enabled by default** for all MiniMax models (M2, M2.1, M2.7)
+- **Cache TTL:** 5 minutes (auto-refreshed on cache hits)
+- **Cost savings:** 80% on cached tokens (0.1x base input cost)
+- **Use cases:** Multi-turn conversations, agent sessions with consistent system prompts
+
+Example cost savings (M2.7):
+
+- Without caching: 5,000 tokens × $0.3/M = $0.0015
+- Cache write (first hit): 5,000 × $0.375/M = $0.001875
+- Cache read (subsequent hits): 5,000 × $0.06/M = $0.0003 ✅ 80% cheaper
+
+See [prompt caching documentation](/docs/caching) for more details.
+
 ---
 
 ### Nebius Token Factory
