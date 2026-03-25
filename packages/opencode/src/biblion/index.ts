@@ -808,7 +808,7 @@ export namespace Biblion {
 
       // Deduplication: skip if a sufficiently similar entry already exists
       const similar = await store.search(vector, 1)
-      if (similar.length > 0 && similar[0].score >= Canonicalize.SIMILARITY_THRESHOLD) {
+      if (similar.length > 0 && similar[0].score >= VuHitraSettings.cacheDedupThreshold()) {
         log.info("dedup: biblion entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
         return
       }
@@ -857,7 +857,7 @@ export namespace Biblion {
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
 
     // For Redis backend, fetch fresh used_count from meta keys in parallel
     const usedCounts = useRedis()
@@ -877,7 +877,10 @@ export namespace Biblion {
       similarity: h.score,
     }))
 
-    const scored = Scoring.scoreEntries(entries)
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
@@ -907,7 +910,7 @@ export namespace Biblion {
   export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
 
     // For Redis backend, fetch fresh used_count from meta keys in parallel
     const usedCounts = useRedis()
@@ -927,7 +930,10 @@ export namespace Biblion {
       similarity: h.score,
     }))
 
-    const scored = Scoring.scoreEntries(entries)
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {

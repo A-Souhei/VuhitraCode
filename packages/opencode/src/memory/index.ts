@@ -519,7 +519,7 @@ export namespace Memory {
         let type = "",
           tags = "",
           content = "",
-          score = 0,
+          scoreStr = "0",
           quality = Scoring.DEFAULT_QUALITY,
           used_count = 0,
           query = "",
@@ -528,12 +528,15 @@ export namespace Memory {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
-          if (fields[j] === "score") score = parseFloat(fields[j + 1]) || 0
+          if (fields[j] === "score") scoreStr = fields[j + 1]
           if (fields[j] === "quality") quality = parseFloat(fields[j + 1]) || Scoring.DEFAULT_QUALITY
           if (fields[j] === "used_count") used_count = parseInt(fields[j + 1], 10) || 0
           if (fields[j] === "query") query = fields[j + 1]
           if (fields[j] === "created_at") created_at = fields[j + 1]
         }
+        // Redis KNN returns cosine distance (0=identical, 2=opposite); convert to similarity
+        const dist = parseFloat(scoreStr) || 0
+        const score = 1 - dist / 2
         const id = key.replace(redis.keyPrefix(), "")
         if (content) hits.push({ id, score, type, tags, content, quality, used_count, query, created_at })
       }
@@ -763,7 +766,7 @@ export namespace Memory {
 
       // Deduplication: skip if a sufficiently similar entry already exists
       const similar = await store.search(vector, 1)
-      if (similar.length > 0 && similar[0].score >= Canonicalize.SIMILARITY_THRESHOLD) {
+      if (similar.length > 0 && similar[0].score >= VuHitraSettings.cacheDedupThreshold()) {
         log.info("dedup: memory entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
         return similar[0].id
       }
@@ -824,7 +827,7 @@ export namespace Memory {
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
 
     // Build entries with similarity scores
     const entries = hits.map((h) => ({
@@ -840,7 +843,10 @@ export namespace Memory {
     }))
 
     // Apply scoring and sort
-    const scored = Scoring.scoreEntries(entries)
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
@@ -870,7 +876,7 @@ export namespace Memory {
   export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, Scoring.DEFAULT_MAX_CANDIDATES)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
 
     const entries = hits.map((h) => ({
       entry: {
@@ -885,7 +891,10 @@ export namespace Memory {
       similarity: h.score,
     }))
 
-    const scored = Scoring.scoreEntries(entries)
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
 
     // Increment used_count for top results (non-blocking)
     scored.slice(0, topK).forEach((s) => {
