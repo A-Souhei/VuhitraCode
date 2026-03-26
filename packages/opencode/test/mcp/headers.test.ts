@@ -1,5 +1,16 @@
 import { test, expect, mock, beforeEach } from "bun:test"
 
+// Mock Config.get() to return empty MCP config so state() initialization
+// creates no extra transport calls - only explicit MCP.add() calls appear in transportCalls.
+mock.module("../../src/config/config", () => ({
+  Config: {
+    get: async () => ({ mcp: {} }),
+    directories: async () => [],
+    getGlobal: async () => ({}),
+    global: { reset: () => {} },
+  },
+}))
+
 // Track what options were passed to each transport constructor
 const transportCalls: Array<{
   type: "streamable" | "sse"
