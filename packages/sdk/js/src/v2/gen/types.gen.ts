@@ -786,48 +786,6 @@ export type EventTuiSessionSelect = {
   }
 }
 
-export type MemoryStatus =
-  | {
-      type: "disabled"
-      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
-      message?: string
-    }
-  | {
-      type: "ready"
-      entry_count: number
-      token_count: number
-      backend: "qdrant" | "redis"
-      embedding_url?: string
-      embedding_model?: string
-      backend_url?: string
-    }
-
-export type EventMemoryUpdated = {
-  type: "memory.updated"
-  properties: MemoryStatus
-}
-
-export type BiblionStatus =
-  | {
-      type: "disabled"
-      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
-      message?: string
-    }
-  | {
-      type: "ready"
-      entry_count: number
-      token_count: number
-      backend: "qdrant" | "redis"
-      embedding_url?: string
-      embedding_model?: string
-      backend_url?: string
-    }
-
-export type EventBiblionUpdated = {
-  type: "biblion.updated"
-  properties: BiblionStatus
-}
-
 export type QuestionOption = {
   /**
    * Display text (1-5 words, concise)
@@ -897,6 +855,48 @@ export type EventQuestionRejected = {
     sessionID: string
     requestID: string
   }
+}
+
+export type MemoryStatus =
+  | {
+      type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
+      message?: string
+    }
+  | {
+      type: "ready"
+      entry_count: number
+      token_count: number
+      backend: "qdrant" | "redis"
+      embedding_url?: string
+      embedding_model?: string
+      backend_url?: string
+    }
+
+export type EventMemoryUpdated = {
+  type: "memory.updated"
+  properties: MemoryStatus
+}
+
+export type BiblionStatus =
+  | {
+      type: "disabled"
+      reason?: "not_configured" | "embedding_unreachable" | "backend_unreachable" | "error"
+      message?: string
+    }
+  | {
+      type: "ready"
+      entry_count: number
+      token_count: number
+      backend: "qdrant" | "redis"
+      embedding_url?: string
+      embedding_model?: string
+      backend_url?: string
+    }
+
+export type EventBiblionUpdated = {
+  type: "biblion.updated"
+  properties: BiblionStatus
 }
 
 export type EventSessionCompacted = {
@@ -1143,11 +1143,11 @@ export type Event =
   | EventTuiCommandExecute
   | EventTuiToastShow
   | EventTuiSessionSelect
-  | EventMemoryUpdated
-  | EventBiblionUpdated
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventMemoryUpdated
+  | EventBiblionUpdated
   | EventSessionCompacted
   | EventTodoUpdated
   | EventMcpToolsChanged
@@ -2561,6 +2561,22 @@ export type GlobalDisposeResponses = {
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
 
+export type GlobalReloadData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/reload"
+}
+
+export type GlobalReloadResponses = {
+  /**
+   * Reload successful
+   */
+  200: boolean
+}
+
+export type GlobalReloadResponse = GlobalReloadResponses[keyof GlobalReloadResponses]
+
 export type AuthRemoveData = {
   body?: never
   path: {
@@ -3241,6 +3257,36 @@ export type ProfileListResponses = {
 }
 
 export type ProfileListResponse = ProfileListResponses[keyof ProfileListResponses]
+
+export type ProfileGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    name?: string
+  }
+  url: "/profile/get"
+}
+
+export type ProfileGetResponses = {
+  /**
+   * Profile data
+   */
+  200: {
+    name: string
+    agent_models?: {
+      [key: string]: unknown
+    }
+    subagent_models?: {
+      [key: string]: unknown
+    }
+    scout_model?: unknown
+    sentinel_model?: unknown
+    is_no_profile_fallback?: boolean
+  }
+}
+
+export type ProfileGetResponse = ProfileGetResponses[keyof ProfileGetResponses]
 
 export type ProfileActiveData = {
   body?: never

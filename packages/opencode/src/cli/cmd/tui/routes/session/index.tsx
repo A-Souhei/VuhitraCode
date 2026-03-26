@@ -931,6 +931,24 @@ export function Session() {
         dialog.clear()
       },
     },
+    {
+      title: "Restart CLI",
+      value: "session.restart",
+      category: "Session",
+      slash: {
+        name: "restart",
+      },
+      onSelect: async (dialog) => {
+        dialog.clear()
+        toast.show({ message: "Restarting...", variant: "info", duration: 2000 })
+        try {
+          await sdk.client.global.reload()
+          toast.show({ message: "CLI restarted successfully", variant: "success", duration: 3000 })
+        } catch (error) {
+          toast.show({ message: "Failed to restart CLI", variant: "error", duration: 5000 })
+        }
+      },
+    },
   ])
 
   const revertInfo = createMemo(() => session()?.revert)
