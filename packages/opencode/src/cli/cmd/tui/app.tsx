@@ -41,6 +41,7 @@ import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { BridgeProvider, useBridge } from "./context/bridge"
+import { VuHitraSettings } from "@/project/vuhitra-settings"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -594,6 +595,24 @@ function App() {
         const parsed = local.model.parsed()
         toast.show({
           message: `Compaction agent model set to ${parsed.model} (${parsed.provider})`,
+          variant: "info",
+          duration: 4000,
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Set default compaction threshold to 0.7",
+      value: "compaction.set_threshold_to_default",
+      category: "Agent",
+      description: "Reset the compaction threshold to the default value of 0.7 in .vuhitra/settings.json",
+      slash: {
+        name: "set-default-compaction-threshold",
+      },
+      onSelect: async (dialog) => {
+        await VuHitraSettings.setCompactionThreshold(0.7)
+        toast.show({
+          message: "Compaction threshold set to 0.7 (default)",
           variant: "info",
           duration: 4000,
         })
