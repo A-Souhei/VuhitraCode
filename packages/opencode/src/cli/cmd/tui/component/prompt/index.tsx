@@ -677,26 +677,6 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
-        title: "Print compaction model",
-        description: "Show which model will be used for /compact",
-        value: "debug.print_compact_model",
-        category: "Profile",
-        slash: { name: "print-compact-model" },
-        onSelect: async (ctx) => {
-          ctx.clear()
-          const sessionProfile = props.sessionID
-            ? (await sdk.client.profile.sessionActive({ sessionID: props.sessionID })).data
-            : null
-          const agentModel = local.agentModels.get("compaction")
-          const parts = [
-            `session.profile = ${sessionProfile ?? "(none)"}`,
-            `agentModels.compaction = ${agentModel ? `${agentModel.providerID}/${agentModel.modelID}` : "(none)"}`,
-            `local.profile.current = ${local.profile.current}`,
-          ]
-          toast.show({ variant: "info", message: parts.join(" | "), duration: 8000 })
-        },
-      },
-      {
         title: "Switch profile",
         description: `Active: ${local.profile.current}`,
         value: "profile.switch",
