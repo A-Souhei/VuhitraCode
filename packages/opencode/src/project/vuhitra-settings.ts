@@ -29,7 +29,7 @@ export namespace VuHitraSettings {
     cache_default_quality: z.number().min(0).max(1).optional(),
     compaction_threshold: z.number().min(0).max(1).optional().default(0.7),
   })
-  type Settings = z.input<typeof SettingsSchema>
+  type Settings = z.infer<typeof SettingsSchema>
 
   const state = Instance.state((): Settings => {
     return readFromDisk()
@@ -38,19 +38,19 @@ export namespace VuHitraSettings {
   function readFromDisk(dir?: string): Settings {
     const filePath = path.join(dir ?? Instance.directory, ".vuhitra", "settings.json")
     try {
-      if (!fs.existsSync(filePath)) return {}
+      if (!fs.existsSync(filePath)) return SettingsSchema.parse({})
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"))
       const result = SettingsSchema.safeParse(parsed)
       if (!result.success) {
-        Log.Default.warn("vuhitra-settings: failed to parse settings, returning empty", {
+        Log.Default.warn("vuhitra-settings: failed to parse settings, returning defaults", {
           filePath,
           errors: result.error.issues,
         })
-        return {}
+        return SettingsSchema.parse({})
       }
       return result.data
     } catch {
-      return {}
+      return SettingsSchema.parse({})
     }
   }
 
