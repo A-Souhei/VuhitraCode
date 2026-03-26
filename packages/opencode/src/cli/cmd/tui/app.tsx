@@ -610,7 +610,8 @@ function App() {
         name: "set-default-compaction-threshold",
       },
       onSelect: async (dialog) => {
-        await VuHitraSettings.setCompactionThreshold(0.7)
+        const dir = sync.data.path.directory || process.cwd()
+        await VuHitraSettings.setCompactionThreshold(0.7, dir)
         toast.show({
           message: "Compaction threshold set to 0.7 (default)",
           variant: "info",
