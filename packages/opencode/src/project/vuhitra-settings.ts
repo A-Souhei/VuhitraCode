@@ -88,13 +88,51 @@ export namespace VuHitraSettings {
     }
   }
 
-  export function activeProfile(dir?: string): string {
-    if (dir) return readFromDisk(dir).active_profile ?? "default"
-    return state().active_profile ?? "default"
+  export async function activeProfile(dir?: string): Promise<string> {
+    const cachedName = dir ? readFromDisk(dir).active_profile : state().active_profile
+    const name = cachedName ?? "default"
+
+    // Handle "no-profile" special case - return it directly
+    if (name === Profiles.NO_PROFILE) {
+      return Profiles.NO_PROFILE
+    }
+
+    // Check if the profile exists
+    const profile = await Profiles.readProfile(name, dir)
+    const exists = Object.keys(profile).length > 0
+
+    if (!exists) {
+      // Profile doesn't exist, try to create default
+      try {
+        await Profiles.ensureDefault(dir)
+        await writeToDisk({ active_profile: "default" }, dir)
+        return "default"
+      } catch (err) {
+        // Can't create default profile (permission denied, readonly fs, etc.)
+        Log.Default.warn("vuhitra-settings: cannot create default profile, using no-profile fallback", {
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return Profiles.NO_PROFILE
+      }
+    }
+
+    return name
   }
 
   export async function setActiveProfile(name: string, dir?: string) {
+    if (name === Profiles.NO_PROFILE) {
+      throw new Error(`Cannot switch to special profile '${Profiles.NO_PROFILE}'`)
+    }
     if (!/^[A-Za-z0-9_\-.]+$/.test(name)) throw new Error(`Invalid profile name: ${name}`)
+
+    // Validate that the profile exists
+    if (name !== "default") {
+      const profile = await Profiles.readProfile(name, dir)
+      if (Object.keys(profile).length === 0) {
+        throw new Error(`Profile not found: ${name}`)
+      }
+    }
+
     await writeToDisk({ active_profile: name }, dir)
     try {
       await Bus.publish(Profiles.Event.Switched, { name })
@@ -111,35 +149,35 @@ export namespace VuHitraSettings {
 
   // Legacy aliases — kept for backward compatibility
   export async function scoutModel() {
-    return Profiles.subagentModel(activeProfile(), "scout")
+    return Profiles.subagentModel(await activeProfile(), "scout")
   }
 
   export async function sentinelModel() {
-    return Profiles.subagentModel(activeProfile(), "sentinel")
+    return Profiles.subagentModel(await activeProfile(), "sentinel")
   }
 
   export async function setScoutModel(model: { providerID: string; modelID: string }) {
-    await Profiles.setSubagentModel(activeProfile(), "scout", model)
+    await Profiles.setSubagentModel(await activeProfile(), "scout", model)
   }
 
   export async function setSentinelModel(model: { providerID: string; modelID: string }) {
-    await Profiles.setSubagentModel(activeProfile(), "sentinel", model)
+    await Profiles.setSubagentModel(await activeProfile(), "sentinel", model)
   }
 
   export async function agentModel(name: string, dir?: string) {
-    return Profiles.agentModel(activeProfile(dir), name, dir)
+    return Profiles.agentModel(await activeProfile(dir), name, dir)
   }
 
   export async function setAgentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
-    await Profiles.setAgentModel(activeProfile(dir), name, model, dir)
+    await Profiles.setAgentModel(await activeProfile(dir), name, model, dir)
   }
 
   export async function subagentModel(name: string, dir?: string) {
-    return Profiles.subagentModel(activeProfile(dir), name, dir)
+    return Profiles.subagentModel(await activeProfile(dir), name, dir)
   }
 
   export async function setSubagentModel(name: string, model: { providerID: string; modelID: string }, dir?: string) {
-    await Profiles.setSubagentModel(activeProfile(dir), name, model, dir)
+    await Profiles.setSubagentModel(await activeProfile(dir), name, model, dir)
   }
 
   export function reviewMaxRounds() {

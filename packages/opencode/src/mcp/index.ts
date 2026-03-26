@@ -821,6 +821,8 @@ export namespace MCP {
     // Register the callback BEFORE opening the browser to avoid race condition
     // when the IdP has an active SSO session and redirects immediately
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
+    // Suppress unhandled rejection if stop() is called during the browser-open delay
+    callbackPromise.catch(() => {})
 
     try {
       const subprocess = await open(authorizationUrl)

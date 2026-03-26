@@ -152,7 +152,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         model: string | undefined
       }>({ enabled: false, model: undefined })
 
-      function activeProfile() {
+      async function activeProfile() {
         return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
@@ -176,8 +176,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           .catch(() => {})
       }
 
-      onMount(() => {
-        load(activeProfile())
+      onMount(async () => {
+        load(await activeProfile())
       })
 
       return {
@@ -206,7 +206,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     function makeAgentModelStore() {
       const [store, setStore] = createStore<Record<string, { providerID: string; modelID: string }>>({})
 
-      function activeProfile() {
+      async function activeProfile() {
         return VuHitraSettings.activeProfile(sync.data.path.directory || process.cwd())
       }
 
@@ -238,8 +238,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           .catch(() => {})
       }
 
-      onMount(() => {
-        loadFromProfile(activeProfile())
+      onMount(async () => {
+        loadFromProfile(await activeProfile())
       })
 
       return {

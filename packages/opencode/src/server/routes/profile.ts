@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { VuHitraSettings } from "../../project/vuhitra-settings"
+import { Profiles } from "../../project/profiles"
 import { lazy } from "../../util/lazy"
 import { Session } from "../../session"
 import { Identifier } from "../../id/id"
@@ -28,6 +29,44 @@ export const ProfileRoutes = lazy(() =>
       },
     )
     .get(
+      "/get",
+      describeRoute({
+        summary: "Get profile data",
+        operationId: "profile.get",
+        responses: {
+          200: {
+            description: "Profile data",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    name: z.string(),
+                    agent_models: z.record(z.string(), z.any()).optional(),
+                    subagent_models: z.record(z.string(), z.any()).optional(),
+                    scout_model: z.any().optional(),
+                    sentinel_model: z.any().optional(),
+                    is_no_profile_fallback: z.boolean().optional(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("query", z.object({ name: z.string().optional(), directory: z.string().optional() })),
+      async (c) => {
+        const { name, directory } = c.req.valid("query")
+        const profileName = name ?? (await VuHitraSettings.activeProfile(directory))
+        const isNoProfile = profileName === Profiles.NO_PROFILE
+        const profile = await Profiles.readProfile(profileName, directory)
+        return c.json({
+          name: profileName,
+          ...profile,
+          ...(isNoProfile ? { is_no_profile_fallback: true } : {}),
+        })
+      },
+    )
+    .get(
       "/active",
       describeRoute({
         summary: "Get active profile",
@@ -41,7 +80,7 @@ export const ProfileRoutes = lazy(() =>
       }),
       validator("query", z.object({ directory: z.string().optional() })),
       async (c) => {
-        return c.json(VuHitraSettings.activeProfile(c.req.valid("query").directory))
+        return c.json(await VuHitraSettings.activeProfile(c.req.valid("query").directory))
       },
     )
     .post(
