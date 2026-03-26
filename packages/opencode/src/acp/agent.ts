@@ -34,6 +34,8 @@ import { Filesystem } from "../util/filesystem"
 import { ACPSessionManager } from "./session"
 import type { ACPConfig } from "./types"
 import { Provider } from "../provider/provider"
+import { Session } from "../session"
+import { Profiles } from "../project/profiles"
 import { Agent as AgentModule } from "../agent/agent"
 import { Installation } from "@/installation"
 import { MessageV2 } from "@/session/message-v2"
@@ -1401,17 +1403,27 @@ export namespace ACP {
       }
 
       switch (cmd.name) {
-        case "compact":
+        case "compact": {
+          let compactModel = model
+          const fullSession = await Session.get(sessionID)
+          const sessionProfile = fullSession.profile
+          if (sessionProfile) {
+            const saved = await Profiles.agentModel(sessionProfile, "compaction")
+            if (saved?.providerID && saved?.modelID) {
+              compactModel = await Provider.getModel(saved.providerID, saved.modelID)
+            }
+          }
           await this.config.sdk.session.summarize(
             {
               sessionID,
               directory,
-              providerID: model.providerID,
-              modelID: model.modelID,
+              providerID: compactModel.providerID,
+              modelID: compactModel.modelID,
             },
             { throwOnError: true },
           )
           break
+        }
       }
 
       await sendUsageUpdate(this.connection, this.sdk, sessionID, directory)
