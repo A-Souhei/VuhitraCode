@@ -1,5 +1,6 @@
 import { test, expect, mock, beforeEach } from "bun:test"
 import { EventEmitter } from "events"
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 
 // Track open() calls and control failure behavior
 let openShouldFail = false
@@ -20,14 +21,6 @@ mock.module("open", () => ({
     return subprocess
   },
 }))
-
-// Mock UnauthorizedError
-class MockUnauthorizedError extends Error {
-  constructor() {
-    super("Unauthorized")
-    this.name = "UnauthorizedError"
-  }
-}
 
 // Track what options were passed to each transport constructor
 const transportCalls: Array<{
@@ -55,7 +48,7 @@ mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
       if (this.authProvider?.redirectToAuthorization) {
         await this.authProvider.redirectToAuthorization(new URL("https://auth.example.com/authorize?client_id=test"))
       }
-      throw new MockUnauthorizedError()
+      throw new UnauthorizedError()
     }
     async finishAuth(_code: string) {
       // Mock successful auth completion
@@ -85,11 +78,6 @@ mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
       await transport.start()
     }
   },
-}))
-
-// Mock UnauthorizedError in the auth module
-mock.module("@modelcontextprotocol/sdk/client/auth.js", () => ({
-  UnauthorizedError: MockUnauthorizedError,
 }))
 
 beforeEach(() => {

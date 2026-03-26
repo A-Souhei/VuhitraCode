@@ -21,6 +21,12 @@ export namespace VuHitraSettings {
     review_max_rounds: z.number().int().positive().optional(),
     explore_max_instances: z.number().int().positive().optional(),
     notifications_enabled: z.boolean().optional(),
+    cache_similarity_weight: z.number().min(0).max(1).optional(),
+    cache_usage_weight: z.number().min(0).max(1).optional(),
+    cache_dedup_threshold: z.number().min(0).max(1).optional(),
+    cache_min_similarity: z.number().min(0).max(1).optional(),
+    cache_max_candidates: z.number().int().positive().optional(),
+    cache_default_quality: z.number().min(0).max(1).optional(),
   })
   type Settings = z.infer<typeof SettingsSchema>
 
@@ -141,6 +147,9 @@ export namespace VuHitraSettings {
   }
 
   export async function setReviewMaxRounds(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`review_max_rounds must be a positive integer, got ${n}`)
+    }
     await writeToDisk({ review_max_rounds: n })
   }
 
@@ -149,6 +158,9 @@ export namespace VuHitraSettings {
   }
 
   export async function setExploreMaxInstances(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`explore_max_instances must be a positive integer, got ${n}`)
+    }
     await writeToDisk({ explore_max_instances: n })
   }
 
@@ -158,5 +170,71 @@ export namespace VuHitraSettings {
 
   export async function setNotificationsEnabled(enabled: boolean) {
     await writeToDisk({ notifications_enabled: enabled })
+  }
+
+  export function cacheSimilarityWeight(): number {
+    return state().cache_similarity_weight ?? 0.7
+  }
+
+  export function cacheUsageWeight(): number {
+    return state().cache_usage_weight ?? 0.2
+  }
+
+  export function cacheDedupThreshold(): number {
+    return state().cache_dedup_threshold ?? 0.95
+  }
+
+  export function cacheMinSimilarity(): number {
+    return state().cache_min_similarity ?? 0.7
+  }
+
+  export function cacheMaxCandidates(): number {
+    return state().cache_max_candidates ?? 50
+  }
+
+  export function cacheDefaultQuality(): number {
+    return state().cache_default_quality ?? 0.5
+  }
+
+  export async function setCacheSimilarityWeight(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_similarity_weight must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ cache_similarity_weight: n })
+  }
+
+  export async function setCacheUsageWeight(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_usage_weight must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ cache_usage_weight: n })
+  }
+
+  export async function setCacheDedupThreshold(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_dedup_threshold must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ cache_dedup_threshold: n })
+  }
+
+  export async function setCacheMinSimilarity(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_min_similarity must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ cache_min_similarity: n })
+  }
+
+  export async function setCacheMaxCandidates(n: number) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`cache_max_candidates must be a positive integer, got ${n}`)
+    }
+    await writeToDisk({ cache_max_candidates: n })
+  }
+
+  export async function setCacheDefaultQuality(n: number) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`cache_default_quality must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ cache_default_quality: n })
   }
 }

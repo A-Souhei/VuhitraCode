@@ -8,6 +8,8 @@ import { Log } from "@/util/log"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
+import { Scoring } from "@/cache/scoring"
+import { Canonicalize } from "@/cache/canonicalize"
 
 export namespace Biblion {
   const log = Log.create({ service: "biblion" })
@@ -46,6 +48,15 @@ export namespace Biblion {
     timestamp: number
     tags: string[]
     token_count: number
+    query?: string
+    answer?: string
+    quality?: number
+    used_count?: number
+    created_at?: string
+    problem?: string
+    context?: string
+    solution?: string
+    steps?: string[]
   }
 
   interface State {
@@ -224,7 +235,22 @@ export namespace Biblion {
       if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/search`, {
@@ -235,9 +261,22 @@ export namespace Biblion {
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { payload: { type: string; tags: string; content: string } }[]
+        result: { id: string; score: number; payload: Record<string, unknown> }[]
       }
-      return data.result.map((r) => r.payload)
+      return data.result.map(
+        (r) =>
+          ({ id: String(r.id), score: r.score, ...r.payload }) as {
+            id: string
+            score: number
+            type: string
+            tags: string
+            content: string
+            quality?: number
+            used_count?: number
+            query?: string
+            created_at?: string
+          },
+      )
     },
 
     async count(): Promise<number> {
@@ -408,6 +447,14 @@ export namespace Biblion {
           String(p.payload.session_id ?? ""),
           "branch",
           String(p.payload.branch ?? ""),
+          "query",
+          String(p.payload.query ?? ""),
+          "quality",
+          String(p.payload.quality ?? Scoring.DEFAULT_QUALITY),
+          "used_count",
+          String(p.payload.used_count ?? 0),
+          "created_at",
+          String(p.payload.created_at ?? ""),
           "vector",
           redis.encodeVector(p.vector),
         )
@@ -415,7 +462,22 @@ export namespace Biblion {
       await pipeline.exec()
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
@@ -428,29 +490,72 @@ export namespace Biblion {
         "vec",
         vecBuf,
         "RETURN",
-        "3",
+        "9",
         "type",
         "tags",
         "content",
+        "score",
+        "quality",
+        "used_count",
+        "created_at",
+        "query",
+        "id",
         "SORTBY",
         "score",
         "DIALECT",
         "2",
       )) as unknown[]
-      const hits: { type: string; tags: string; content: string }[] = []
+      const hits: {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
+        const docId = result[i] as string
         const fields = result[i + 1] as string[]
         if (!Array.isArray(fields)) continue
         let type = "",
           tags = "",
-          content = ""
+          content = "",
+          scoreStr = "0",
+          qualityStr = "",
+          usedCountStr = "",
+          query = "",
+          created_at = ""
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
+          if (fields[j] === "score") scoreStr = fields[j + 1]
+          if (fields[j] === "quality") qualityStr = fields[j + 1]
+          if (fields[j] === "used_count") usedCountStr = fields[j + 1]
+          if (fields[j] === "query") query = fields[j + 1]
+          if (fields[j] === "created_at") created_at = fields[j + 1]
         }
-        if (content) hits.push({ type, tags, content })
+        const prefix = redis.keyPrefix()
+        const id = typeof docId === "string" && docId.startsWith(prefix) ? docId.slice(prefix.length) : String(docId)
+        // Redis KNN returns cosine distance (0=identical, 2=opposite); convert to similarity
+        const dist = parseFloat(scoreStr) || 0
+        const score = 1 - dist / 2
+        if (content)
+          hits.push({
+            id,
+            score,
+            type,
+            tags,
+            content,
+            quality: qualityStr !== "" ? parseFloat(qualityStr) : undefined,
+            used_count: usedCountStr !== "" ? parseInt(usedCountStr, 10) : undefined,
+            query: query || undefined,
+            created_at: created_at || undefined,
+          })
       }
       return hits
     },
@@ -503,13 +608,17 @@ export namespace Biblion {
 
     async deleteAll() {
       const client = getRedisClient()
-      const prefix = redis.keyPrefix()
-      let cursor = "0"
-      do {
-        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
-        cursor = next
-        if (keys.length > 0) await client.del(...keys)
-      } while (cursor !== "0")
+      const collection = collectionName()
+      // Delete both point keys and metadata keys
+      const patterns = [`${collection}:point:*`, `${collection}:meta:*`]
+      for (const pattern of patterns) {
+        let cursor = "0"
+        do {
+          const [next, keys] = (await client.scan(cursor, "MATCH", pattern, "COUNT", "100")) as [string, string[]]
+          cursor = next
+          if (keys.length > 0) await client.del(...keys)
+        } while (cursor !== "0")
+      }
     },
 
     async delete(id: string) {
@@ -557,7 +666,22 @@ export namespace Biblion {
     async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
       return useRedis() ? redis.upsert(points) : qdrant.upsert(points)
     },
-    async search(vector: number[], topK: number) {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality?: number
+        used_count?: number
+        query?: string
+        created_at?: string
+      }[]
+    > {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
     },
     async count() {
@@ -578,6 +702,50 @@ export namespace Biblion {
     async list() {
       return useRedis() ? redis.list() : qdrant.list()
     },
+  }
+
+  // ─── Metadata helpers (Redis-based) ──────────────────────────────────────────
+
+  function metaKey(id: string) {
+    return `${collectionName()}:meta:${id}`
+  }
+
+  async function getUsedCount(id: string): Promise<number> {
+    if (!useRedis()) return 0
+    try {
+      const client = getRedisClient()
+      const count = await client.hget(metaKey(id), "used_count")
+      return parseInt(count || "0", 10)
+    } catch (e) {
+      log.warn("failed to get used_count from redis", { id, error: String(e) })
+      return 0
+    }
+  }
+
+  async function incrementUsedCount(id: string): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hincrby(metaKey(id), "used_count", 1)
+    } catch (e) {
+      log.warn("failed to increment used_count in redis", { id, error: String(e) })
+    }
+  }
+
+  async function storeMetadata(id: string, entry: Partial<BiblionEntry>): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hset(metaKey(id), {
+        used_count: String(entry.used_count ?? 0),
+        quality: String(entry.quality ?? Scoring.DEFAULT_QUALITY),
+        tags: (entry.tags ?? []).join(","),
+        query: entry.query ?? "",
+        created_at: entry.created_at ?? new Date().toISOString(),
+      })
+    } catch (e) {
+      log.warn("failed to store metadata in redis", { id, error: String(e) })
+    }
   }
 
   // ─── Services check ───────────────────────────────────────────────────────────
@@ -624,22 +792,51 @@ export namespace Biblion {
       const content = sanitize(entry.content)
       const token_count = Math.ceil(content.length / 4)
       const id = crypto.randomUUID()
-      const vector = await embed(content)
-      await store.upsert([
-        {
-          id,
-          vector,
-          payload: {
-            type: entry.type,
-            content,
-            tags: entry.tags.join(","),
-            timestamp: entry.timestamp,
-            token_count,
-            session_id: entry.session_id,
-            branch: entry.branch,
-          },
-        },
-      ])
+
+      // Canonicalize to extract query and tags
+      const canonical = Canonicalize.createCanonicalResult(content, entry.type, entry.tags)
+
+      // Merge canonical data with entry
+      const query = entry.query ?? canonical.query
+      const tags = entry.tags?.length ? entry.tags : canonical.tags
+      const quality = entry.quality ?? Scoring.DEFAULT_QUALITY
+      const used_count = entry.used_count ?? 0
+      const created_at = entry.created_at ?? new Date().toISOString()
+
+      // Embed the canonical query for better similarity matching
+      const vector = await embed(query)
+
+      // Deduplication: skip if a sufficiently similar entry already exists
+      const similar = await store.search(vector, 1)
+      if (similar.length > 0 && similar[0].score >= VuHitraSettings.cacheDedupThreshold()) {
+        log.info("dedup: biblion entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
+        return
+      }
+
+      const payload: Record<string, unknown> = {
+        type: entry.type,
+        content,
+        query,
+        tags: tags.join(","),
+        quality,
+        used_count,
+        created_at,
+        timestamp: entry.timestamp,
+        token_count,
+        session_id: entry.session_id,
+        branch: entry.branch,
+      }
+
+      if (entry.problem) payload.problem = entry.problem
+      if (entry.context) payload.context = entry.context
+      if (entry.solution) payload.solution = entry.solution
+      if (entry.steps) payload.steps = entry.steps.join(",")
+
+      await store.upsert([{ id, vector, payload }])
+
+      // Store metadata in Redis
+      await storeMetadata(id, { ...entry, query, tags, quality, used_count, created_at })
+
       // Re-acquire state after awaits to avoid mutating orphaned state on disposal mid-flight
       const s2 = state()
       if (s2.status.type !== "ready") return // disposed mid-flight
@@ -660,8 +857,102 @@ export namespace Biblion {
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, topK)
-    return hits.map((r) => `[${r.type}] tags: ${r.tags}\n${r.content}`)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
+
+    // For Redis backend, fetch fresh used_count from meta keys in parallel
+    const usedCounts = useRedis()
+      ? await Promise.all(hits.map((h) => getUsedCount(h.id)))
+      : hits.map((h) => h.used_count ?? 0)
+
+    // Build entries with similarity scores for hybrid scoring
+    const entries = hits.map((h, i) => ({
+      entry: {
+        id: h.id,
+        type: h.type,
+        tags: h.tags.split(",").filter(Boolean),
+        content: h.content,
+        used_count: usedCounts[i],
+        quality: h.quality ?? Scoring.DEFAULT_QUALITY,
+      },
+      similarity: h.score,
+    }))
+
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
+    })
+
+    return scored.slice(0, topK).map((s) => {
+      const result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
+      return result
+    })
+  }
+
+  export interface SearchEntry {
+    id: string
+    type: EntryType
+    query: string
+    content: string
+    tags: string[]
+    quality: number
+    used_count: number
+    similarity: number
+    score: number
+  }
+
+  export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
+    if (state().status.type !== "ready") return []
+    const vector = await embed(query)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
+
+    // For Redis backend, fetch fresh used_count from meta keys in parallel
+    const usedCounts = useRedis()
+      ? await Promise.all(hits.map((h) => getUsedCount(h.id)))
+      : hits.map((h) => h.used_count ?? 0)
+
+    const entries = hits.map((h, i) => ({
+      entry: {
+        id: h.id,
+        type: h.type as EntryType,
+        query: h.query ?? "",
+        content: h.content,
+        tags: h.tags.split(",").filter(Boolean),
+        quality: h.quality ?? Scoring.DEFAULT_QUALITY,
+        used_count: usedCounts[i],
+      },
+      similarity: h.score,
+    }))
+
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
+    })
+
+    return scored.slice(0, topK).map((s) => ({
+      id: s.entry.id,
+      type: s.entry.type,
+      query: s.entry.query,
+      content: s.entry.content,
+      tags: s.entry.tags,
+      quality: s.entry.quality,
+      used_count: s.entry.used_count,
+      similarity: s.similarity,
+      score: s.score,
+    }))
   }
 
   export async function list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
@@ -751,15 +1042,23 @@ export namespace Biblion {
       tags: z.array(z.string()).optional().describe("Optional tags for categorization"),
       session_id: z.string().optional().describe("Session ID (auto-populated if omitted)"),
       branch: z.string().optional().describe("Git branch name (leave empty if unknown)"),
+      quality: z
+        .number()
+        .min(0)
+        .max(10)
+        .optional()
+        .describe("Quality score from 0-10 (user-provided). If omitted, defaults to 5 (neutral)."),
     }),
     async execute(params, ctx) {
       if (status().type !== "ready") {
         return {
           title: `Biblion: ${params.type}`,
-          metadata: {},
+          metadata: {} as { quality?: number },
           output: "Biblion is not available — backend is not configured or unreachable. Entry was not stored.",
         }
       }
+      // Normalize quality from 0-10 to 0-1
+      const quality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
       await write({
         type: params.type,
         content: params.content,
@@ -767,11 +1066,12 @@ export namespace Biblion {
         session_id: params.session_id ?? ctx.sessionID,
         branch: params.branch ?? "",
         timestamp: Date.now(),
+        quality,
       })
       return {
         title: `Biblion: ${params.type}`,
-        metadata: {},
-        output: `Biblion entry written (type: ${params.type})`,
+        metadata: { quality },
+        output: `Biblion entry written (type: ${params.type}, quality: ${quality.toFixed(2)})`,
       }
     },
   })

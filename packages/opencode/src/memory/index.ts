@@ -8,6 +8,9 @@ import { Log } from "@/util/log"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
+import { Scoring } from "@/cache/scoring"
+import { Canonicalize } from "@/cache/canonicalize"
+import { Question } from "@/question"
 
 export namespace Memory {
   const log = Log.create({ service: "memory" })
@@ -46,6 +49,15 @@ export namespace Memory {
     timestamp: number
     tags: string[]
     token_count: number
+    query?: string
+    answer?: string
+    quality?: number
+    used_count?: number
+    created_at?: string
+    problem?: string
+    context?: string
+    solution?: string
+    steps?: string[]
   }
 
   interface State {
@@ -230,7 +242,22 @@ export namespace Memory {
       if (!response.ok) throw new Error(`Failed to upsert points: ${response.status} ${response.statusText}`)
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/search`, {
@@ -241,9 +268,31 @@ export namespace Memory {
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
-        result: { payload: { type: string; tags: string; content: string } }[]
+        result: {
+          id: string
+          score: number
+          payload: {
+            type: string
+            tags: string
+            content: string
+            quality?: number
+            used_count?: number
+            query?: string
+            created_at?: string
+          }
+        }[]
       }
-      return data.result.map((r) => r.payload)
+      return data.result.map((r) => ({
+        id: String(r.id),
+        score: r.score,
+        type: r.payload.type,
+        tags: r.payload.tags,
+        content: r.payload.content,
+        quality: r.payload.quality ?? Scoring.DEFAULT_QUALITY,
+        used_count: r.payload.used_count ?? 0,
+        query: r.payload.query ?? "",
+        created_at: r.payload.created_at ?? "",
+      }))
     },
 
     async count(): Promise<number> {
@@ -300,6 +349,18 @@ export namespace Memory {
         body: JSON.stringify({ filter: {} }),
       })
       if (!response.ok) throw new Error(`Failed to delete all points: ${response.status} ${response.statusText}`)
+    },
+
+    async updateQuality(id: string, quality: number) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/payload`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ payload: { quality }, points: [id] }),
+      })
+      if (!response.ok) throw new Error(`Failed to update quality: ${response.status} ${response.statusText}`)
     },
   }
 
@@ -382,6 +443,14 @@ export namespace Memory {
           String(p.payload.session_id ?? ""),
           "branch",
           String(p.payload.branch ?? ""),
+          "query",
+          String(p.payload.query ?? ""),
+          "quality",
+          String(p.payload.quality ?? Scoring.DEFAULT_QUALITY),
+          "used_count",
+          String(p.payload.used_count ?? 0),
+          "created_at",
+          String(p.payload.created_at ?? ""),
           "vector",
           redis.encodeVector(p.vector),
         )
@@ -389,7 +458,22 @@ export namespace Memory {
       await pipeline.exec()
     },
 
-    async search(vector: number[], topK: number): Promise<{ type: string; tags: string; content: string }[]> {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
@@ -402,29 +486,59 @@ export namespace Memory {
         "vec",
         vecBuf,
         "RETURN",
-        "3",
+        "8",
         "type",
         "tags",
         "content",
+        "score",
+        "quality",
+        "used_count",
+        "query",
+        "created_at",
         "SORTBY",
         "score",
         "DIALECT",
         "2",
       )) as unknown[]
-      const hits: { type: string; tags: string; content: string }[] = []
+      const hits: {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
+        const key = result[i] as string
         const fields = result[i + 1] as string[]
         if (!Array.isArray(fields)) continue
         let type = "",
           tags = "",
-          content = ""
+          content = "",
+          scoreStr = "0",
+          quality = Scoring.DEFAULT_QUALITY,
+          used_count = 0,
+          query = "",
+          created_at = ""
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
           if (fields[j] === "content") content = fields[j + 1]
+          if (fields[j] === "score") scoreStr = fields[j + 1]
+          if (fields[j] === "quality") quality = parseFloat(fields[j + 1]) || Scoring.DEFAULT_QUALITY
+          if (fields[j] === "used_count") used_count = parseInt(fields[j + 1], 10) || 0
+          if (fields[j] === "query") query = fields[j + 1]
+          if (fields[j] === "created_at") created_at = fields[j + 1]
         }
-        if (content) hits.push({ type, tags, content })
+        // Redis KNN returns cosine distance (0=identical, 2=opposite); convert to similarity
+        const dist = parseFloat(scoreStr) || 0
+        const score = 1 - dist / 2
+        const id = key.replace(redis.keyPrefix(), "")
+        if (content) hits.push({ id, score, type, tags, content, quality, used_count, query, created_at })
       }
       return hits
     },
@@ -478,13 +592,26 @@ export namespace Memory {
 
     async deleteAll() {
       const client = getRedisClient()
+      const collection = collectionName()
+      // Delete both point keys and metadata keys
+      const patterns = [`${collection}:point:*`, `${collection}:meta:*`]
+      for (const pattern of patterns) {
+        let cursor = "0"
+        do {
+          const [next, keys] = (await client.scan(cursor, "MATCH", pattern, "COUNT", "100")) as [string, string[]]
+          cursor = next
+          if (keys.length > 0) await client.del(...keys)
+        } while (cursor !== "0")
+      }
+    },
+
+    async updateQuality(id: string, quality: number) {
+      const client = getRedisClient()
       const prefix = redis.keyPrefix()
-      let cursor = "0"
-      do {
-        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
-        cursor = next
-        if (keys.length > 0) await client.del(...keys)
-      } while (cursor !== "0")
+      const pipeline = client.pipeline()
+      pipeline.hset(`${prefix}${id}`, "quality", String(quality))
+      pipeline.hset(`${collectionName()}:meta:${id}`, "quality", String(quality))
+      await pipeline.exec()
     },
   }
 
@@ -497,7 +624,22 @@ export namespace Memory {
     async upsert(points: { id: string; vector: number[]; payload: Record<string, unknown> }[]) {
       return useRedis() ? redis.upsert(points) : qdrant.upsert(points)
     },
-    async search(vector: number[], topK: number) {
+    async search(
+      vector: number[],
+      topK: number,
+    ): Promise<
+      {
+        id: string
+        score: number
+        type: string
+        tags: string
+        content: string
+        quality: number
+        used_count: number
+        query: string
+        created_at: string
+      }[]
+    > {
       return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
     },
     async count() {
@@ -512,9 +654,58 @@ export namespace Memory {
     async deleteAll() {
       return useRedis() ? redis.deleteAll() : qdrant.deleteAll()
     },
+    async updateQuality(id: string, quality: number) {
+      return useRedis() ? redis.updateQuality(id, quality) : qdrant.updateQuality(id, quality)
+    },
   }
 
   // ─── Services check ───────────────────────────────────────────────────────────
+
+  // Metadata prefix for Redis
+  function metaKey(id: string) {
+    return `${collectionName()}:meta:${id}`
+  }
+
+  // Get used_count from Redis (with fallback)
+  async function getUsedCount(id: string): Promise<number> {
+    if (!useRedis()) return 0
+    try {
+      const client = getRedisClient()
+      const count = await client.hget(metaKey(id), "used_count")
+      return parseInt(count || "0", 10)
+    } catch (e) {
+      log.warn("failed to get used_count from redis", { id, error: String(e) })
+      return 0
+    }
+  }
+
+  // Increment used_count in Redis (with fallback)
+  async function incrementUsedCount(id: string): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hincrby(metaKey(id), "used_count", 1)
+    } catch (e) {
+      log.warn("failed to increment used_count in redis", { id, error: String(e) })
+    }
+  }
+
+  // Store metadata on write
+  async function storeMetadata(id: string, entry: Partial<MemoryEntry>): Promise<void> {
+    if (!useRedis()) return
+    try {
+      const client = getRedisClient()
+      await client.hset(metaKey(id), {
+        used_count: String(entry.used_count ?? 0),
+        quality: String(entry.quality ?? Scoring.DEFAULT_QUALITY),
+        tags: (entry.tags ?? []).join(","),
+        query: entry.query ?? "",
+        created_at: entry.created_at ?? new Date().toISOString(),
+      })
+    } catch (e) {
+      log.warn("failed to store metadata in redis", { id, error: String(e) })
+    }
+  }
 
   async function checkServices() {
     await Promise.all([
@@ -552,51 +743,177 @@ export namespace Memory {
   }
 
   // Fix #2: re-acquire state after awaits to avoid mutating orphaned state on disposal mid-flight
-  export async function write(entry: Omit<MemoryEntry, "token_count">): Promise<void> {
+  export async function write(entry: Omit<MemoryEntry, "token_count">): Promise<string | undefined> {
     const s = state()
-    if (s.status.type !== "ready") return
+    if (s.status.type !== "ready") return undefined
     try {
       const content = sanitize(entry.content)
       const token_count = Math.ceil(content.length / 4)
       const id = crypto.randomUUID()
-      const vector = await embed(content)
-      await store.upsert([
-        {
-          id,
-          vector,
-          payload: {
-            type: entry.type,
-            content,
-            tags: entry.tags.join(","),
-            timestamp: entry.timestamp,
-            token_count,
-            session_id: entry.session_id,
-            branch: entry.branch,
-          },
-        },
-      ])
-      const s2 = state() // re-acquire after awaits
-      if (s2.status.type !== "ready") return // disposed mid-flight
+
+      // Canonicalize to extract query and tags
+      const canonical = Canonicalize.createCanonicalResult(content, entry.type, entry.tags)
+
+      // Merge canonical data with entry
+      const query = entry.query ?? canonical.query
+      const tags = entry.tags?.length ? entry.tags : canonical.tags
+      const quality = entry.quality ?? Scoring.DEFAULT_QUALITY
+      const used_count = entry.used_count ?? 0
+      const created_at = entry.created_at ?? new Date().toISOString()
+
+      // Embed the canonical query for better similarity matching
+      const vector = await embed(query)
+
+      // Deduplication: skip if a sufficiently similar entry already exists
+      const similar = await store.search(vector, 1)
+      if (similar.length > 0 && similar[0].score >= VuHitraSettings.cacheDedupThreshold()) {
+        log.info("dedup: memory entry skipped (duplicate)", { score: similar[0].score, existingId: similar[0].id })
+        return similar[0].id
+      }
+
+      const payload: Record<string, unknown> = {
+        type: entry.type,
+        content,
+        query,
+        tags: tags.join(","),
+        quality,
+        used_count,
+        created_at,
+        timestamp: entry.timestamp,
+        token_count,
+        session_id: entry.session_id,
+        branch: entry.branch,
+      }
+
+      // Add optional fields
+      if (entry.problem) payload.problem = entry.problem
+      if (entry.context) payload.context = entry.context
+      if (entry.solution) payload.solution = entry.solution
+      if (entry.steps) payload.steps = entry.steps.join(",")
+
+      await store.upsert([{ id, vector, payload }])
+
+      // Store metadata in Redis
+      await storeMetadata(id, { ...entry, query, tags, quality, used_count, created_at })
+
+      // Re-acquire state after awaits
+      const s2 = state()
+      if (s2.status.type !== "ready") return undefined
       s2.entryCount++
       s2.tokenCount += token_count
       s2.status = { ...s2.status, entry_count: s2.entryCount, token_count: s2.tokenCount }
       Bus.publish(Event.Updated, s2.status)
-      // Fix #8: show human-readable entry type in toast message
       Bus.publish(TuiEvent.ToastShow, {
         title: `◈ Memory — ${s2.entryCount} ${s2.entryCount === 1 ? "entry" : "entries"}`,
         message: `New ${entry.type} recorded`,
         variant: "info",
       })
+      return id
     } catch (e) {
       log.warn("failed to write memory entry", { type: entry.type, error: String(e) })
+      return undefined
+    }
+  }
+
+  export async function updateQuality(id: string, quality: number): Promise<void> {
+    if (state().status.type !== "ready") return
+    try {
+      await store.updateQuality(id, quality)
+    } catch (e) {
+      log.warn("failed to update memory entry quality", { id, error: String(e) })
     }
   }
 
   export async function search(query: string, topK = 5): Promise<string[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, topK)
-    return hits.map((r) => `[${r.type}] tags: ${r.tags}\n${r.content}`)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
+
+    // Build entries with similarity scores
+    const entries = hits.map((h) => ({
+      entry: {
+        id: h.id,
+        type: h.type,
+        tags: h.tags.split(",").filter(Boolean),
+        content: h.content,
+        quality: h.quality,
+        used_count: h.used_count,
+      },
+      similarity: h.score,
+    }))
+
+    // Apply scoring and sort
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
+    })
+
+    return scored.slice(0, topK).map((s) => {
+      const result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
+      return result
+    })
+  }
+
+  export interface SearchEntry {
+    id: string
+    type: EntryType
+    query: string
+    content: string
+    tags: string[]
+    quality: number
+    used_count: number
+    similarity: number
+    score: number
+  }
+
+  export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
+    if (state().status.type !== "ready") return []
+    const vector = await embed(query)
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
+
+    const entries = hits.map((h) => ({
+      entry: {
+        id: h.id,
+        type: h.type as EntryType,
+        query: h.query,
+        content: h.content,
+        tags: h.tags.split(",").filter(Boolean),
+        quality: h.quality,
+        used_count: h.used_count,
+      },
+      similarity: h.score,
+    }))
+
+    const scored = Scoring.scoreEntries(entries, {
+      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
+      usageWeight: VuHitraSettings.cacheUsageWeight(),
+    })
+
+    // Increment used_count for top results (non-blocking)
+    scored.slice(0, topK).forEach((s) => {
+      incrementUsedCount(s.entry.id).catch((e) =>
+        Log.Default.warn("failed to increment used_count", { error: String(e) }),
+      )
+    })
+
+    return scored.slice(0, topK).map((s) => ({
+      id: s.entry.id,
+      type: s.entry.type,
+      query: s.entry.query,
+      content: s.entry.content,
+      tags: s.entry.tags,
+      quality: s.entry.quality,
+      used_count: s.entry.used_count,
+      similarity: s.similarity,
+      score: s.score,
+    }))
   }
 
   export async function clear(): Promise<void> {
@@ -669,29 +986,108 @@ export namespace Memory {
       content: z.string().describe("The content to memorize. Will be sanitized of credentials before storage."),
       tags: z.array(z.string()).optional().describe("Optional tags for categorization"),
       session_id: z.string().optional().describe("Session ID (auto-populated if omitted)"),
-      // Fix #7: remove misleading "(auto-populated if omitted)" claim; fallback changed from "unknown" to ""
       branch: z.string().optional().describe("Git branch name (leave empty if unknown)"),
+      quality: z
+        .number()
+        .min(0)
+        .max(10)
+        .optional()
+        .describe("Quality score from 0-10 (user-provided). If omitted, defaults to 5 (neutral)."),
     }),
     async execute(params, ctx) {
       if (status().type !== "ready") {
         return {
           title: `Memory: ${params.type}`,
-          metadata: {},
+          metadata: {} as { quality?: number },
           output: "Memory is not available — backend is not configured or unreachable. Entry was not stored.",
         }
       }
-      await write({
+      // Normalize quality from 0-10 to 0-1
+      const initialQuality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
+
+      // Write the entry with the initial quality; capture the ID for a possible quality update
+      const entryId = await write({
         type: params.type,
         content: params.content,
         tags: params.tags ?? [],
         session_id: params.session_id ?? ctx.sessionID,
         branch: params.branch ?? "",
         timestamp: Date.now(),
+        quality: initialQuality,
       })
-      return {
-        title: `Memory: ${params.type}`,
-        metadata: {},
-        output: `Memory entry written (type: ${params.type})`,
+
+      // If quality was explicitly provided, use it and don't prompt
+      if (params.quality !== undefined) {
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written (type: ${params.type}, quality: ${initialQuality.toFixed(2)})`,
+        }
+      }
+
+      // Prompt the user for a quality rating
+      try {
+        const answers = await Question.ask({
+          sessionID: ctx.sessionID,
+          questions: [
+            {
+              question: `Rate the quality of this memory entry (0-10, where 0=poor, 10=excellent):`,
+              header: "Quality Rating",
+              options: [
+                { label: "10 - Excellent", description: "Highly valuable,well-structured, immediately useful" },
+                { label: "8 - Very Good", description: "Valuable content with good structure" },
+                { label: "5 - Average", description: "Moderately useful, standard quality" },
+                { label: "3 - Below Average", description: "Limited usefulness or needs refinement" },
+                { label: "0 - Poor", description: "Low value, consider ifmemory is needed" },
+              ],
+              custom: true, // Allow custom input for specific ratings
+            },
+          ],
+        })
+
+        // Parse the answer - it's an array of selected labels
+        const answer = answers[0]?.[0]
+        if (answer) {
+          // Extract numeric rating from the answer
+          let rating: number | undefined
+
+          // Check if it's one of the preset options
+          if (answer.includes(" - ")) {
+            const numStr = answer.split(" - ")[0]
+            rating = parseInt(numStr, 10)
+          } else {
+            // Try to parse as a direct number
+            rating = parseInt(answer, 10)
+          }
+
+          // Validate the rating
+          if (!isNaN(rating) && rating >= 0 && rating <= 10) {
+            const normalizedQuality = rating / 10
+
+            // Update quality in-place on the existing entry (avoids triggering dedup on re-write)
+            if (entryId) await updateQuality(entryId, normalizedQuality)
+
+            return {
+              title: `Memory: ${params.type}`,
+              metadata: { quality: normalizedQuality },
+              output: `Memory entry written with quality rating ${rating}/10 (${normalizedQuality.toFixed(2)})`,
+            }
+          }
+        }
+
+        // If no valid rating was provided, use the default
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written with default quality (${initialQuality.toFixed(2)})`,
+        }
+      } catch (e) {
+        // If the question was rejected or timed out, use the default quality
+        return {
+          title: `Memory: ${params.type}`,
+          metadata: { quality: initialQuality },
+          output: `Memory entry written with default quality (${initialQuality.toFixed(2)})`,
+        }
       }
     },
   })
