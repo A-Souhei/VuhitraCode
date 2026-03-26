@@ -115,7 +115,7 @@ export namespace SessionCompaction {
       model = await Provider.getModel(agent.model.providerID, agent.model.modelID)
     } else if (sessionProfile) {
       const saved = await Profiles.agentModel(sessionProfile, "compaction")
-      if (saved) {
+      if (saved?.providerID && saved?.modelID) {
         model = await Provider.getModel(saved.providerID, saved.modelID)
       } else {
         model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
