@@ -55,6 +55,7 @@ export namespace McpOAuthCallback {
   const pendingAuths = new Map<string, PendingAuth>()
 
   const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+  const PORT_CHECK_TIMEOUT_MS = 1000 // 1 second
 
   export async function ensureRunning(): Promise<void> {
     if (server) return
@@ -160,21 +161,28 @@ export namespace McpOAuthCallback {
 
   export async function isPortInUse(): Promise<boolean> {
     return new Promise((resolve) => {
+      // Timeout after 1 second in case the connect hangs (e.g. firewall DROP rules on CI).
+      // 1s is long enough for a legitimate ECONNREFUSED on localhost to arrive,
+      // while still being fast enough to avoid stalling startup.
+      const timeout = setTimeout(() => resolve(false), PORT_CHECK_TIMEOUT_MS)
       Bun.connect({
         hostname: "127.0.0.1",
         port: OAUTH_CALLBACK_PORT,
         socket: {
           open(socket) {
+            clearTimeout(timeout)
             socket.end()
             resolve(true)
           },
           error() {
+            clearTimeout(timeout)
             resolve(false)
           },
           data() {},
           close() {},
         },
       }).catch(() => {
+        clearTimeout(timeout)
         resolve(false)
       })
     })
