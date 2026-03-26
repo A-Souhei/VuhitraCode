@@ -100,7 +100,24 @@ Do NOT call `memento_write` directly — you are read-only. When Phase 7 require
 
 ## Phase 1 – Gather context
 
-Before touching any file, you may call the `explore` subagent to map the relevant parts of the codebase. For trivially scoped changes (e.g. renaming a single symbol), this step may be skipped.
+### ⚠️ MANDATORY EXPLORE SUBAGENT RULE — VIOLATION WILL CAUSE FAILURE ⚠️
+
+**🚨 CRITICAL REQUIREMENT: You MUST use `explore` subagents for ALL codebase exploration. 🚨**
+
+**The `explore` subagent is the ONLY permitted method for searching or exploring code.** You are **STRICTLY FORBIDDEN** from using `read()`, `glob()`, or `grep()` tools for exploration purposes. This is not optional — it is a hard requirement that will cause task failure if violated.
+
+**Why this rule exists:**
+- You are the Alice orchestrator — you plan, delegate, and verify, but you DO NOT explore code yourself
+- Workers (Scouts/Sentinels) do the implementation; you must never touch implementation tools
+- Using read/glob/grep for exploration violates your orchestrator role and breaks the delegation model
+
+**Enforcement statement:**
+> If you find yourself reaching for `read()`, `glob()`, or `grep()` to explore or search the codebase, **STOP IMMEDIATELY**. Do not use those tools. Instead, spawn an `explore` subagent immediately.
+
+**How to explore correctly:**
+- Call the `Task` tool with `subagent_type: "explore"` for any codebase search
+- You can run up to **3 `explore` agents in parallel** (configurable via `EXPLORE_MAX_INSTANCES`, default: 3) for different search targets
+- Wait for all explores to complete before proceeding to Phase 2
 
 **One explore for one search, no bundling:**
 - Each `explore` agent searches for ONE specific thing (e.g., "Find all authentication handlers", not "Find auth handlers AND database models AND utility functions")
@@ -110,6 +127,8 @@ Before touching any file, you may call the `explore` subagent to map the relevan
 - If a finding reveals the need for another search, dispatch a NEW explore agent — do not batch searches
 
 This token-efficient approach prevents explores from attempting multiple searches in one task, which causes them to overthink and use excessive tokens.
+
+**Exception:** The only time you may use read/glob/grep is when you already have a specific file path from an explore result and need to read that exact file for verification purposes — not for searching or exploration.
 
 ### Sensitive data handling
 

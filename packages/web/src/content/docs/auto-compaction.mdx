@@ -1,0 +1,333 @@
+---
+title: Auto-Compaction
+description: Configure automatic context compaction to manage token limits efficiently.
+---
+
+# Auto-Compaction
+
+Auto-compaction is a critical feature that ensures OpenCode can continue operating when token usage approaches the model's context window limit. When triggered, OpenCode compresses the conversation history into a concise summary, freeing up context space for continued work.
+
+## Overview
+
+### What is Auto-Compaction?
+
+When OpenCode processes tasks, the conversation history grows as messages are exchanged. Each message consumes tokens, and when token usage approaches the model's context limit, OpenCode needs to "compact" the conversation — summarizing past exchanges into a condensed form that preserves essential information while dramatically reducing token consumption.
+
+### Why It Matters
+
+Without auto-compaction:
+
+- **Context overflow errors** — Models refuse requests when context is exceeded
+- **Lost conversation history** — Important context about the project is forgotten
+- **Manual intervention required** — Users must manually trigger compaction or start new sessions
+
+With auto-compaction:
+
+- **Seamless continuity** — Work continues automatically when limits approach
+- **Preserved institutional knowledge** — Summaries retain key decisions, discoveries, and context
+- **Hands-off operation** — Compaction triggers automatically at the right moment
+
+---
+
+## How It Works
+
+### The 70% Threshold
+
+Auto-compaction triggers when token usage reaches **70% of usable context**. This threshold was recently updated from an earlier value to provide optimal balance between:
+
+- Having sufficient context for the model to work effectively
+- Leaving enough room for the compaction process itself to complete
+- Avoiding context overflow errors
+
+```typescript
+// From packages/opencode/src/session/compaction.ts
+return count >= usable * 0.7
+```
+
+### Calculating Usable Context
+
+The usable context is calculated as:
+
+```
+usable_context = model_context_limit - reserved_tokens
+```
+
+Where `reserved_tokens` is determined by:
+
+```typescript
+const reserved =
+  config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model))
+```
+
+By default, this is the smaller of:
+
+- **20,000 tokens** (the `COMPACTION_BUFFER` constant)
+- **The model's maximum output token limit**
+
+---
+
+## Configuration Methods
+
+### Using opencode.json
+
+Configure auto-compaction in your `opencode.json` or `opencode.jsonc`:
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  }
+}
+```
+
+#### Configuration Options
+
+| Option     | Type    | Default                  | Description                                          |
+| ---------- | ------- | ------------------------ | ---------------------------------------------------- |
+| `auto`     | boolean | `true`                   | Enable automatic compaction when context is full     |
+| `prune`    | boolean | `true`                   | Enable pruning of old tool outputs before compaction |
+| `reserved` | number  | `min(20000, max_output)` | Token buffer reserved for compaction process         |
+
+### Environment Variables
+
+For quick overrides without modifying config files:
+
+```bash
+# Disable auto-compaction entirely
+OPENCODE_DISABLE_AUTOCOMPACT=1
+
+# Disable pruning of old tool outputs
+OPENCODE_DISABLE_PRUNE=1
+```
+
+:::tip
+Environment variables take precedence over config file settings and are useful for:
+
+- Testing or debugging compaction behavior
+- Temporarily disabling features without changing files
+- CI/CD environments where behavior needs to be predictable
+  :::
+
+### Disabling Features
+
+To disable auto-compaction completely:
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "auto": false
+  }
+}
+```
+
+Or via environment variable:
+
+```bash
+export OPENCODE_DISABLE_AUTOCOMPACT=1
+```
+
+---
+
+## Advanced Customization
+
+### Custom Threshold Calculation
+
+The 70% threshold is currently fixed, but you can indirectly control when compaction triggers by adjusting the `reserved` token buffer.
+
+**Higher `reserved` value** → Compaction triggers earlier (more context reserved)
+**Lower `reserved` value** → Compaction triggers later (less context reserved)
+
+### Examples for Different Model Limits
+
+#### Claude 3.5 Sonnet (200K context)
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "reserved": 15000
+  }
+}
+```
+
+With a 15,000 token reservation:
+
+- Usable context: 200,000 - 15,000 = 185,000
+- Compaction triggers at: 185,000 × 0.7 = 129,500 tokens
+
+#### Claude 3 Opus (200K context)
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "reserved": 20000
+  }
+}
+```
+
+With 20,000 token reservation (model's max output is higher):
+
+- Usable context: 200,000 - 20,000 = 180,000
+- Compaction triggers at: 180,000 × 0.7 = 126,000 tokens
+
+#### Smaller Models (32K-128K context)
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "reserved": 5000
+  }
+}
+```
+
+For models with smaller context windows, a lower reservation prevents premature compaction.
+
+### When to Adjust the Threshold
+
+Consider adjusting `reserved` when:
+
+| Scenario                  | Recommended `reserved` | Rationale                          |
+| ------------------------- | ---------------------- | ---------------------------------- |
+| Long, complex tasks       | Lower (5,000-10,000)   | More context for deep analysis     |
+| Many file operations      | Higher (15,000-20,000) | Ensure room for file edits         |
+| Model has low max output  | Match max output       | Prevent overflow during compaction |
+| Frequent context overflow | Higher                 | Trigger compaction earlier         |
+| Premature compaction      | Lower                  | Delay compaction, use more context |
+
+---
+
+## Related Settings
+
+### COMPACTION_BUFFER
+
+```typescript
+const COMPACTION_BUFFER = 20_000
+```
+
+The default maximum token reservation for compaction. This ensures that even for models with very high max output tokens, OpenCode doesn't reserve excessive context.
+
+### PRUNE_MINIMUM
+
+```typescript
+export const PRUNE_MINIMUM = 20_000
+```
+
+The minimum number of tokens that must be reclaimable before pruning occurs. If pruning wouldn't recover at least this many tokens, the pruning step is skipped.
+
+### PRUNE_PROTECT
+
+```typescript
+export const PRUNE_PROTECT = 40_000
+```
+
+The amount of recent tool call output to protect from pruning. This ensures recent tool results are preserved even when pruning older outputs. Tool calls from the last ~40,000 tokens of output are protected.
+
+### Protected Tools
+
+Certain tools are exempt from pruning to preserve important context:
+
+```typescript
+const PRUNE_PROTECTED_TOOLS = ["skill"]
+```
+
+Currently, `skill` tool outputs are always preserved during pruning.
+
+---
+
+## How Pruning Works
+
+Before compaction runs, OpenCode optionally "prunes" old tool call outputs that are unlikely to be relevant anymore:
+
+1. **Traverses messages backwards** from the most recent
+2. **Protects recent outputs** (last 40,000 tokens of tool output)
+3. **Protects skill outputs** (always preserved regardless of age)
+4. **Marks old outputs as compacted** — these are not deleted but their output is excluded from future context
+5. **Only applies if recoverable** — Must exceed 20,000 tokens minimum
+
+This pruning happens automatically before compaction and can be disabled:
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "prune": false
+  }
+}
+```
+
+---
+
+## Compaction Process
+
+When auto-compaction triggers:
+
+1. **Summary generation** — OpenCode generates a detailed summary using a structured template that preserves:
+   - **Goal** — What the user is trying to accomplish
+   - **Instructions** — Important user instructions and plans
+   - **Discoveries** — Notable findings useful for continuation
+   - **Accomplished** — Work completed, in progress, and remaining
+   - **Relevant files** — Files read, edited, or created
+
+2. **Context replacement** — The summary replaces the full conversation history
+
+3. **Work continues** — The model can continue with full awareness of prior context
+
+---
+
+## Troubleshooting
+
+### Compaction Triggers Too Early
+
+If compaction seems premature:
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "reserved": 5000
+  }
+}
+```
+
+### Compaction Triggers Too Late
+
+If you're getting context overflow before compaction:
+
+```json title="opencode.json"
+{
+  "compaction": {
+    "reserved": 20000
+  }
+}
+```
+
+### Pruning Not Working
+
+Ensure pruning is enabled:
+
+```bash
+# Check that OPENCODE_DISABLE_PRUNE is not set
+echo $OPENCODE_DISABLE_PRUNE
+```
+
+### Still Experiencing Overflow
+
+If you continue to see overflow errors after enabling compaction:
+
+1. **Check model context limits** — Some models have smaller effective contexts
+2. **Increase `reserved`** — Reserve more tokens for compaction safety
+3. **Consider splitting work** — Very long tasks may benefit from periodic manual compaction
+
+---
+
+## Summary
+
+Auto-compaction is essential for seamless operation with large language models. The 70% threshold provides a robust default that triggers compaction early enough to prevent overflow while late enough to maximize context usage.
+
+Key takeaways:
+
+- **Default 70% threshold** — Compaction triggers at 70% of usable context
+- **`reserved` controls timing** — Adjust this to fine-tune when compaction triggers
+- **Pruning optimizes** — Old tool outputs are cleaned before summarization
+- **Protected content** — Recent outputs and skill results are preserved
+- **Fully configurable** — Use config files or environment variables to customize behavior

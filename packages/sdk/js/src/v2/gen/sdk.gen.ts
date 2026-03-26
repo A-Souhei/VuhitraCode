@@ -69,6 +69,7 @@ import type {
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
+  GlobalReloadResponses,
   IndexerDeleteDataErrors,
   IndexerDeleteDataResponses,
   IndexerStatusResponses,
@@ -105,6 +106,7 @@ import type {
   PermissionRespondResponses,
   PermissionRuleset,
   ProfileActiveResponses,
+  ProfileGetResponses,
   ProfileListResponses,
   ProfileSessionActiveErrors,
   ProfileSessionActiveResponses,
@@ -332,6 +334,18 @@ export class Global extends HeyApiClient {
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<GlobalDisposeResponses, unknown, ThrowOnError>({
       url: "/global/dispose",
+      ...options,
+    })
+  }
+
+  /**
+   * Reload configuration and instances
+   *
+   * Reset global configuration and dispose all instances to force a fresh load on the next request.
+   */
+  public reload<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<GlobalReloadResponses, unknown, ThrowOnError>({
+      url: "/global/reload",
       ...options,
     })
   }
@@ -1005,6 +1019,34 @@ export class Profile extends HeyApiClient {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
     return (options?.client ?? this.client).get<ProfileListResponses, unknown, ThrowOnError>({
       url: "/profile/list",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get profile data
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ProfileGetResponses, unknown, ThrowOnError>({
+      url: "/profile/get",
       ...options,
       ...params,
     })

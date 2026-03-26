@@ -38,6 +38,8 @@ import { Agent as AgentModule } from "../agent/agent"
 import { Installation } from "@/installation"
 import { MessageV2 } from "@/session/message-v2"
 import { Config } from "@/config/config"
+import { Profiles } from "../project/profiles"
+import { VuHitraSettings } from "../project/vuhitra-settings"
 import { Todo } from "@/session/todo"
 import { z } from "zod"
 import { LoadAPIKeyError } from "ai"
@@ -1401,17 +1403,30 @@ export namespace ACP {
       }
 
       switch (cmd.name) {
-        case "compact":
+        case "compact": {
+          let compactProviderID = model.providerID
+          let compactModelID = model.modelID
+          const sessionProfile =
+            (await this.config.sdk.profile.sessionActive({ sessionID })).data ??
+            (await VuHitraSettings.activeProfile())
+          if (sessionProfile) {
+            const saved = await Profiles.agentModel(sessionProfile, "compaction")
+            if (saved?.providerID && saved?.modelID) {
+              compactProviderID = saved.providerID
+              compactModelID = saved.modelID
+            }
+          }
           await this.config.sdk.session.summarize(
             {
               sessionID,
               directory,
-              providerID: model.providerID,
-              modelID: model.modelID,
+              providerID: compactProviderID,
+              modelID: compactModelID,
             },
             { throwOnError: true },
           )
           break
+        }
       }
 
       await sendUsageUpdate(this.connection, this.sdk, sessionID, directory)

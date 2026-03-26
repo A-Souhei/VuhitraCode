@@ -181,5 +181,28 @@ export const GlobalRoutes = lazy(() =>
         })
         return c.json(true)
       },
+    )
+    .post(
+      "/reload",
+      describeRoute({
+        summary: "Reload configuration and instances",
+        description: "Reset global configuration and dispose all instances to force a fresh load on the next request.",
+        operationId: "global.reload",
+        responses: {
+          200: {
+            description: "Reload successful",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        Config.global.reset()
+        await Instance.disposeAll()
+        return c.json(true)
+      },
     ),
 )

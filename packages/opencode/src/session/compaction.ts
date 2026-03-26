@@ -15,6 +15,7 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { ProviderTransform } from "@/provider/transform"
 import { Profiles } from "../project/profiles"
+import { VuHitraSettings } from "../project/vuhitra-settings"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -45,7 +46,7 @@ export namespace SessionCompaction {
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
       : context - ProviderTransform.maxOutputTokens(input.model)
-    return count >= usable
+    return count >= usable * 0.7
   }
 
   export const PRUNE_MINIMUM = 20_000
@@ -109,17 +110,19 @@ export namespace SessionCompaction {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
     const agent = await Agent.get("compaction")
     const session = await Session.get(input.sessionID)
-    const sessionProfile = session.profile
+    const sessionProfile = session.profile ?? (await VuHitraSettings.activeProfile())
     let model: Provider.Model
-    if (agent.model) {
-      model = await Provider.getModel(agent.model.providerID, agent.model.modelID)
-    } else if (sessionProfile) {
+    if (sessionProfile) {
       const saved = await Profiles.agentModel(sessionProfile, "compaction")
       if (saved?.providerID && saved?.modelID) {
         model = await Provider.getModel(saved.providerID, saved.modelID)
+      } else if (agent.model) {
+        model = await Provider.getModel(agent.model.providerID, agent.model.modelID)
       } else {
         model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
       }
+    } else if (agent.model) {
+      model = await Provider.getModel(agent.model.providerID, agent.model.modelID)
     } else {
       model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     }
