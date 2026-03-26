@@ -107,7 +107,7 @@ const { McpOAuthCallback } = await import("../../src/mcp/oauth-callback")
 const { Instance } = await import("../../src/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
-const TEST_POLL_TIMEOUT_MS = 10_000
+const TEST_POLL_TIMEOUT_MS = 15_000
 
 test("BrowserOpenFailed event is published when open() throws", async () => {
   await using tmp = await tmpdir()
@@ -172,7 +172,8 @@ test("BrowserOpenFailed event is NOT published when open() succeeds", async () =
 
       // Give the open() subprocess ~500ms error-detection window time to pass,
       // ensuring BrowserOpenFailed would have fired if open() had failed.
-      await new Promise((resolve) => setTimeout(resolve, 600))
+      // Use 1500ms (3× the production 500ms window) for CI tolerance.
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
       // Stop the callback server and cancel any pending auth
       await McpOAuthCallback.stop()

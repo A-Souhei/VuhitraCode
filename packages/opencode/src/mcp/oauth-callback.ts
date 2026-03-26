@@ -55,7 +55,7 @@ export namespace McpOAuthCallback {
   const pendingAuths = new Map<string, PendingAuth>()
 
   const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
-  const PORT_CHECK_TIMEOUT_MS = 1000 // 1 second
+  const PORT_CHECK_TIMEOUT_MS = 3000 // 3 seconds
 
   export async function ensureRunning(): Promise<void> {
     if (server) return
