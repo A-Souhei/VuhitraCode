@@ -46,7 +46,8 @@ export namespace SessionCompaction {
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
       : context - ProviderTransform.maxOutputTokens(input.model)
-    return count >= usable * 0.7
+    const threshold = VuHitraSettings.compactionThreshold()
+    return count >= usable * threshold
   }
 
   export const PRUNE_MINIMUM = 20_000

@@ -27,8 +27,9 @@ export namespace VuHitraSettings {
     cache_min_similarity: z.number().min(0).max(1).optional(),
     cache_max_candidates: z.number().int().positive().optional(),
     cache_default_quality: z.number().min(0).max(1).optional(),
+    compaction_threshold: z.number().min(0).max(1).optional().default(0.7),
   })
-  type Settings = z.infer<typeof SettingsSchema>
+  type Settings = z.input<typeof SettingsSchema>
 
   const state = Instance.state((): Settings => {
     return readFromDisk()
@@ -274,5 +275,16 @@ export namespace VuHitraSettings {
       throw new Error(`cache_default_quality must be a number between 0 and 1, got ${n}`)
     }
     await writeToDisk({ cache_default_quality: n })
+  }
+
+  export function compactionThreshold(): number {
+    return state().compaction_threshold ?? 0.7
+  }
+
+  export async function setCompactionThreshold(n: number, dir?: string) {
+    if (typeof n !== "number" || n < 0 || n > 1) {
+      throw new Error(`compaction_threshold must be a number between 0 and 1, got ${n}`)
+    }
+    await writeToDisk({ compaction_threshold: n }, dir)
   }
 }
