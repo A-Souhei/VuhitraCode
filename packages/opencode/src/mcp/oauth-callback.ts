@@ -160,21 +160,28 @@ export namespace McpOAuthCallback {
 
   export async function isPortInUse(): Promise<boolean> {
     return new Promise((resolve) => {
+      // Timeout after 1 second in case the connect hangs (e.g. firewall DROP rules on CI).
+      // 1s is long enough for a legitimate ECONNREFUSED on localhost to arrive,
+      // while still being fast enough to avoid stalling startup.
+      const timeout = setTimeout(() => resolve(false), 1000)
       Bun.connect({
         hostname: "127.0.0.1",
         port: OAUTH_CALLBACK_PORT,
         socket: {
           open(socket) {
+            clearTimeout(timeout)
             socket.end()
             resolve(true)
           },
           error() {
+            clearTimeout(timeout)
             resolve(false)
           },
           data() {},
           close() {},
         },
       }).catch(() => {
+        clearTimeout(timeout)
         resolve(false)
       })
     })

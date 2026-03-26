@@ -2,6 +2,20 @@ import { test, expect, mock, beforeEach } from "bun:test"
 import { EventEmitter } from "events"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 
+// Mock Config.get() to return a fast in-memory config - bypasses all disk I/O
+// and prevents Config loading from hanging on slow/restricted CI runners.
+mock.module("../../src/config/config", () => ({
+  Config: {
+    get: async () => ({
+      mcp: {
+        "test-oauth-server": { type: "remote", url: "https://example.com/mcp" },
+        "test-oauth-server-2": { type: "remote", url: "https://example.com/mcp" },
+        "test-oauth-server-3": { type: "remote", url: "https://example.com/mcp" },
+      },
+    }),
+  },
+}))
+
 // Track open() calls and control failure behavior
 let openShouldFail = false
 let openCalledWith: string | undefined
@@ -94,22 +108,7 @@ const { Instance } = await import("../../src/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
 test("BrowserOpenFailed event is published when open() throws", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        `${dir}/opencode.json`,
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          mcp: {
-            "test-oauth-server": {
-              type: "remote",
-              url: "https://example.com/mcp",
-            },
-          },
-        }),
-      )
-    },
-  })
+  await using tmp = await tmpdir()
 
   await Instance.provide({
     directory: tmp.path,
@@ -121,13 +120,12 @@ test("BrowserOpenFailed event is published when open() throws", async () => {
         events.push(evt.properties)
       })
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback
+      // Run authenticate with a timeout to avoid waiting forever for the callback.
       // Attach a handler immediately so callback shutdown rejections
       // don't show up as unhandled between tests.
       const authPromise = MCP.authenticate("test-oauth-server").catch(() => undefined)
 
-      // Poll until BrowserOpenFailed event is received, with a generous timeout.
-      // This is more reliable than a fixed sleep since Config.get() timing varies in CI.
+      // Poll until BrowserOpenFailed event is received.
       const deadline = Date.now() + 10_000
       while (events.length === 0 && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
@@ -149,22 +147,7 @@ test("BrowserOpenFailed event is published when open() throws", async () => {
 })
 
 test("BrowserOpenFailed event is NOT published when open() succeeds", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        `${dir}/opencode.json`,
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          mcp: {
-            "test-oauth-server-2": {
-              type: "remote",
-              url: "https://example.com/mcp",
-            },
-          },
-        }),
-      )
-    },
-  })
+  await using tmp = await tmpdir()
 
   await Instance.provide({
     directory: tmp.path,
@@ -176,11 +159,10 @@ test("BrowserOpenFailed event is NOT published when open() succeeds", async () =
         events.push(evt.properties)
       })
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback
+      // Run authenticate with a timeout to avoid waiting forever for the callback.
       const authPromise = MCP.authenticate("test-oauth-server-2").catch(() => undefined)
 
-      // Poll until open() is called, with a generous timeout.
-      // This is more reliable than a fixed sleep since Config.get() timing varies in CI.
+      // Poll until open() is called.
       const deadline = Date.now() + 10_000
       while (!openCalledWith && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
@@ -206,22 +188,7 @@ test("BrowserOpenFailed event is NOT published when open() succeeds", async () =
 })
 
 test("open() is called with the authorization URL", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        `${dir}/opencode.json`,
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          mcp: {
-            "test-oauth-server-3": {
-              type: "remote",
-              url: "https://example.com/mcp",
-            },
-          },
-        }),
-      )
-    },
-  })
+  await using tmp = await tmpdir()
 
   await Instance.provide({
     directory: tmp.path,
@@ -229,11 +196,10 @@ test("open() is called with the authorization URL", async () => {
       openShouldFail = false
       openCalledWith = undefined
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback
+      // Run authenticate with a timeout to avoid waiting forever for the callback.
       const authPromise = MCP.authenticate("test-oauth-server-3").catch(() => undefined)
 
-      // Poll until open() is called, with a generous timeout.
-      // This is more reliable than a fixed sleep since Config.get() timing varies in CI.
+      // Poll until open() is called.
       const deadline = Date.now() + 10_000
       while (!openCalledWith && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
