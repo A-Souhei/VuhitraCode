@@ -89,14 +89,15 @@ describe("session.compaction.isOverflow", () => {
     })
   })
 
-  test("returns false when input/output are within input caps", async () => {
+  test("returns true when input/output exceed 70% of input caps", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
         const tokens = { input: 200_000, output: 20_000, reasoning: 0, cache: { read: 10_000, write: 0 } }
-        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(false)
+        // count = 230K, usable = 272K - 20K = 252K, 70% = 176.4K, 230K >= 176.4K = true
+        expect(await SessionCompaction.isOverflow({ tokens, model })).toBe(true)
       },
     })
   })
@@ -180,15 +181,17 @@ describe("session.compaction.isOverflow", () => {
         const withInputLimit = createModel({ context: 200_000, input: 200_000, output: 32_000 })
         const withoutInputLimit = createModel({ context: 200_000, output: 32_000 })
 
-        // 170K total tokens — well above context-output (168K) but below input limit (200K)
+        // 181K total tokens — exceeds 70% threshold of both models
+        // Without limit.input: usable = 200K - 32K = 168K, 70% = 117.6K, 181K >= 117.6K = true
+        // With limit.input: usable = 200K - 20K = 180K, 70% = 126K, 181K >= 126K = true
         const tokens = { input: 166_000, output: 10_000, reasoning: 0, cache: { read: 5_000, write: 0 } }
 
         const withLimit = await SessionCompaction.isOverflow({ tokens, model: withInputLimit })
         const withoutLimit = await SessionCompaction.isOverflow({ tokens, model: withoutInputLimit })
 
-        // Both models have identical real capacity — they should agree:
-        expect(withLimit).toBe(true) // should compact (170K leaves no room for 32K output)
-        expect(withoutLimit).toBe(true) // correctly compacts (170K > 168K)
+        // Both models trigger compaction at 70% threshold:
+        expect(withLimit).toBe(true)
+        expect(withoutLimit).toBe(true)
       },
     })
   })
