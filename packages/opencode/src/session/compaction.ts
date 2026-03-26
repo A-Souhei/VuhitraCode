@@ -111,7 +111,9 @@ export namespace SessionCompaction {
     const session = await Session.get(input.sessionID)
     const sessionProfile = session.profile
     let model: Provider.Model
-    if (agent.model) {
+    if (userMessage.model?.providerID && userMessage.model?.modelID) {
+      model = await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
+    } else if (agent.model) {
       model = await Provider.getModel(agent.model.providerID, agent.model.modelID)
     } else if (sessionProfile) {
       const saved = await Profiles.agentModel(sessionProfile, "compaction")
