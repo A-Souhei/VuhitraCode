@@ -577,6 +577,30 @@ function App() {
       },
     },
     {
+      title: local.agentModels.get("compaction")
+        ? `Set compaction agent to current (current: ${local.agentModels.get("compaction")?.providerID}/${local.agentModels.get("compaction")?.modelID})`
+        : "Set compaction agent to current model",
+      value: "compaction.set_model_to_current",
+      category: "Agent",
+      description: "Set the compaction agent's model to the currently active model to reduce token cost",
+      slash: {
+        name: "set-compaction-agent-to-current-model",
+      },
+      enabled: !!local.model.current(),
+      onSelect: async (dialog) => {
+        const current = local.model.current()
+        if (!current) return
+        await local.agentModels.set("compaction", current)
+        const parsed = local.model.parsed()
+        toast.show({
+          message: `Compaction agent model set to ${parsed.model} (${parsed.provider})`,
+          variant: "info",
+          duration: 4000,
+        })
+        dialog.clear()
+      },
+    },
+    {
       title: "Switch agent",
       value: "agent.list",
       keybind: "agent_list",
