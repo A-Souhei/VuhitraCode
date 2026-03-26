@@ -616,11 +616,11 @@ export function Prompt(props: PromptProps) {
                   )
                   // Reload the TUI store if it's scout or sentinel
                   // Use activeProfile(dir) to get the profile name from disk (same source as write)
-                  const activeProfile = VuHitraSettings.activeProfile(dir)
+                  const profile = await VuHitraSettings.activeProfile(dir)
                   if (a.name === "sentinel") {
-                    local.sentinelModel.reload(activeProfile)
+                    local.sentinelModel.reload(profile)
                   } else if (a.name === "scout") {
-                    local.scoutModel.reload(activeProfile)
+                    local.scoutModel.reload(profile)
                   }
                   toast.show({
                     variant: "success",

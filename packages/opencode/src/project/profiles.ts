@@ -41,6 +41,12 @@ export namespace Profiles {
 
   export type Profile = z.infer<typeof ProfileSchema>
 
+  export const NO_PROFILE = "no-profile"
+
+  export function getNoProfile(): Profile {
+    return { agent_models: {}, subagent_models: {} }
+  }
+
   export const Event = {
     Switched: BusEvent.define("profile.switched", z.object({ name: z.string() })),
   }
@@ -61,11 +67,34 @@ export namespace Profiles {
     return resolved
   }
 
-  async function readProfile(name: string, dir?: string): Promise<Profile> {
+  export async function readProfile(name: string, dir?: string): Promise<Profile> {
+    // Handle "no-profile" special case
+    if (name === NO_PROFILE) {
+      return getNoProfile()
+    }
+
     const filePath = profilePath(name, dir)
     try {
       const file = Bun.file(filePath)
-      if (!(await file.exists())) return {}
+      if (!(await file.exists())) {
+        // Try to ensure default profile if requested
+        if (name === "default") {
+          try {
+            await ensureDefault(dir)
+            const file = Bun.file(filePath)
+            const parsed = await file.json()
+            const result = ProfileSchema.safeParse(parsed)
+            return result.success ? result.data : getNoProfile()
+          } catch {
+            // Can't create default profile (permission denied,readonly fs, etc.)
+            Log.Default.warn("profiles: cannot create default profile, returning no-profile fallback", {
+              filePath,
+            })
+            return getNoProfile()
+          }
+        }
+        return {}
+      }
       const parsed = await file.json()
       const result = ProfileSchema.safeParse(parsed)
       if (!result.success) {
