@@ -2,24 +2,9 @@ import { test, expect, mock, beforeEach } from "bun:test"
 import { EventEmitter } from "events"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 
-// These tests rely on Bun.serve() for the OAuth callback server and are
-// sensitive to port availability / firewall rules on CI runners.
-// Skip in CI to avoid flaky failures; run locally with `bun test`.
+// These tests start a real Bun.serve() callback server and are sensitive to
+// port availability / firewall rules on CI runners. Skip in CI.
 const isCI = !!process.env.CI
-
-// Mock Config.get() to return a fast in-memory config - bypasses all disk I/O
-// and prevents Config loading from hanging on slow/restricted CI runners.
-mock.module("../../src/config/config", () => ({
-  Config: {
-    get: async () => ({
-      mcp: {
-        "test-oauth-server": { type: "remote", url: "https://example.com/mcp" },
-        "test-oauth-server-2": { type: "remote", url: "https://example.com/mcp" },
-        "test-oauth-server-3": { type: "remote", url: "https://example.com/mcp" },
-      },
-    }),
-  },
-}))
 
 // Track open() calls and control failure behavior
 let openShouldFail = false
@@ -112,10 +97,23 @@ const { McpOAuthCallback } = await import("../../src/mcp/oauth-callback")
 const { Instance } = await import("../../src/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
-const TEST_POLL_TIMEOUT_MS = 10_000
-
 test.skipIf(isCI)("BrowserOpenFailed event is published when open() throws", async () => {
-  await using tmp = await tmpdir()
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/opencode.json`,
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "test-oauth-server": {
+              type: "remote",
+              url: "https://example.com/mcp",
+            },
+          },
+        }),
+      )
+    },
+  })
 
   await Instance.provide({
     directory: tmp.path,
@@ -127,16 +125,13 @@ test.skipIf(isCI)("BrowserOpenFailed event is published when open() throws", asy
         events.push(evt.properties)
       })
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback.
+      // Run authenticate with a timeout to avoid waiting forever for the callback
       // Attach a handler immediately so callback shutdown rejections
       // don't show up as unhandled between tests.
       const authPromise = MCP.authenticate("test-oauth-server").catch(() => undefined)
 
-      // Poll until BrowserOpenFailed event is received.
-      const deadline = Date.now() + TEST_POLL_TIMEOUT_MS
-      while (events.length === 0 && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
+      // Config.get() can be slow in tests, so give it plenty of time.
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
 
       // Stop the callback server and cancel any pending auth
       await McpOAuthCallback.stop()
@@ -154,7 +149,22 @@ test.skipIf(isCI)("BrowserOpenFailed event is published when open() throws", asy
 })
 
 test.skipIf(isCI)("BrowserOpenFailed event is NOT published when open() succeeds", async () => {
-  await using tmp = await tmpdir()
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/opencode.json`,
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "test-oauth-server-2": {
+              type: "remote",
+              url: "https://example.com/mcp",
+            },
+          },
+        }),
+      )
+    },
+  })
 
   await Instance.provide({
     directory: tmp.path,
@@ -166,18 +176,11 @@ test.skipIf(isCI)("BrowserOpenFailed event is NOT published when open() succeeds
         events.push(evt.properties)
       })
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback.
+      // Run authenticate with a timeout to avoid waiting forever for the callback
       const authPromise = MCP.authenticate("test-oauth-server-2").catch(() => undefined)
 
-      // Poll until open() is called.
-      const deadline = Date.now() + TEST_POLL_TIMEOUT_MS
-      while (!openCalledWith && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
-
-      // Give the open() subprocess ~500ms error-detection window time to pass,
-      // ensuring BrowserOpenFailed would have fired if open() had failed.
-      await new Promise((resolve) => setTimeout(resolve, 600))
+      // Config.get() can be slow in tests; also covers the ~500ms open() error-detection window.
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
 
       // Stop the callback server and cancel any pending auth
       await McpOAuthCallback.stop()
@@ -195,7 +198,22 @@ test.skipIf(isCI)("BrowserOpenFailed event is NOT published when open() succeeds
 })
 
 test.skipIf(isCI)("open() is called with the authorization URL", async () => {
-  await using tmp = await tmpdir()
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/opencode.json`,
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "test-oauth-server-3": {
+              type: "remote",
+              url: "https://example.com/mcp",
+            },
+          },
+        }),
+      )
+    },
+  })
 
   await Instance.provide({
     directory: tmp.path,
@@ -203,14 +221,11 @@ test.skipIf(isCI)("open() is called with the authorization URL", async () => {
       openShouldFail = false
       openCalledWith = undefined
 
-      // Run authenticate with a timeout to avoid waiting forever for the callback.
+      // Run authenticate with a timeout to avoid waiting forever for the callback
       const authPromise = MCP.authenticate("test-oauth-server-3").catch(() => undefined)
 
-      // Poll until open() is called.
-      const deadline = Date.now() + TEST_POLL_TIMEOUT_MS
-      while (!openCalledWith && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
+      // Config.get() can be slow in tests; also covers the ~500ms open() error-detection window.
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
 
       // Stop the callback server and cancel any pending auth
       await McpOAuthCallback.stop()

@@ -47,18 +47,32 @@ const { MCP } = await import("../../src/mcp/index")
 const { Instance } = await import("../../src/project/instance")
 const { tmpdir } = await import("../fixture/fixture")
 
-// The root opencode.json may include extra MCP servers (e.g. context7) without headers.
-// Filter to only the calls for the server we explicitly add so assertions are precise.
-function callsForUrl(url: string) {
-  return transportCalls.filter((c) => c.url === url)
-}
-
 test("headers are passed to transports when oauth is enabled (default)", async () => {
-  await using tmp = await tmpdir()
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        `${dir}/opencode.json`,
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            "test-server": {
+              type: "remote",
+              url: "https://example.com/mcp",
+              headers: {
+                Authorization: "Bearer test-token",
+                "X-Custom-Header": "custom-value",
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
 
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
+      // Trigger MCP initialization - it will fail to connect but we can check the transport options
       await MCP.add("test-server", {
         type: "remote",
         url: "https://example.com/mcp",
@@ -68,15 +82,16 @@ test("headers are passed to transports when oauth is enabled (default)", async (
         },
       }).catch(() => {})
 
-      const calls = callsForUrl("https://example.com/mcp")
-      expect(calls.length).toBeGreaterThanOrEqual(1)
+      // Both transports should have been created with headers
+      expect(transportCalls.length).toBeGreaterThanOrEqual(1)
 
-      for (const call of calls) {
+      for (const call of transportCalls) {
         expect(call.options.requestInit).toBeDefined()
         expect(call.options.requestInit?.headers).toEqual({
           Authorization: "Bearer test-token",
           "X-Custom-Header": "custom-value",
         })
+        // OAuth should be enabled by default, so authProvider should exist
         expect(call.options.authProvider).toBeDefined()
       }
     },
@@ -100,14 +115,14 @@ test("headers are passed to transports when oauth is explicitly disabled", async
         },
       }).catch(() => {})
 
-      const calls = callsForUrl("https://example.com/mcp")
-      expect(calls.length).toBeGreaterThanOrEqual(1)
+      expect(transportCalls.length).toBeGreaterThanOrEqual(1)
 
-      for (const call of calls) {
+      for (const call of transportCalls) {
         expect(call.options.requestInit).toBeDefined()
         expect(call.options.requestInit?.headers).toEqual({
           Authorization: "Bearer test-token",
         })
+        // OAuth is disabled, so no authProvider
         expect(call.options.authProvider).toBeUndefined()
       }
     },
@@ -127,10 +142,10 @@ test("no requestInit when headers are not provided", async () => {
         url: "https://example.com/mcp",
       }).catch(() => {})
 
-      const calls = callsForUrl("https://example.com/mcp")
-      expect(calls.length).toBeGreaterThanOrEqual(1)
+      expect(transportCalls.length).toBeGreaterThanOrEqual(1)
 
-      for (const call of calls) {
+      for (const call of transportCalls) {
+        // No headers means requestInit should be undefined
         expect(call.options.requestInit).toBeUndefined()
       }
     },
