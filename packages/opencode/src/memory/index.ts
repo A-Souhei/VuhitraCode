@@ -796,6 +796,16 @@ export namespace Memory {
       // Store metadata in Redis
       await storeMetadata(id, { ...entry, query, tags, quality, used_count, created_at })
 
+      // Set TTL on Redis keys if using Redis backend
+      if (useRedis()) {
+        const client = getRedisClient()
+        const ttl = VuHitraSettings.memoryTtl()
+        const pipeline = client.pipeline()
+        pipeline.expire(`${collectionName()}:point:${id}`, ttl)
+        pipeline.expire(metaKey(id), ttl)
+        await pipeline.exec()
+      }
+
       // Re-acquire state after awaits
       const s2 = state()
       if (s2.status.type !== "ready") return undefined

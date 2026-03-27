@@ -621,6 +621,34 @@ function App() {
       },
     },
     {
+      title: "Set default memento TTL to 1 day (86400s)",
+      value: "memory.set_default_ttl",
+      category: "Agent",
+      description: "Reset the memento TTL to the default value of 86400 seconds in .vuhitra/settings.json",
+      slash: {
+        name: "set-default-memento-ttl",
+      },
+      onSelect: async (dialog) => {
+        const dir = sync.data.path.directory || process.cwd()
+        try {
+          await VuHitraSettings.setMemoryTtl(86400, dir)
+          toast.show({
+            message: "Memento TTL set to 1 day (24 hours)",
+            variant: "success",
+            duration: 4000,
+          })
+        } catch (error) {
+          toast.show({
+            message: error instanceof Error ? error.message : "Failed to set memento TTL",
+            variant: "error",
+            duration: 4000,
+          })
+        } finally {
+          dialog.clear()
+        }
+      },
+    },
+    {
       title: "Switch agent",
       value: "agent.list",
       keybind: "agent_list",

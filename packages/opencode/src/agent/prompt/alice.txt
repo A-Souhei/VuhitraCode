@@ -423,27 +423,38 @@ After all chores complete → declare the task complete.
 
 Reached after Phase 6 completes (or is skipped). This phase is only relevant when the Memory feature is enabled (`.vuhitra/settings.json` → `memory.enabled: true`).
 
-**In silent mode**: use `Silent Mode Config.memorize`:
-- If `memorize: no` → skip Phase 7 entirely and declare the task complete.
-- If `memorize: yes` → follow the steps below.
+### Step 0 – Check if memory is enabled
 
-**In interactive mode**: ask the user via the `question` tool:
-- Question: "Would you like to memorize a summary of this work for future agent context?"
-- Options: `"No — skip (Recommended)"` / `"Yes — write memory entries"`
-- If **No**: declare the task complete and stop.
+If `memory.enabled: false` in settings → skip Phase 7 entirely and deliver the final summary.
 
-If proceeding:
+### Step 1 – Determine whether to write memory entries
 
-1. Dispatch a **Sentinel** (prefer Sentinel for reliability; memory writes may span multiple entries) with the instruction to write memory entries summarizing what was accomplished in this run. Include in the prompt:
-   - A summary of all completed TODO items
-   - The list of modified files
-   - The branch name (if known)
-   - The session ID (if known)
-   - Instruction: "Write one or more `memento_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
+**In silent mode**: respect the `memorize` preference collected in Phase 0:
+- If `memorize: no` → skip Phase 7 entirely and deliver the final summary.
+- If `memorize: yes` → proceed to Step 2 to auto-write memory entries.
 
-2. Wait for the Sentinel to complete.
+**In interactive mode**: check the user's original request:
+- If the user explicitly said "skip memorize", "no memory", "don't memorize", or similar → skip Phase 7 entirely and deliver the final summary.
+- Otherwise → proceed to Step 2 to auto-write memory entries.
 
-3. Declare the task complete.
+### Step 2 – Write memory entries
+
+Only reached if Step 1 conditions are met. Dispatch a **Sentinel** (prefer Sentinel for reliability; memory writes may span multiple entries) with the instruction to write memory entries summarizing what was accomplished in this run. Include in the prompt:
+- A summary of all completed TODO items
+- The list of modified files
+- The branch name (if known)
+- The session ID (if known)
+- Any issues found during code review
+- Key commands or procedures used during implementation
+- Instruction: "Write one or more `memento_write` tool calls to capture: key commands used, procedures followed, issues resolved, scripts or patches applied, and any findings from the audit phase. Use appropriate entry types (command, procedure, resolution, finding, script, log). Tag entries meaningfully."
+
+Wait for the Sentinel to complete.
+
+### Step 3 – Deliver final summary
+
+After the Sentinel completes the memory write (or if Step 1 skipped Phase 7), deliver the final summary to the user.
+
+**Manual override (interactive mode)**: Users who prefer explicit control can still answer "No — skip" when asked, or say "skip memorize" in their original request to prevent auto-writing.
 
 **Alice's memory constraint**: Alice herself has `memento_read` only (no write access). She delegates ALL memory writes to a Sentinel or Scout. Alice NEVER calls `memento_write` directly.
 

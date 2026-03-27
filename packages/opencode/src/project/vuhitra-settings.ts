@@ -9,7 +9,12 @@ import z from "zod"
 export namespace VuHitraSettings {
   const SettingsSchema = z.object({
     indexing: z.object({ enabled: z.boolean().optional() }).optional(),
-    memory: z.object({ enabled: z.boolean().optional() }).optional(),
+    memory: z
+      .object({
+        enabled: z.boolean().optional(),
+        ttl: z.number().int().positive().optional(),
+      })
+      .optional(),
     biblion: z.object({ enabled: z.boolean().optional() }).optional(),
     model_lock: z
       .object({
@@ -75,6 +80,18 @@ export namespace VuHitraSettings {
 
   export function memoryEnabled(): boolean {
     return state().memory?.enabled === true
+  }
+
+  export function memoryTtl(): number {
+    return state().memory?.ttl ?? 86400
+  }
+
+  export async function setMemoryTtl(n: number, dir?: string) {
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
+      throw new Error(`memory.ttl must be a positive integer, got ${n}`)
+    }
+    const current = readFromDisk(dir).memory ?? {}
+    await writeToDisk({ memory: { ...current, ttl: n } }, dir)
   }
 
   export function biblionEnabled(): boolean {

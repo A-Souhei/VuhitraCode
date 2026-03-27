@@ -10,6 +10,7 @@ import { Tool } from "@/tool/tool"
 import Redis from "ioredis"
 import { Scoring } from "@/cache/scoring"
 import { Canonicalize } from "@/cache/canonicalize"
+import { Question } from "@/question"
 
 export namespace Biblion {
   const log = Log.create({ service: "biblion" })
@@ -347,6 +348,21 @@ export namespace Biblion {
       if (!response.ok) throw new Error(`Failed to delete point: ${response.status} ${response.statusText}`)
     },
 
+    async updateQuality(id: string, quality: number) {
+      if (quality < 0 || quality > 1) {
+        throw new Error(`quality must be between 0 and 1, got ${quality}`)
+      }
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/payload`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({ payload: { quality }, points: [id] }),
+      })
+      if (!response.ok) throw new Error(`Failed to update quality: ${response.status} ${response.statusText}`)
+    },
+
     async list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
       const name = collectionName()
       const url = qdrantUrl()
@@ -627,6 +643,18 @@ export namespace Biblion {
       await client.del(`${prefix}${id}`)
     },
 
+    async updateQuality(id: string, quality: number) {
+      if (quality < 0 || quality > 1) {
+        throw new Error(`quality must be between 0 and 1, got ${quality}`)
+      }
+      const client = getRedisClient()
+      const prefix = redis.keyPrefix()
+      const pipeline = client.pipeline()
+      pipeline.hset(`${prefix}${id}`, "quality", String(quality))
+      pipeline.hset(`${collectionName()}:meta:${id}`, "quality", String(quality))
+      await pipeline.exec()
+    },
+
     async list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
       const client = getRedisClient()
       const prefix = redis.keyPrefix()
@@ -698,6 +726,9 @@ export namespace Biblion {
     },
     async delete(id: string) {
       return useRedis() ? redis.delete(id) : qdrant.delete(id)
+    },
+    async updateQuality(id: string, quality: number) {
+      return useRedis() ? redis.updateQuality(id, quality) : qdrant.updateQuality(id, quality)
     },
     async list() {
       return useRedis() ? redis.list() : qdrant.list()
@@ -785,7 +816,7 @@ export namespace Biblion {
     return state().status
   }
 
-  export async function write(entry: Omit<BiblionEntry, "token_count">): Promise<void> {
+  export async function write(entry: Omit<BiblionEntry, "token_count">): Promise<string | undefined> {
     const s = state()
     if (s.status.type !== "ready") return
     try {
@@ -849,8 +880,10 @@ export namespace Biblion {
         message: `New ${entry.type} recorded`,
         variant: "info",
       })
+      return id
     } catch (e) {
       log.warn("failed to write biblion entry", { type: entry.type, error: String(e) })
+      return
     }
   }
 
@@ -972,6 +1005,15 @@ export namespace Biblion {
     Bus.publish(Event.Updated, s.status)
   }
 
+  export async function updateQuality(id: string, quality: number): Promise<void> {
+    if (state().status.type !== "ready") return
+    try {
+      await store.updateQuality(id, quality)
+    } catch (e) {
+      log.warn("failed to update biblion entry quality", { id, error: String(e) })
+    }
+  }
+
   export async function clear(): Promise<void> {
     const s = state()
     if (s.status.type !== "ready") return
@@ -1031,6 +1073,20 @@ export namespace Biblion {
 
   // ─── biblion_write tool ────────────────────────────────────────────────────────
 
+  /**
+   * NOTE on biblion_read permission vs. biblion_read tool:
+   *
+   * biblion_read is a **permission**, NOT a callable tool. There is no "biblion_read" tool
+   * exported from this module.
+   *
+   * When an LLM session is granted `biblion_read` permission, the system will automatically
+   * inject biblion search results into the session's context based on the current task.
+   * This injection happens transparently — agents do not call a tool to read from biblion;
+   * the reading occurs automatically when the permission is present.
+   *
+   * The `biblion_write` tool below IS a callable tool that requires explicit invocation.
+   */
+
   export const WriteTool = Tool.define("biblion_write", {
     description:
       "Write an entry to the biblion knowledge base for future reference. Use this to capture codebase knowledge about structure, patterns, dependencies, APIs, configurations, and workflows. Content is automatically sanitized before storage. NOT for operational/procedural agent memory (commands, fixes, logs) — use `memento_write` for that.",
@@ -1059,7 +1115,7 @@ export namespace Biblion {
       }
       // Normalize quality from 0-10 to 0-1
       const quality = params.quality !== undefined ? params.quality / 10 : Scoring.DEFAULT_QUALITY
-      await write({
+      const entryId = await write({
         type: params.type,
         content: params.content,
         tags: params.tags ?? [],
@@ -1068,6 +1124,76 @@ export namespace Biblion {
         timestamp: Date.now(),
         quality,
       })
+
+      // If no entryId (write failed or was skipped), return early
+      if (!entryId) {
+        return {
+          title: `Biblion: ${params.type}`,
+          metadata: {} as { quality?: number },
+          output: "Biblion entry was not stored (duplicate or error).",
+        }
+      }
+
+      // Prompt the user for a quality rating
+      try {
+        const answers = await Question.ask({
+          sessionID: ctx.sessionID,
+          questions: [
+            {
+              question: `Rate the quality of this biblion entry (0-10, where 0=poor, 10=excellent):`,
+              header: "Quality Rating",
+              options: [
+                { label: "10 - Excellent", description: "Highly valuable, well-structured, immediately useful" },
+                { label: "8 - Very Good", description: "Valuable content with good structure" },
+                { label: "5 - Average", description: "Moderately useful, standard quality" },
+                { label: "3 - Below Average", description: "Limited usefulness or needs refinement" },
+                { label: "0 - Poor", description: "Low value, consider if entry is needed" },
+              ],
+              custom: true, // Allow custom input for specific ratings
+            },
+          ],
+        })
+
+        // Parse the answer - it's an array of selected labels
+        const answer = answers[0]?.[0]
+        if (answer) {
+          // Extract numeric rating from the answer
+          let rating: number | undefined
+
+          // Check if it's one of the preset options
+          if (answer.includes(" - ")) {
+            const numStr = answer.split(" - ")[0]
+            rating = parseInt(numStr, 10)
+          } else {
+            // Try to parse as a direct number
+            rating = parseInt(answer, 10)
+          }
+
+          // Validate the rating
+          if (!isNaN(rating) && rating >= 0 && rating <= 10) {
+            const normalizedQuality = rating / 10
+
+            // Update quality in-place on the existing entry (avoids triggering dedup on re-write)
+            await updateQuality(entryId, normalizedQuality)
+
+            return {
+              title: `Biblion: ${params.type}`,
+              metadata: { quality: normalizedQuality },
+              output: `Biblion entry written with quality rating ${rating}/10 (${normalizedQuality.toFixed(2)})`,
+            }
+          } else {
+            return {
+              title: `Biblion: ${params.type}`,
+              metadata: { quality },
+              output: "Invalid rating provided. Entry written with default quality.",
+            }
+          }
+        }
+      } catch (e) {
+        // Question.ask failed (e.g., no UI available), proceed with default quality
+        Log.Default.warn("failed to prompt for quality rating", { error: String(e) })
+      }
+
       return {
         title: `Biblion: ${params.type}`,
         metadata: { quality },
