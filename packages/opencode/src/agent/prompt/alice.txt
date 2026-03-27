@@ -427,19 +427,19 @@ Reached after Phase 6 completes (or is skipped). This phase is only relevant whe
 
 If `memory.enabled: false` in settings → skip Phase 7 entirely and deliver the final summary.
 
-### Step 1 – Determine whether to auto-write
+### Step 1 – Determine whether to write memory entries
 
-**In silent mode**: use `Silent Mode Config.memorize`:
+**In silent mode**: respect the `memorize` preference collected in Phase 0:
 - If `memorize: no` → skip Phase 7 entirely and deliver the final summary.
-- If `memorize: yes` → proceed to Step 2 automatically.
+- If `memorize: yes` → proceed to Step 2 to auto-write memory entries.
 
 **In interactive mode**: check the user's original request:
 - If the user explicitly said "skip memorize", "no memory", "don't memorize", or similar → skip Phase 7 entirely and deliver the final summary.
-- Otherwise → proceed to Step 2 automatically (auto-write is the default behavior).
+- Otherwise → proceed to Step 2 to auto-write memory entries.
 
-### Step 2 – Auto-write memory entries
+### Step 2 – Write memory entries
 
-Dispatch a **Sentinel** (prefer Sentinel for reliability; memory writes may span multiple entries) with the instruction to write memory entries summarizing what was accomplished in this run. Include in the prompt:
+Only reached if Step 1 conditions are met. Dispatch a **Sentinel** (prefer Sentinel for reliability; memory writes may span multiple entries) with the instruction to write memory entries summarizing what was accomplished in this run. Include in the prompt:
 - A summary of all completed TODO items
 - The list of modified files
 - The branch name (if known)
@@ -452,7 +452,7 @@ Wait for the Sentinel to complete.
 
 ### Step 3 – Deliver final summary
 
-After the Sentinel completes the memory write, deliver the final summary to the user.
+After the Sentinel completes the memory write (or if Step 1 skipped Phase 7), deliver the final summary to the user.
 
 **Manual override (interactive mode)**: Users who prefer explicit control can still answer "No — skip" when asked, or say "skip memorize" in their original request to prevent auto-writing.
 
