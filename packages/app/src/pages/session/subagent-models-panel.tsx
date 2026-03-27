@@ -10,6 +10,8 @@ import { useSubagentModels } from "@/hooks/use-subagent-models"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
 import { popularProviders } from "@/hooks/use-providers"
+import { useSync } from "@/context/sync"
+import { useParams } from "@solidjs/router"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
@@ -188,7 +190,18 @@ function SubagentRow(props: {
 }
 
 export function SubagentModelsPanel() {
+  const sync = useSync()
+  const params = useParams()
   const subagentModels = useSubagentModels()
+
+  // Get display profile name
+  const displayProfile = createMemo(() => {
+    if (params.id) {
+      const session = sync.data.session.find((s) => s.id === params.id)
+      if (session?.profile) return session.profile
+    }
+    return sync.data.active_profile ?? "default"
+  })
 
   // Fetch subagent models on mount
   onMount(() => {
@@ -204,7 +217,10 @@ export function SubagentModelsPanel() {
     <div class="px-4 py-3 border-b border-border-weak-base">
       <div class="flex items-center gap-2 min-w-0">
         <Icon name="sliders" size="small" class="text-icon-base shrink-0" />
-        <span class="text-12-medium text-text-strong flex-1 min-w-0">Subagent Models</span>
+        <div class="flex flex-col flex-1 min-w-0">
+          <span class="text-12-medium text-text-strong">Subagent Models</span>
+          <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
+        </div>
         <Show when={subagentModels.loading()}>
           <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
         </Show>
