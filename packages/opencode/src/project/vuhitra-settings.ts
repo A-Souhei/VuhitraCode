@@ -90,7 +90,7 @@ export namespace VuHitraSettings {
     if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
       throw new Error(`memory.ttl must be a positive integer, got ${n}`)
     }
-    const current = state().memory ?? {}
+    const current = readFromDisk(dir).memory ?? {}
     await writeToDisk({ memory: { ...current, ttl: n } }, dir)
   }
 
