@@ -13,6 +13,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useParams } from "@solidjs/router"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
+import { SubagentModelsPanel } from "./subagent-models-panel"
 
 function fmt(n: number) {
   if (n >= 1000) return `${Math.round(n / 100) / 10}k`
@@ -361,6 +362,9 @@ export default function SessionInfoPanel() {
             </div>
           </div>
         </div>
+
+        {/* Subagent Models */}
+        <SubagentModelsPanel />
       </div>
     </div>
   )
