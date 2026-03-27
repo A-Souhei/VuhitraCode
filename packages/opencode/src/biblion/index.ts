@@ -349,6 +349,9 @@ export namespace Biblion {
     },
 
     async updateQuality(id: string, quality: number) {
+      if (quality < 0 || quality > 1) {
+        throw new Error(`quality must be between 0 and 1, got ${quality}`)
+      }
       const name = collectionName()
       const url = qdrantUrl()
       const response = await fetch(`${url}/collections/${name}/points/payload`, {
@@ -641,6 +644,9 @@ export namespace Biblion {
     },
 
     async updateQuality(id: string, quality: number) {
+      if (quality < 0 || quality > 1) {
+        throw new Error(`quality must be between 0 and 1, got ${quality}`)
+      }
       const client = getRedisClient()
       const prefix = redis.keyPrefix()
       const pipeline = client.pipeline()
@@ -1174,6 +1180,12 @@ export namespace Biblion {
               title: `Biblion: ${params.type}`,
               metadata: { quality: normalizedQuality },
               output: `Biblion entry written with quality rating ${rating}/10 (${normalizedQuality.toFixed(2)})`,
+            }
+          } else {
+            return {
+              title: `Biblion: ${params.type}`,
+              metadata: { quality },
+              output: "Invalid rating provided. Entry written with default quality.",
             }
           }
         }
