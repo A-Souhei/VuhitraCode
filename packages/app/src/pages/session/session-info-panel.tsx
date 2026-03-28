@@ -77,9 +77,9 @@ export default function SessionInfoPanel() {
   const biblion = () => sync.data.biblion_status
   const indexer = () => sync.data.indexer_status
 
-  const memoryEnabled = () => sync.data.settings?.memory?.enabled ?? true
-  const indexerEnabled = () => sync.data.settings?.indexing?.enabled ?? true
-  const biblionEnabled = () => sync.data.settings?.biblion?.enabled ?? true
+  const memoryEnabled = () => sync.data.settings?.memory?.enabled ?? false
+  const indexerEnabled = () => sync.data.settings?.indexing?.enabled ?? false
+  const biblionEnabled = () => sync.data.settings?.biblion?.enabled ?? false
 
   const [deleting, setDeleting] = createStore({ mem: false, bib: false })
 
@@ -492,7 +492,7 @@ function SettingsPanel() {
 
       // Update sync.data.settings so status displays react immediately
       if (typeof value === "boolean") {
-        const category = key.replace(".enabled", "") as "memory" | "indexing" | "biblion"
+        const category = key.replace(".enabled", "") as "memory" | "indexing" | "biblion" | "model_lock"
         const currentSettings = sync.data.settings ?? {}
         sync.set("settings", {
           ...currentSettings,
