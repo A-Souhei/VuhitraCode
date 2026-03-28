@@ -357,6 +357,10 @@ export function applyDirectoryEvent(input: {
       input.setStore("biblion_status", event.properties as BiblionStatus)
       break
     }
+    case "settings.updated": {
+      input.setStore("settings", event.properties as State["settings"])
+      break
+    }
     case "profile.switched": {
       const props = event.properties as { name: string }
       input.setStore("active_profile", props.name)

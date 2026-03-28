@@ -1,9 +1,11 @@
-import { createSignal, Match, Show, Switch } from "solid-js"
+import { createSignal, Match, Show, Switch, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
+import { Switch as ToggleSwitch } from "@opencode-ai/ui/switch"
+import { InlineInput } from "@opencode-ai/ui/inline-input"
 import { useSDK } from "@/context/sdk"
 import { useServer } from "@/context/server"
 import { authHeaders } from "@/utils/auth"
@@ -14,6 +16,17 @@ import { useParams } from "@solidjs/router"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
 import { SubagentModelsPanel } from "./subagent-models-panel"
+
+type FeaturesResponse = {
+  indexing: { enabled: boolean }
+  memory: { enabled: boolean }
+  biblion: { enabled: boolean }
+  model_lock: { enabled: boolean }
+  review_max_rounds: number
+  explore_max_instances: number
+  compaction_threshold: number
+  file_not_found?: boolean
+}
 
 function fmt(n: number) {
   if (n >= 1000) return `${Math.round(n / 100) / 10}k`
@@ -62,6 +75,10 @@ export default function SessionInfoPanel() {
   const memory = () => sync.data.memory_status
   const biblion = () => sync.data.biblion_status
   const indexer = () => sync.data.indexer_status
+
+  const memoryEnabled = () => sync.data.settings?.memory?.enabled ?? true
+  const indexerEnabled = () => sync.data.settings?.indexing?.enabled ?? true
+  const biblionEnabled = () => sync.data.settings?.biblion?.enabled ?? true
 
   const [deleting, setDeleting] = createStore({ mem: false, bib: false })
 
@@ -210,7 +227,10 @@ export default function SessionInfoPanel() {
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="brain" size="small" class="text-icon-base shrink-0" />
             <span class="text-12-medium text-text-strong flex-1 min-w-0">Memory</span>
-            <Show when={memory()?.type === "ready" ? memory() : undefined}>
+            <Show when={!memoryEnabled()}>
+              <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
+            </Show>
+            <Show when={memoryEnabled() && memory()?.type === "ready" ? memory() : undefined}>
               {(mem) => (
                 <>
                   <span class="text-12-regular text-text-weak shrink-0">
@@ -229,10 +249,10 @@ export default function SessionInfoPanel() {
                 </>
               )}
             </Show>
-            <Show when={memory()?.type === "disabled"}>
+            <Show when={memoryEnabled() && memory()?.type === "disabled"}>
               <span class="text-12-regular text-text-weak shrink-0">Disabled</span>
             </Show>
-            <Show when={!memory()}>
+            <Show when={memoryEnabled() && !memory()}>
               <span class="text-12-regular text-text-weaker">—</span>
             </Show>
           </div>
@@ -243,7 +263,10 @@ export default function SessionInfoPanel() {
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="magnifying-glass" size="small" class="text-icon-base shrink-0" />
             <span class="text-12-medium text-text-strong flex-1 min-w-0">Indexer</span>
-            <Show when={indexer()} fallback={<span class="text-12-regular text-text-weaker">—</span>}>
+            <Show when={!indexerEnabled()}>
+              <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
+            </Show>
+            <Show when={indexerEnabled()} fallback={<span class="text-12-regular text-text-weaker">—</span>}>
               <Switch>
                 <Match when={indexer()?.type === "complete"}>
                   <div class="flex items-center gap-1.5 shrink-0">
@@ -273,7 +296,10 @@ export default function SessionInfoPanel() {
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="bullet-list" size="small" class="text-icon-base shrink-0" />
             <span class="text-12-medium text-text-strong flex-1 min-w-0">Biblion</span>
-            <Show when={biblion()?.type === "ready" ? biblion() : undefined}>
+            <Show when={!biblionEnabled()}>
+              <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
+            </Show>
+            <Show when={biblionEnabled() && biblion()?.type === "ready" ? biblion() : undefined}>
               {(bib) => (
                 <>
                   <span class="text-12-regular text-text-weak shrink-0">
@@ -292,10 +318,10 @@ export default function SessionInfoPanel() {
                 </>
               )}
             </Show>
-            <Show when={biblion()?.type === "disabled"}>
+            <Show when={biblionEnabled() && biblion()?.type === "disabled"}>
               <span class="text-12-regular text-text-weak shrink-0">Disabled</span>
             </Show>
-            <Show when={!biblion()}>
+            <Show when={biblionEnabled() && !biblion()}>
               <span class="text-12-regular text-text-weaker">—</span>
             </Show>
           </div>
@@ -365,7 +391,298 @@ export default function SessionInfoPanel() {
 
         {/* Subagent Models */}
         <SubagentModelsPanel />
+
+        {/* Settings */}
+        <SettingsPanel />
       </div>
+    </div>
+  )
+}
+
+function SettingsPanel() {
+  const sdk = useSDK()
+  const server = useServer()
+  const sync = useSync()
+
+  const [state, setState] = createStore<{
+    loading: boolean
+    error: string | null
+    features: FeaturesResponse | null
+    pending: Record<string, boolean>
+    fileNotFound: boolean
+  }>({
+    loading: true,
+    error: null,
+    features: null,
+    pending: {},
+    fileNotFound: false,
+  })
+
+  const fetchFeatures = async () => {
+    const dir = sdk.directory
+    if (!dir) return
+
+    setState("loading", true)
+    setState("error", null)
+
+    try {
+      const res = await fetch(`${sdk.url}/settings/features?directory=${encodeURIComponent(dir)}`, {
+        headers: authHeaders(server.current?.http),
+      })
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      const data = (await res.json()) as FeaturesResponse
+      setState("features", data)
+      setState("fileNotFound", !!data.file_not_found)
+    } catch (e) {
+      setState("error", e instanceof Error ? e.message : String(e))
+    } finally {
+      setState("loading", false)
+    }
+  }
+
+  const updateFeature = async (key: string, value: boolean | number) => {
+    const dir = sdk.directory
+    if (!dir || !state.features) return
+
+    setState("pending", key, true)
+
+    try {
+      const res = await fetch(`${sdk.url}/settings/features?directory=${encodeURIComponent(dir)}`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(server.current?.http),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ key, value, directory: dir }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+
+      const data = (await res.json()) as FeaturesResponse
+      setState("features", data)
+      setState("fileNotFound", false)
+
+      // Update sync.data.settings so status displays react immediately
+      if (typeof value === "boolean") {
+        const category = key.replace(".enabled", "") as "memory" | "indexing" | "biblion"
+        const currentSettings = sync.data.settings ?? {}
+        sync.set("settings", {
+          ...currentSettings,
+          [category]: { enabled: value },
+        })
+      }
+
+      showToast({ variant: "success", title: "Setting updated" })
+    } catch (e) {
+      showToast({
+        variant: "error",
+        title: "Failed to update setting",
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setState("pending", key, false)
+    }
+  }
+
+  onMount(fetchFeatures)
+
+  const onToggleChange = (key: string, checked: boolean) => {
+    updateFeature(key, checked)
+  }
+
+  const onNumberChange = (key: string, value: string) => {
+    const num = parseFloat(value)
+    if (isNaN(num)) return
+    updateFeature(key, num)
+  }
+
+  const stepValue = (key: string, delta: number, min: number, max: number) => {
+    if (!state.features) return
+    const current = getFeatureValue(key) as number
+    const newValue = Math.max(min, Math.min(max, current + delta))
+    updateFeature(key, newValue)
+  }
+
+  const getFeatureValue = (key: string): boolean | number => {
+    if (!state.features) return false
+    switch (key) {
+      case "memory.enabled":
+        return state.features.memory.enabled
+      case "indexing.enabled":
+        return state.features.indexing.enabled
+      case "biblion.enabled":
+        return state.features.biblion.enabled
+      case "model_lock.enabled":
+        return state.features.model_lock.enabled
+      case "review Max Rounds":
+      case "review_max_rounds":
+        return state.features.review_max_rounds
+      case "Explore Max Instances":
+      case "explore_max_instances":
+        return state.features.explore_max_instances
+      case "Compaction Threshold":
+      case "compaction_threshold":
+        return state.features.compaction_threshold
+      default:
+        return false
+    }
+  }
+
+  return (
+    <div class="px-4 py-3 border-b border-border-weak-base">
+      <div class="flex items-center gap-2 min-w-0">
+        <Icon name="settings-gear" size="small" class="text-icon-base shrink-0" />
+        <span class="text-12-medium text-text-strong flex-1 min-w-0">Settings</span>
+        <Show when={state.loading}>
+          <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
+        </Show>
+      </div>
+      <Show when={state.error}>
+        <span class="text-12-regular text-error mt-1">{state.error}</span>
+      </Show>
+      <Show when={state.fileNotFound}>
+        <span class="text-11-regular text-text-weaker mt-1 block">
+          Settings file not found. Using default values. Changes will create the file.
+        </span>
+      </Show>
+      <Show when={!state.loading && state.features}>
+        <div class="flex flex-col gap-2 mt-2">
+          {/* Memory */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Memory</span>
+            <ToggleSwitch
+              checked={state.features?.memory?.enabled ?? false}
+              disabled={state.pending["memory.enabled"]}
+              onChange={(checked) => onToggleChange("memory.enabled", checked)}
+            >
+              <span class="sr-only">Memory</span>
+            </ToggleSwitch>
+          </div>
+
+          {/* Indexing */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Indexing</span>
+            <ToggleSwitch
+              checked={state.features?.indexing?.enabled ?? false}
+              disabled={state.pending["indexing.enabled"]}
+              onChange={(checked) => onToggleChange("indexing.enabled", checked)}
+            >
+              <span class="sr-only">Indexing</span>
+            </ToggleSwitch>
+          </div>
+
+          {/* Biblion */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Biblion</span>
+            <ToggleSwitch
+              checked={state.features?.biblion?.enabled ?? false}
+              disabled={state.pending["biblion.enabled"]}
+              onChange={(checked) => onToggleChange("biblion.enabled", checked)}
+            >
+              <span class="sr-only">Biblion</span>
+            </ToggleSwitch>
+          </div>
+
+          {/* Model Lock */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Model Lock</span>
+            <ToggleSwitch
+              checked={state.features?.model_lock?.enabled ?? false}
+              disabled={state.pending["model_lock.enabled"]}
+              onChange={(checked) => onToggleChange("model_lock.enabled", checked)}
+            >
+              <span class="sr-only">Model Lock</span>
+            </ToggleSwitch>
+          </div>
+
+          {/* Review Max Rounds */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Review Max Rounds</span>
+            <div class="flex items-center gap-1 shrink-0">
+              <IconButton
+                icon="dash"
+                size="small"
+                variant="ghost"
+                aria-label="Decrease"
+                disabled={state.pending["review_max_rounds"] || (state.features?.review_max_rounds ?? 7) <= 1}
+                onClick={() => stepValue("review_max_rounds", -1, 1, 100)}
+              />
+              <InlineInput
+                type="number"
+                width="3rem"
+                class="text-12-regular text-text-base text-center"
+                value={state.features?.review_max_rounds ?? 7}
+                disabled={state.pending["review_max_rounds"]}
+                onChange={(e) => onNumberChange("review_max_rounds", e.currentTarget.value)}
+              />
+              <IconButton
+                icon="plus-small"
+                size="small"
+                variant="ghost"
+                aria-label="Increase"
+                disabled={state.pending["review_max_rounds"] || (state.features?.review_max_rounds ?? 7) >= 100}
+                onClick={() => stepValue("review_max_rounds", 1, 1, 100)}
+              />
+            </div>
+          </div>
+
+          {/* Explore Max Instances */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Explore Max Instances</span>
+            <div class="flex items-center gap-1 shrink-0">
+              <IconButton
+                icon="dash"
+                size="small"
+                variant="ghost"
+                aria-label="Decrease"
+                disabled={state.pending["explore_max_instances"] || (state.features?.explore_max_instances ?? 3) <= 1}
+                onClick={() => stepValue("explore_max_instances", -1, 1, 20)}
+              />
+              <InlineInput
+                type="number"
+                width="3rem"
+                class="text-12-regular text-text-base text-center"
+                value={state.features?.explore_max_instances ?? 3}
+                disabled={state.pending["explore_max_instances"]}
+                onChange={(e) => onNumberChange("explore_max_instances", e.currentTarget.value)}
+              />
+              <IconButton
+                icon="plus-small"
+                size="small"
+                variant="ghost"
+                aria-label="Increase"
+                disabled={state.pending["explore_max_instances"] || (state.features?.explore_max_instances ?? 3) >= 20}
+                onClick={() => stepValue("explore_max_instances", 1, 1, 20)}
+              />
+            </div>
+          </div>
+
+          {/* Compaction Threshold */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base flex-1 min-w-0">Compaction Threshold</span>
+            <div class="flex items-center gap-1 shrink-0">
+              <InlineInput
+                type="number"
+                step="0.1"
+                min="0"
+                max="1"
+                width="3.5rem"
+                class="text-12-regular text-text-base text-center"
+                value={state.features?.compaction_threshold ?? 0.7}
+                disabled={state.pending["compaction_threshold"]}
+                onChange={(e) => onNumberChange("compaction_threshold", e.currentTarget.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   )
 }
