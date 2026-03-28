@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
-import { Bus } from "../../bus"
+import { Bus, BusEvent } from "../../bus"
 import { VuHitraSettings } from "../../project/vuhitra-settings"
 import { lazy } from "../../util/lazy"
 
@@ -18,6 +18,8 @@ const FeaturesSchema = z.object({
 const FeaturesResponseSchema = FeaturesSchema.extend({
   file_not_found: z.boolean().optional(),
 })
+
+const SettingsUpdated = BusEvent.define("settings.updated", FeaturesResponseSchema)
 
 const FeatureKeys = [
   "indexing.enabled",
@@ -165,7 +167,7 @@ export const SettingsRoutes = lazy(() =>
         try {
           await setFeature(key, value, directory)
           const features = getFeatures(directory)
-          await Bus.publish("settings.updated", features)
+          await Bus.publish(SettingsUpdated, features)
           return c.json(features)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
