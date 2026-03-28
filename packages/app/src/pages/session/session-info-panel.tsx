@@ -18,6 +18,7 @@ import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
 import { SubagentModelsPanel } from "./subagent-models-panel"
 import { AgentModelsPanel } from "./agent-models-panel"
+import { EnvInfoPanel } from "./env-info-panel"
 
 type FeaturesResponse = {
   indexing: { enabled: boolean }
@@ -425,6 +426,9 @@ export default function SessionInfoPanel() {
 
         {/* Subagent Models */}
         <SubagentModelsPanel />
+
+        {/* Project Info */}
+        <EnvInfoPanel />
       </div>
     </div>
   )

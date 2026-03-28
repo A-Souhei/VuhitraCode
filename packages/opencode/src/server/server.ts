@@ -34,6 +34,7 @@ import { BiblionRoutes } from "./routes/biblion"
 import { ProfileRoutes } from "./routes/profile"
 import { SettingsRoutes } from "./routes/settings"
 import { AgentModelRoutes } from "./routes/agent-model"
+import { EnvInfoRoutes } from "./routes/env-info"
 import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { lazy } from "../util/lazy"
@@ -241,6 +242,7 @@ export namespace Server {
         .route("/profile", ProfileRoutes())
         .route("/settings", SettingsRoutes())
         .route("/agent-model", AgentModelRoutes())
+        .route("/env-info", EnvInfoRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
         .route("/permission", PermissionRoutes())
