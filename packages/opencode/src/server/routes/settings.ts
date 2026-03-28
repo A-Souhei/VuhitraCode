@@ -1,7 +1,8 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
-import { Bus, BusEvent } from "../../bus"
+import { Bus } from "../../bus"
+import { BusEvent } from "../../bus/bus-event"
 import { VuHitraSettings } from "../../project/vuhitra-settings"
 import { lazy } from "../../util/lazy"
 
