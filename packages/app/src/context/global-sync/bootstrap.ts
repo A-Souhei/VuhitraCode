@@ -161,7 +161,7 @@ export async function bootstrapDirectory(input: {
       .status()
       .then((x) => input.setStore("indexer_status", x.data))
       .catch(() => undefined),
-    fetch(`${input.url}/settings/features`)
+    fetch(`${input.url}/settings/features?directory=${encodeURIComponent(input.directory)}`)
       .then(async (res) => {
         if (!res.ok) return
         const data = await res.json()
