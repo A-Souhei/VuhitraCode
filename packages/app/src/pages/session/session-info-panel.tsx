@@ -231,8 +231,9 @@ export default function SessionInfoPanel() {
               placement="top"
               value="Persistent knowledge base that stores context and findings from previous sessions. Helps agents understand project history and avoid re-exploring same code."
             >
-              <span class="text-12-medium text-text-strong flex-1 min-w-0">Memory</span>
+              <span class="text-12-medium text-text-strong">Memory</span>
             </Tooltip>
+            <div class="flex-1" />
             <Show when={!memoryEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
@@ -272,8 +273,9 @@ export default function SessionInfoPanel() {
               placement="top"
               value="Full-text and semantic search index of codebase. Enables fast code discovery and helps agents understand code structure and relationships."
             >
-              <span class="text-12-medium text-text-strong flex-1 min-w-0">Indexer</span>
+              <span class="text-12-medium text-text-strong">Indexer</span>
             </Tooltip>
+            <div class="flex-1" />
             <Show when={!indexerEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
@@ -310,8 +312,9 @@ export default function SessionInfoPanel() {
               placement="top"
               value="Vector database of codebase knowledge. Stores architecture, patterns, dependencies, and workflows discovered by agents for future reference."
             >
-              <span class="text-12-medium text-text-strong flex-1 min-w-0">Biblion</span>
+              <span class="text-12-medium text-text-strong">Biblion</span>
             </Tooltip>
+            <div class="flex-1" />
             <Show when={!biblionEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
