@@ -435,6 +435,23 @@ function ActionsPanel() {
   const server = useServer()
 
   const [initLoading, setInitLoading] = createSignal(false)
+  const [isInitialized, setIsInitialized] = createSignal<boolean | undefined>(undefined)
+
+  onMount(async () => {
+    const dir = sdk.directory
+    if (!dir) return
+    try {
+      const res = await fetch(`${sdk.url}/settings/features?directory=${encodeURIComponent(dir)}`, {
+        headers: authHeaders(server.current?.http),
+      })
+      if (res.ok) {
+        const data = (await res.json()) as { file_not_found?: boolean }
+        setIsInitialized(!data.file_not_found)
+      }
+    } catch {
+      // silently ignore — button stays enabled
+    }
+  })
 
   async function initializeVuhitracode() {
     const dir = sdk.directory
@@ -455,6 +472,7 @@ function ActionsPanel() {
         const body = await res.json().catch(() => ({}))
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
       }
+      setIsInitialized(true)
       showToast({ variant: "success", title: "Vuhitracode initialized successfully" })
     } catch (e) {
       showToast({
@@ -474,11 +492,18 @@ function ActionsPanel() {
         <span class="text-12-medium text-text-strong flex-1 min-w-0">Actions</span>
       </div>
       <div class="flex gap-2">
-        <Tooltip placement="top" value="Initialize vuhitracode configuration files and structure in this directory">
+        <Tooltip
+          placement="top"
+          value={
+            isInitialized()
+              ? "Vuhitracode is already initialized in this directory"
+              : "Initialize vuhitracode configuration files and structure in this directory"
+          }
+        >
           <Button
             size="small"
             variant="secondary"
-            disabled={initLoading() || !sdk.directory}
+            disabled={initLoading() || !sdk.directory || isInitialized() === true}
             onClick={initializeVuhitracode}
           >
             <Icon name="folder-add-left" size="small" />
