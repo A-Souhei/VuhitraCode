@@ -17,10 +17,11 @@ import { useParams } from "@solidjs/router"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
 import { SubagentModelsPanel } from "./subagent-models-panel"
+import { AgentModelsPanel } from "./agent-models-panel"
 
 type FeaturesResponse = {
   indexing: { enabled: boolean }
-  memory: { enabled: boolean }
+  memory: { enabled: boolean; ttl?: number }
   biblion: { enabled: boolean }
   model_lock: { enabled: boolean }
   review_max_rounds: number
@@ -413,11 +414,77 @@ export default function SessionInfoPanel() {
           </div>
         </div>
 
-        {/* Subagent Models */}
-        <SubagentModelsPanel />
-
         {/* Settings */}
         <SettingsPanel />
+
+        {/* Actions */}
+        <ActionsPanel />
+
+        {/* Agent Models */}
+        <AgentModelsPanel />
+
+        {/* Subagent Models */}
+        <SubagentModelsPanel />
+      </div>
+    </div>
+  )
+}
+
+function ActionsPanel() {
+  const sdk = useSDK()
+  const server = useServer()
+
+  const [initLoading, setInitLoading] = createSignal(false)
+
+  async function initializeVuhitracode() {
+    const dir = sdk.directory
+    if (!dir) return
+
+    setInitLoading(true)
+    try {
+      const res = await fetch(`${sdk.url}/init`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(server.current?.http),
+          "Content-Type": "application/json",
+          "x-opencode-directory": dir,
+        },
+        body: JSON.stringify({ directory: dir }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
+      }
+      showToast({ variant: "success", title: "Vuhitracode initialized successfully" })
+    } catch (e) {
+      showToast({
+        variant: "error",
+        title: "Failed to initialize vuhitracode",
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setInitLoading(false)
+    }
+  }
+
+  return (
+    <div class="px-4 py-3 border-b border-border-weak-base">
+      <div class="flex items-center gap-2 min-w-0 mb-2">
+        <Icon name="glasses" size="small" class="text-icon-base shrink-0" />
+        <span class="text-12-medium text-text-strong flex-1 min-w-0">Actions</span>
+      </div>
+      <div class="flex gap-2">
+        <Tooltip placement="top" value="Initialize vuhitracode configuration files and structure in this directory">
+          <Button
+            size="small"
+            variant="secondary"
+            disabled={initLoading() || !sdk.directory}
+            onClick={initializeVuhitracode}
+          >
+            <Icon name="folder-add-left" size="small" />
+            Initialize Vuhitracode
+          </Button>
+        </Tooltip>
       </div>
     </div>
   )
@@ -539,19 +606,18 @@ function SettingsPanel() {
     switch (key) {
       case "memory.enabled":
         return state.features.memory.enabled
+      case "memory.ttl":
+        return state.features.memory.ttl ?? 86400
       case "indexing.enabled":
         return state.features.indexing.enabled
       case "biblion.enabled":
         return state.features.biblion.enabled
       case "model_lock.enabled":
         return state.features.model_lock.enabled
-      case "review Max Rounds":
       case "review_max_rounds":
         return state.features.review_max_rounds
-      case "Explore Max Instances":
       case "explore_max_instances":
         return state.features.explore_max_instances
-      case "Compaction Threshold":
       case "compaction_threshold":
         return state.features.compaction_threshold
       default:
@@ -594,6 +660,43 @@ function SettingsPanel() {
             >
               <span class="sr-only">Memory</span>
             </ToggleSwitch>
+          </div>
+
+          {/* Memento TTL */}
+          <div class="flex items-center gap-2 min-w-0">
+            <Tooltip
+              placement="top"
+              value="Time-to-live in seconds for memory entries. Older entries are automatically removed after this duration."
+            >
+              <span class="text-12-regular text-text-base">Memento TTL</span>
+            </Tooltip>
+            <div class="flex-1" />
+            <div class="flex items-center gap-1 shrink-0">
+              <IconButton
+                icon="dash"
+                size="small"
+                variant="ghost"
+                aria-label="Decrease"
+                disabled={state.pending["memory.ttl"] || (state.features?.memory?.ttl ?? 86400) <= 1}
+                onClick={() => stepValue("memory.ttl", -3600, 1, 31536000)}
+              />
+              <InlineInput
+                type="number"
+                width="5rem"
+                class="text-12-regular text-text-base text-center"
+                value={state.features?.memory?.ttl ?? 86400}
+                disabled={state.pending["memory.ttl"]}
+                onChange={(e) => onNumberChange("memory.ttl", e.currentTarget.value)}
+              />
+              <IconButton
+                icon="plus-small"
+                size="small"
+                variant="ghost"
+                aria-label="Increase"
+                disabled={state.pending["memory.ttl"] || (state.features?.memory?.ttl ?? 86400) >= 31536000}
+                onClick={() => stepValue("memory.ttl", 3600, 1, 31536000)}
+              />
+            </div>
           </div>
 
           {/* Indexing */}

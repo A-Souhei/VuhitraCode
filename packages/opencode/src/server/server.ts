@@ -33,6 +33,7 @@ import { MemoryRoutes } from "./routes/memory"
 import { BiblionRoutes } from "./routes/biblion"
 import { ProfileRoutes } from "./routes/profile"
 import { SettingsRoutes } from "./routes/settings"
+import { AgentModelRoutes } from "./routes/agent-model"
 import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { lazy } from "../util/lazy"
@@ -239,6 +240,7 @@ export namespace Server {
         .route("/biblion", BiblionRoutes())
         .route("/profile", ProfileRoutes())
         .route("/settings", SettingsRoutes())
+        .route("/agent-model", AgentModelRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
         .route("/permission", PermissionRoutes())
