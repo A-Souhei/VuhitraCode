@@ -2,6 +2,7 @@ import { createSignal, Match, Show, Switch, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Switch as ToggleSwitch } from "@opencode-ai/ui/switch"
@@ -226,7 +227,12 @@ export default function SessionInfoPanel() {
         <div class="px-4 py-3 border-b border-border-weak-base">
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="brain" size="small" class="text-icon-base shrink-0" />
-            <span class="text-12-medium text-text-strong flex-1 min-w-0">Memory</span>
+            <Tooltip
+              placement="top"
+              value="Persistent knowledge base that stores context and findings from previous sessions. Helps agents understand project history and avoid re-exploring same code."
+            >
+              <span class="text-12-medium text-text-strong flex-1 min-w-0">Memory</span>
+            </Tooltip>
             <Show when={!memoryEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
@@ -262,7 +268,12 @@ export default function SessionInfoPanel() {
         <div class="px-4 py-3 border-b border-border-weak-base">
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="magnifying-glass" size="small" class="text-icon-base shrink-0" />
-            <span class="text-12-medium text-text-strong flex-1 min-w-0">Indexer</span>
+            <Tooltip
+              placement="top"
+              value="Full-text and semantic search index of codebase. Enables fast code discovery and helps agents understand code structure and relationships."
+            >
+              <span class="text-12-medium text-text-strong flex-1 min-w-0">Indexer</span>
+            </Tooltip>
             <Show when={!indexerEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
@@ -295,7 +306,12 @@ export default function SessionInfoPanel() {
         <div class="px-4 py-3 border-b border-border-weak-base">
           <div class="flex items-center gap-2 min-w-0">
             <Icon name="bullet-list" size="small" class="text-icon-base shrink-0" />
-            <span class="text-12-medium text-text-strong flex-1 min-w-0">Biblion</span>
+            <Tooltip
+              placement="top"
+              value="Vector database of codebase knowledge. Stores architecture, patterns, dependencies, and workflows discovered by agents for future reference."
+            >
+              <span class="text-12-medium text-text-strong flex-1 min-w-0">Biblion</span>
+            </Tooltip>
             <Show when={!biblionEnabled()}>
               <span class="text-12-regular text-text-weaker shrink-0 italic">Disabled (in settings)</span>
             </Show>
@@ -332,7 +348,12 @@ export default function SessionInfoPanel() {
           <div class="flex flex-col gap-2">
             <div class="flex items-center gap-2 min-w-0">
               <Icon name="link" size="small" class="text-icon-base shrink-0" />
-              <span class="text-12-medium text-text-strong flex-1 min-w-0">Bridge</span>
+              <Tooltip
+                placement="top"
+                value="Multi-terminal collaboration mode. Master node orchestrates work, Friends provide parallel compute across different codebases or machines."
+              >
+                <span class="text-12-medium text-text-strong flex-1 min-w-0">Bridge</span>
+              </Tooltip>
               <Show
                 when={bridge.state.role}
                 fallback={<span class="text-12-regular text-text-weaker shrink-0">—</span>}
@@ -556,7 +577,13 @@ function SettingsPanel() {
         <div class="flex flex-col gap-2 mt-2">
           {/* Memory */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Memory</span>
+            <Tooltip
+              placement="top"
+              value="Enable/disable persistent memory system for storing session context and findings."
+            >
+              <span class="text-12-regular text-text-base">Memory</span>
+            </Tooltip>
+            <div class="flex-1" />
             <ToggleSwitch
               checked={state.features?.memory?.enabled ?? false}
               disabled={state.pending["memory.enabled"]}
@@ -568,7 +595,10 @@ function SettingsPanel() {
 
           {/* Indexing */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Indexing</span>
+            <Tooltip placement="top" value="Enable/disable codebase indexing for fast search and discovery.">
+              <span class="text-12-regular text-text-base">Indexing</span>
+            </Tooltip>
+            <div class="flex-1" />
             <ToggleSwitch
               checked={state.features?.indexing?.enabled ?? false}
               disabled={state.pending["indexing.enabled"]}
@@ -580,7 +610,13 @@ function SettingsPanel() {
 
           {/* Biblion */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Biblion</span>
+            <Tooltip
+              placement="top"
+              value="Enable/disable knowledge base for storing codebase patterns and architecture."
+            >
+              <span class="text-12-regular text-text-base">Biblion</span>
+            </Tooltip>
+            <div class="flex-1" />
             <ToggleSwitch
               checked={state.features?.biblion?.enabled ?? false}
               disabled={state.pending["biblion.enabled"]}
@@ -592,7 +628,13 @@ function SettingsPanel() {
 
           {/* Model Lock */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Model Lock</span>
+            <Tooltip
+              placement="top"
+              value="When enabled, lock the AI model to prevent automatic switching between models."
+            >
+              <span class="text-12-regular text-text-base">Model Lock</span>
+            </Tooltip>
+            <div class="flex-1" />
             <ToggleSwitch
               checked={state.features?.model_lock?.enabled ?? false}
               disabled={state.pending["model_lock.enabled"]}
@@ -604,7 +646,13 @@ function SettingsPanel() {
 
           {/* Review Max Rounds */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Review Max Rounds</span>
+            <Tooltip
+              placement="top"
+              value="Maximum number of code review and fix cycles. Each round re-reviews changes and applies fixes automatically."
+            >
+              <span class="text-12-regular text-text-base">Review Max Rounds</span>
+            </Tooltip>
+            <div class="flex-1" />
             <div class="flex items-center gap-1 shrink-0">
               <IconButton
                 icon="dash"
@@ -635,7 +683,13 @@ function SettingsPanel() {
 
           {/* Explore Max Instances */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Explore Max Instances</span>
+            <Tooltip
+              placement="top"
+              value="Maximum number of parallel explorer agents. Higher values explore faster but use more resources."
+            >
+              <span class="text-12-regular text-text-base">Explore Max Instances</span>
+            </Tooltip>
+            <div class="flex-1" />
             <div class="flex items-center gap-1 shrink-0">
               <IconButton
                 icon="dash"
@@ -666,7 +720,13 @@ function SettingsPanel() {
 
           {/* Compaction Threshold */}
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-12-regular text-text-base flex-1 min-w-0">Compaction Threshold</span>
+            <Tooltip
+              placement="top"
+              value="Memory compaction threshold (0-1). Controls when old entries are removed to keep memory efficient."
+            >
+              <span class="text-12-regular text-text-base">Compaction Threshold</span>
+            </Tooltip>
+            <div class="flex-1" />
             <div class="flex items-center gap-1 shrink-0">
               <InlineInput
                 type="number"
