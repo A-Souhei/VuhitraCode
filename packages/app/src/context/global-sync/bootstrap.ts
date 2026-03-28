@@ -161,6 +161,21 @@ export async function bootstrapDirectory(input: {
       .status()
       .then((x) => input.setStore("indexer_status", x.data))
       .catch(() => undefined),
+    fetch(`${input.url}/settings/features?directory=${encodeURIComponent(input.directory)}`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = await res.json()
+        input.setStore("settings", {
+          memory: { enabled: data.memory?.enabled ?? false },
+          indexing: { enabled: data.indexing?.enabled ?? false },
+          biblion: { enabled: data.biblion?.enabled ?? false },
+          model_lock: { enabled: data.model_lock?.enabled ?? false },
+          review_max_rounds: data.review_max_rounds,
+          explore_max_instances: data.explore_max_instances,
+          compaction_threshold: data.compaction_threshold,
+        })
+      })
+      .catch(() => undefined),
     fetch(`${input.url}/profile/list?directory=${encodeURIComponent(input.directory)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`profile/list ${r.status}`)

@@ -69,6 +69,15 @@ export type State = {
   memory_status?: MemoryStatus
   biblion_status?: BiblionStatus
   indexer_status?: IndexerStatus
+  settings?: {
+    memory?: { enabled: boolean }
+    indexing?: { enabled: boolean }
+    biblion?: { enabled: boolean }
+    model_lock?: { enabled: boolean }
+    review_max_rounds?: number
+    explore_max_instances?: number
+    compaction_threshold?: number
+  }
   profiles?: string[]
   active_profile?: string
   limit: number

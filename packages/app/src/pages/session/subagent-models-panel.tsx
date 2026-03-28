@@ -6,6 +6,7 @@ import { Button } from "@opencode-ai/ui/button"
 import { List } from "@opencode-ai/ui/list"
 import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@opencode-ai/ui/toast"
+import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useSubagentModels } from "@/hooks/use-subagent-models"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
@@ -217,10 +218,15 @@ export function SubagentModelsPanel() {
     <div class="px-4 py-3 border-b border-border-weak-base">
       <div class="flex items-center gap-2 min-w-0">
         <Icon name="sliders" size="small" class="text-icon-base shrink-0" />
-        <div class="flex flex-col flex-1 min-w-0">
-          <span class="text-12-medium text-text-strong">Subagent Models</span>
-          <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
-        </div>
+        <Tooltip
+          placement="top"
+          value="Configure AI models used by different agents. Each agent type (scout, sentinel, inspect, etc.) can use different models for specialized tasks."
+        >
+          <div class="flex flex-col flex-1 min-w-0">
+            <span class="text-12-medium text-text-strong">Subagent Models</span>
+            <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
+          </div>
+        </Tooltip>
         <Show when={subagentModels.loading()}>
           <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
         </Show>

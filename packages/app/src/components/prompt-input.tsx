@@ -1478,18 +1478,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     variant="ghost"
                   />
                 </TooltipKeybind>
-                <Select
-                  size="normal"
-                  options={profiles()}
-                  current={displayProfile()}
-                  class="capitalize max-w-[160px]"
-                  valueClass="truncate text-13-regular"
-                  triggerStyle={{ height: "28px" }}
-                  variant="ghost"
-                  onSelect={(name) => {
-                    if (name && name !== displayProfile()) switchProfile(name)
-                  }}
-                />
+                <Tooltip
+                  placement="top"
+                  value="Profile: Collection of AI agent model settings. Switch between profiles to use different model configurations for agents. Active profile is applied to new sessions."
+                >
+                  <Select
+                    size="normal"
+                    options={profiles()}
+                    current={displayProfile()}
+                    class="capitalize max-w-[160px]"
+                    valueClass="truncate text-13-regular"
+                    triggerStyle={{ height: "28px" }}
+                    variant="ghost"
+                    onSelect={(name) => {
+                      if (name && name !== displayProfile()) switchProfile(name)
+                    }}
+                  />
+                </Tooltip>
               </Show>
             </div>
             <div class="shrink-0">

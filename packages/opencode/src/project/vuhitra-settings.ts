@@ -304,4 +304,14 @@ export namespace VuHitraSettings {
     }
     await writeToDisk({ compaction_threshold: n }, dir)
   }
+
+  export async function writeSettings(update: Partial<Settings>, dir?: string) {
+    await writeToDisk(update, dir)
+  }
+
+  export function readSettings(dir?: string): { settings: Settings; fileNotFound: boolean } {
+    const filePath = path.join(dir ?? Instance.directory, ".vuhitra", "settings.json")
+    const fileNotFound = !fs.existsSync(filePath)
+    return { settings: readFromDisk(dir), fileNotFound }
+  }
 }
