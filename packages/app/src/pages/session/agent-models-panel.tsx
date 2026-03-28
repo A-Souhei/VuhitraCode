@@ -7,6 +7,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { Collapsible } from "@opencode-ai/ui/collapsible"
 import { useAgentModels } from "@/hooks/use-agent-models"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
@@ -188,48 +189,53 @@ export function AgentModelsPanel() {
   })
 
   return (
-    <div class="px-4 py-3 border-b border-border-weak-base">
-      <div class="flex items-center gap-2 min-w-0">
-        <Icon name="models" size="small" class="text-icon-base shrink-0" />
-        <Tooltip
-          placement="top"
-          value="Configure AI models used by different agents. Each agent type (alice, sentinel, scout, etc.) can use different models for specialized tasks."
-        >
-          <div class="flex flex-col flex-1 min-w-0">
-            <span class="text-12-medium text-text-strong">Agent Models</span>
-            <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
-          </div>
-        </Tooltip>
-        <Show when={agentModels.loading()}>
-          <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
-        </Show>
-      </div>
-      <div class="flex flex-col gap-2 mt-2">
-        <Switch>
-          <Match when={agentModels.error()}>
-            <span class="text-12-regular text-error">{agentModels.error()}</span>
-          </Match>
-          <Match when={agentModels.agents().length === 0}>
-            <span class="text-12-regular text-text-weaker">—</span>
-          </Match>
-          <Match when={true}>
-            <For each={agentModels.agents()}>
-              {(agent) => {
-                const modelOverride = createMemo(() => agentModels.agentModels()[agent.name])
+    <div class="px-4 border-b border-border-weak-base">
+      <Collapsible variant="ghost">
+        <Collapsible.Trigger class="py-3 gap-2 cursor-pointer" style={{ height: "auto" }}>
+          <Icon name="models" size="small" class="text-icon-base shrink-0" />
+          <Tooltip
+            placement="top"
+            value="Configure AI models used by different agents. Each agent type (alice, sentinel, scout, etc.) can use different models for specialized tasks."
+          >
+            <div class="flex flex-col flex-1 min-w-0 text-left">
+              <span class="text-12-medium text-text-strong">Agent Models</span>
+              <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
+            </div>
+          </Tooltip>
+          <Show when={agentModels.loading()}>
+            <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
+          </Show>
+          <Collapsible.Arrow />
+        </Collapsible.Trigger>
+        <Collapsible.Content>
+          <div class="flex flex-col gap-2 pb-3">
+            <Switch>
+              <Match when={agentModels.error()}>
+                <span class="text-12-regular text-error">{agentModels.error()}</span>
+              </Match>
+              <Match when={agentModels.agents().length === 0}>
+                <span class="text-12-regular text-text-weaker">—</span>
+              </Match>
+              <Match when={true}>
+                <For each={agentModels.agents()}>
+                  {(agent) => {
+                    const modelOverride = createMemo(() => agentModels.agentModels()[agent.name])
 
-                return (
-                  <AgentRow
-                    name={agent.name}
-                    modelOverride={modelOverride()}
-                    loading={agentModels.loading()}
-                    onUpdate={(model) => agentModels.updateAgentModel(agent.name, model)}
-                  />
-                )
-              }}
-            </For>
-          </Match>
-        </Switch>
-      </div>
+                    return (
+                      <AgentRow
+                        name={agent.name}
+                        modelOverride={modelOverride()}
+                        loading={agentModels.loading()}
+                        onUpdate={(model) => agentModels.updateAgentModel(agent.name, model)}
+                      />
+                    )
+                  }}
+                </For>
+              </Match>
+            </Switch>
+          </div>
+        </Collapsible.Content>
+      </Collapsible>
     </div>
   )
 }

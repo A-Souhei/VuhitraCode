@@ -7,6 +7,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { Collapsible } from "@opencode-ai/ui/collapsible"
 import { useSubagentModels } from "@/hooks/use-subagent-models"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
@@ -215,54 +216,59 @@ export function SubagentModelsPanel() {
   }
 
   return (
-    <div class="px-4 py-3 border-b border-border-weak-base">
-      <div class="flex items-center gap-2 min-w-0">
-        <Icon name="sliders" size="small" class="text-icon-base shrink-0" />
-        <Tooltip
-          placement="top"
-          value="Configure AI models used by different agents. Each agent type (scout, sentinel, inspect, etc.) can use different models for specialized tasks."
-        >
-          <div class="flex flex-col flex-1 min-w-0">
-            <span class="text-12-medium text-text-strong">Subagent Models</span>
-            <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
-          </div>
-        </Tooltip>
-        <Show when={subagentModels.loading()}>
-          <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
-        </Show>
-      </div>
-      <div class="flex flex-col gap-2 mt-2">
-        <Switch>
-          <Match when={subagentModels.error()}>
-            <span class="text-12-regular text-error">{subagentModels.error()}</span>
-          </Match>
-          <Match when={subagentModels.subagents().length === 0}>
-            <span class="text-12-regular text-text-weaker">—</span>
-          </Match>
-          <Match when={true}>
-            <For each={subagentModels.subagents()}>
-              {(agent) => {
-                const modelOverride = createMemo(() => subagentModels.subagentModels()[agent.name])
-                const isLocked = createMemo(() => {
-                  const locks = subagentModels.modelLocks()
-                  return locks[agent.name] ?? false
-                })
+    <div class="px-4 border-b border-border-weak-base">
+      <Collapsible variant="ghost">
+        <Collapsible.Trigger class="py-3 gap-2 cursor-pointer" style={{ height: "auto" }}>
+          <Icon name="sliders" size="small" class="text-icon-base shrink-0" />
+          <Tooltip
+            placement="top"
+            value="Configure AI models used by different agents. Each agent type (scout, sentinel, inspect, etc.) can use different models for specialized tasks."
+          >
+            <div class="flex flex-col flex-1 min-w-0 text-left">
+              <span class="text-12-medium text-text-strong">Subagent Models</span>
+              <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
+            </div>
+          </Tooltip>
+          <Show when={subagentModels.loading()}>
+            <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
+          </Show>
+          <Collapsible.Arrow />
+        </Collapsible.Trigger>
+        <Collapsible.Content>
+          <div class="flex flex-col gap-2 pb-3">
+            <Switch>
+              <Match when={subagentModels.error()}>
+                <span class="text-12-regular text-error">{subagentModels.error()}</span>
+              </Match>
+              <Match when={subagentModels.subagents().length === 0}>
+                <span class="text-12-regular text-text-weaker">—</span>
+              </Match>
+              <Match when={true}>
+                <For each={subagentModels.subagents()}>
+                  {(agent) => {
+                    const modelOverride = createMemo(() => subagentModels.subagentModels()[agent.name])
+                    const isLocked = createMemo(() => {
+                      const locks = subagentModels.modelLocks()
+                      return locks[agent.name] ?? false
+                    })
 
-                return (
-                  <SubagentRow
-                    name={agent.name}
-                    modelLock={isLocked()}
-                    modelOverride={modelOverride()}
-                    configuredModel={agent.model}
-                    loading={subagentModels.loading()}
-                    onUpdate={(model) => handleModelSelect(agent.name, model)}
-                  />
-                )
-              }}
-            </For>
-          </Match>
-        </Switch>
-      </div>
+                    return (
+                      <SubagentRow
+                        name={agent.name}
+                        modelLock={isLocked()}
+                        modelOverride={modelOverride()}
+                        configuredModel={agent.model}
+                        loading={subagentModels.loading()}
+                        onUpdate={(model) => handleModelSelect(agent.name, model)}
+                      />
+                    )
+                  }}
+                </For>
+              </Match>
+            </Switch>
+          </div>
+        </Collapsible.Content>
+      </Collapsible>
     </div>
   )
 }
