@@ -237,6 +237,7 @@ export const ProfileRoutes = lazy(() =>
         let dir: string | undefined
         if (body.sessionID) {
           const session = await Session.get(body.sessionID)
+          if (!session) return c.json({ error: "Session not found" }, 404)
           profileName = session.profile ?? (await VuHitraSettings.activeProfile(session.directory))
           dir = session.directory
         } else {
