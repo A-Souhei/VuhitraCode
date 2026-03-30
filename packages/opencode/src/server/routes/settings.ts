@@ -89,8 +89,12 @@ async function setFeature(key: FeatureKey, value: unknown, dir?: string) {
       break
     }
     case "model_lock.model": {
-      if (typeof value !== "string" || value.trim() === "") {
-        throw new Error(`model_lock.model must be a non-empty string, got ${typeof value === "string" ? `"${value}"` : typeof value}`)
+      if (typeof value !== "string") {
+        throw new Error(`model_lock.model must be a string, got ${typeof value}`)
+      }
+      const idx = value.indexOf(":")
+      if (idx <= 0 || idx === value.length - 1) {
+        throw new Error(`model_lock.model must be in providerID:modelID format, got "${value}"`)
       }
       const { settings: cur } = VuHitraSettings.readSettings(dir)
       await VuHitraSettings.writeSettings({ model_lock: { ...cur.model_lock, model: value } }, dir)
