@@ -10,7 +10,7 @@ const FeaturesSchema = z.object({
   indexing: z.object({ enabled: z.boolean() }),
   memory: z.object({ enabled: z.boolean(), ttl: z.number().optional() }),
   biblion: z.object({ enabled: z.boolean() }),
-  model_lock: z.object({ enabled: z.boolean() }),
+  model_lock: z.object({ enabled: z.boolean(), model: z.string().optional() }),
   review_max_rounds: z.number(),
   explore_max_instances: z.number(),
   compaction_threshold: z.number(),
@@ -28,6 +28,7 @@ const FeatureKeys = [
   "memory.ttl",
   "biblion.enabled",
   "model_lock.enabled",
+  "model_lock.model",
   "review_max_rounds",
   "explore_max_instances",
   "compaction_threshold",
@@ -45,7 +46,7 @@ function getFeatures(dir?: string) {
     indexing: { enabled: settings.indexing?.enabled ?? false },
     memory: { enabled: settings.memory?.enabled ?? false, ttl: settings.memory?.ttl ?? 86400 },
     biblion: { enabled: settings.biblion?.enabled ?? false },
-    model_lock: { enabled: settings.model_lock?.enabled ?? false },
+    model_lock: { enabled: settings.model_lock?.enabled ?? false, model: settings.model_lock?.model },
     review_max_rounds: settings.review_max_rounds ?? 7,
     explore_max_instances: settings.explore_max_instances ?? 3,
     compaction_threshold: settings.compaction_threshold ?? 0.7,
@@ -79,12 +80,22 @@ async function setFeature(key: FeatureKey, value: unknown, dir?: string) {
       }
       await VuHitraSettings.writeSettings({ biblion: { enabled: value } }, dir)
       break
-    case "model_lock.enabled":
+    case "model_lock.enabled": {
       if (typeof value !== "boolean") {
         throw new Error(`model_lock.enabled must be a boolean, got ${typeof value}`)
       }
-      await VuHitraSettings.writeSettings({ model_lock: { enabled: value } }, dir)
+      const { settings: cur } = VuHitraSettings.readSettings(dir)
+      await VuHitraSettings.writeSettings({ model_lock: { ...cur.model_lock, enabled: value } }, dir)
       break
+    }
+    case "model_lock.model": {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error(`model_lock.model must be a non-empty string, got ${typeof value === "string" ? `"${value}"` : typeof value}`)
+      }
+      const { settings: cur } = VuHitraSettings.readSettings(dir)
+      await VuHitraSettings.writeSettings({ model_lock: { ...cur.model_lock, model: value } }, dir)
+      break
+    }
     case "review_max_rounds":
       if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
         throw new Error(`review_max_rounds must be a positive integer, got ${value}`)
