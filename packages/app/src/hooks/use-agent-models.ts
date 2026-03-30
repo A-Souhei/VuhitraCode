@@ -54,7 +54,7 @@ export function useAgentModels() {
       }))
   })
 
-  // Fetch agent models
+  // Fetch agent models — mirrors use-subagent-models: uses /profile/get
   async function fetchAgentModels() {
     const directory = sdk.directory
     if (!directory) return
@@ -63,12 +63,13 @@ export function useAgentModels() {
     setError(undefined)
 
     try {
-      const url = `${sdk.url}/agent-model?directory=${encodeURIComponent(directory)}`
+      const name = sessionProfile()
+      const url = name
+        ? `${sdk.url}/profile/get?name=${encodeURIComponent(name)}&directory=${encodeURIComponent(directory)}`
+        : `${sdk.url}/profile/get?directory=${encodeURIComponent(directory)}`
 
       const res = await fetch(url, {
-        headers: {
-          ...authHeaders(server.current?.http),
-        },
+        headers: authHeaders(server.current?.http),
       })
 
       if (!res.ok) {
@@ -86,7 +87,7 @@ export function useAgentModels() {
     }
   }
 
-  // Update an agent model
+  // Update an agent model — mirrors use-subagent-models: uses /profile/set-agent-model
   async function updateAgentModel(name: string, model: AgentModel) {
     const directory = sdk.directory
     if (!directory) {
@@ -99,18 +100,20 @@ export function useAgentModels() {
 
     try {
       const body: {
-        agent: string
-        modelID: string
-        providerID: string
-        directory: string
+        name: string
+        model: AgentModel
+        sessionID?: string
+        directory?: string
       } = {
-        agent: name,
-        modelID: model.modelID,
-        providerID: model.providerID,
-        directory,
+        name,
+        model,
       }
 
-      const res = await fetch(`${sdk.url}/agent-model`, {
+      if (params.id) {
+        body.sessionID = params.id
+      }
+
+      const res = await fetch(`${sdk.url}/profile/set-agent-model`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,8 +128,8 @@ export function useAgentModels() {
         throw new Error((errorBody as { error?: string }).error ?? `HTTP ${res.status}`)
       }
 
-      const data = await res.json().catch(() => ({}))
-      setAgentModels((data as { agent_models?: AgentModels }).agent_models ?? {})
+      // Update local state to reflect the change
+      setAgentModels((prev) => ({ ...prev, [name]: model }))
 
       showToast({ variant: "success", title: `Updated ${name} model` })
       return true

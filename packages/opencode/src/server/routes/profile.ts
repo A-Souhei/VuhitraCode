@@ -198,5 +198,53 @@ export const ProfileRoutes = lazy(() =>
         await Profiles.setSubagentModel(profileName, body.name, body.model, dir)
         return c.json({ success: true })
       },
+    )
+    .post(
+      "/set-agent-model",
+      describeRoute({
+        summary: "Set agent model",
+        operationId: "profile.set_agent_model",
+        responses: {
+          200: {
+            description: "Agent model updated",
+            content: { "application/json": { schema: resolver(z.object({ success: z.boolean() })) } },
+          },
+          400: {
+            description: "Invalid agent name or model",
+            content: { "application/json": { schema: resolver(z.object({ error: z.string() })) } },
+          },
+          ...errors(404),
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          sessionID: Identifier.schema("session").optional(),
+          directory: z.string().optional(),
+          name: z.string(),
+          model: z.object({
+            providerID: z.string(),
+            modelID: z.string(),
+          }),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        if (!/^[A-Za-z0-9_\-.]+$/.test(body.name)) {
+          return c.json({ error: `Invalid agent name: ${body.name}` }, 400)
+        }
+        let profileName: string
+        let dir: string | undefined
+        if (body.sessionID) {
+          const session = await Session.get(body.sessionID)
+          profileName = session.profile ?? (await VuHitraSettings.activeProfile(session.directory))
+          dir = session.directory
+        } else {
+          profileName = await VuHitraSettings.activeProfile(body.directory)
+          dir = body.directory
+        }
+        await Profiles.setAgentModel(profileName, body.name, body.model, dir)
+        return c.json({ success: true })
+      },
     ),
 )
