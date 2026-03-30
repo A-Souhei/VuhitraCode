@@ -1,4 +1,4 @@
-import { createSignal, Match, Show, Switch, onMount } from "solid-js"
+import { createMemo, createSignal, Match, Show, Switch, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -8,6 +8,7 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { Switch as ToggleSwitch } from "@opencode-ai/ui/switch"
 import { InlineInput } from "@opencode-ai/ui/inline-input"
 import { useSDK } from "@/context/sdk"
+import { useLocal } from "@/context/local"
 import { useServer } from "@/context/server"
 import { authHeaders } from "@/utils/auth"
 import { useSync } from "@/context/sync"
@@ -17,14 +18,14 @@ import { useParams } from "@solidjs/router"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { DialogBecomeFriend } from "./dialog-become-friend"
 import { SubagentModelsPanel } from "./subagent-models-panel"
-import { AgentModelsPanel } from "./agent-models-panel"
+import { AgentModelsPanel, AgentModelPopover } from "./agent-models-panel"
 import { EnvInfoPanel } from "./env-info-panel"
 
 type FeaturesResponse = {
   indexing: { enabled: boolean }
   memory: { enabled: boolean; ttl?: number }
   biblion: { enabled: boolean }
-  model_lock: { enabled: boolean }
+  model_lock: { enabled: boolean; model?: string }
   review_max_rounds: number
   explore_max_instances: number
   compaction_threshold: number
@@ -523,6 +524,7 @@ function SettingsPanel() {
   const sdk = useSDK()
   const server = useServer()
   const sync = useSync()
+  const local = useLocal()
 
   const [state, setState] = createStore<{
     loading: boolean
@@ -564,7 +566,7 @@ function SettingsPanel() {
     }
   }
 
-  const updateFeature = async (key: string, value: boolean | number) => {
+  const updateFeature = async (key: string, value: boolean | number | string) => {
     const dir = sdk.directory
     if (!dir || !state.features) return
 
@@ -593,9 +595,10 @@ function SettingsPanel() {
       if (typeof value === "boolean") {
         const category = key.replace(".enabled", "") as "memory" | "indexing" | "biblion" | "model_lock"
         const currentSettings = sync.data.settings ?? {}
+        const currentCategory = (currentSettings as Record<string, unknown>)[category] ?? {}
         sync.set("settings", {
           ...currentSettings,
-          [category]: { enabled: value },
+          [category]: { ...(currentCategory as object), enabled: value },
         })
       }
 
@@ -612,6 +615,18 @@ function SettingsPanel() {
   }
 
   onMount(fetchFeatures)
+
+  const lockedModelName = createMemo(() => {
+    const modelStr = state.features?.model_lock?.model
+    if (!modelStr) return "—"
+    const idx = modelStr.indexOf(":")
+    if (idx === -1) return modelStr
+    const providerID = modelStr.slice(0, idx)
+    const modelID = modelStr.slice(idx + 1)
+    if (!providerID || !modelID) return modelStr
+    const found = local.model.list().find((m) => m.provider.id === providerID && m.id === modelID)
+    return found?.name ?? modelStr
+  })
 
   const onToggleChange = (key: string, checked: boolean) => {
     updateFeature(key, checked)
@@ -777,6 +792,25 @@ function SettingsPanel() {
             >
               <span class="sr-only">Model Lock</span>
             </ToggleSwitch>
+          </div>
+
+          {/* Locked Model */}
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-12-regular text-text-base">Locked Model</span>
+            <div class="flex-1" />
+            <AgentModelPopover
+              onSelect={(model) => updateFeature("model_lock.model", `${model.providerID}:${model.modelID}`)}
+              disabled={state.pending["model_lock.model"]}
+            >
+              <Button
+                variant="ghost"
+                size="small"
+                class="h-6 px-2 text-11-regular shrink-0"
+                disabled={state.pending["model_lock.model"]}
+              >
+                {lockedModelName()}
+              </Button>
+            </AgentModelPopover>
           </div>
 
           {/* Review Max Rounds */}

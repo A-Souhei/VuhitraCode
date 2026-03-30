@@ -64,7 +64,7 @@ function AgentModelList(props: { onSelect: (model: { providerID: string; modelID
   )
 }
 
-function AgentModelPopover(props: {
+export function AgentModelPopover(props: {
   children: JSX.Element
   onSelect: (model: { providerID: string; modelID: string }) => void
   disabled?: boolean
