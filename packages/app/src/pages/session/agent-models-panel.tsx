@@ -1,4 +1,4 @@
-import { For, createMemo, Show, Switch, Match, onMount, createSignal, type JSX } from "solid-js"
+import { For, createMemo, Show, Switch, Match, createSignal, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Popover as Kobalte } from "@kobalte/core/popover"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -8,7 +8,7 @@ import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Collapsible } from "@opencode-ai/ui/collapsible"
-import { useSubagentModels } from "@/hooks/use-subagent-models"
+import { useAgentModels } from "@/hooks/use-agent-models"
 import { useLocal } from "@/context/local"
 import { useLanguage } from "@/context/language"
 import { popularProviders } from "@/hooks/use-providers"
@@ -18,10 +18,7 @@ import { useParams } from "@solidjs/router"
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
 
-function SubagentModelList(props: {
-  onSelect: (model: { providerID: string; modelID: string }) => void
-  class?: string
-}) {
+function AgentModelList(props: { onSelect: (model: { providerID: string; modelID: string }) => void; class?: string }) {
   const local = useLocal()
   const language = useLanguage()
 
@@ -67,7 +64,7 @@ function SubagentModelList(props: {
   )
 }
 
-function SubagentModelPopover(props: {
+function AgentModelPopover(props: {
   children: JSX.Element
   onSelect: (model: { providerID: string; modelID: string }) => void
   disabled?: boolean
@@ -116,7 +113,7 @@ function SubagentModelPopover(props: {
           }}
         >
           <Kobalte.Title class="sr-only">{language.t("dialog.model.select.title")}</Kobalte.Title>
-          <SubagentModelList
+          <AgentModelList
             class="p-1"
             onSelect={(model) => {
               props.onSelect(model)
@@ -129,11 +126,9 @@ function SubagentModelPopover(props: {
   )
 }
 
-function SubagentRow(props: {
+function AgentRow(props: {
   name: string
-  modelLock: boolean
   modelOverride: { providerID: string; modelID: string } | undefined
-  configuredModel: { providerID: string; modelID: string } | undefined
   loading: boolean
   onUpdate: (model: { providerID: string; modelID: string }) => Promise<boolean>
 }) {
@@ -141,9 +136,10 @@ function SubagentRow(props: {
   const [pending, setPending] = createSignal(false)
 
   const currentModel = createMemo(() => {
-    const modelKey = props.modelOverride ?? props.configuredModel
-    if (!modelKey) return undefined
-    return local.model.list().find((m) => m.provider.id === modelKey.providerID && m.id === modelKey.modelID)
+    if (!props.modelOverride) return undefined
+    return local.model
+      .list()
+      .find((m) => m.provider.id === props.modelOverride!.providerID && m.id === props.modelOverride!.modelID)
   })
 
   const formatModelName = () => {
@@ -153,14 +149,6 @@ function SubagentRow(props: {
   }
 
   const handleModelSelect = async (model: { providerID: string; modelID: string }) => {
-    if (props.modelLock) {
-      showToast({
-        variant: "error",
-        title: "Model locked",
-        description: `${props.name} has a locked model configuration`,
-      })
-      return
-    }
     setPending(true)
     try {
       await props.onUpdate(model)
@@ -172,29 +160,24 @@ function SubagentRow(props: {
   return (
     <div class="flex items-center gap-2 min-w-0">
       <span class="text-12-regular text-text-base flex-1 min-w-0 truncate">{props.name}</span>
-      <Show when={props.modelLock}>
-        <span class="text-11-regular text-text-weaker shrink-0">{formatModelName()} (locked)</span>
-      </Show>
-      <Show when={!props.modelLock}>
-        <SubagentModelPopover onSelect={handleModelSelect} disabled={props.loading || pending()}>
-          <Button
-            variant="ghost"
-            size="small"
-            class="h-6 px-2 text-11-regular shrink-0"
-            disabled={props.loading || pending()}
-          >
-            {formatModelName()}
-          </Button>
-        </SubagentModelPopover>
-      </Show>
+      <AgentModelPopover onSelect={handleModelSelect} disabled={props.loading || pending()}>
+        <Button
+          variant="ghost"
+          size="small"
+          class="h-6 px-2 text-11-regular shrink-0"
+          disabled={props.loading || pending()}
+        >
+          {formatModelName()}
+        </Button>
+      </AgentModelPopover>
     </div>
   )
 }
 
-export function SubagentModelsPanel() {
+export function AgentModelsPanel() {
   const sync = useSync()
   const params = useParams()
-  const subagentModels = useSubagentModels()
+  const agentModels = useAgentModels()
 
   // Get display profile name
   const displayProfile = createMemo(() => {
@@ -205,31 +188,21 @@ export function SubagentModelsPanel() {
     return sync.data.active_profile ?? "default"
   })
 
-  // Fetch subagent models on mount
-  onMount(() => {
-    subagentModels.fetchSubagentModels()
-  })
-
-  // Handle model selection
-  const handleModelSelect = async (name: string, model: { providerID: string; modelID: string }) => {
-    return subagentModels.updateSubagentModel(name, model)
-  }
-
   return (
     <div class="px-4 border-b border-border-weak-base">
       <Collapsible variant="ghost">
         <Collapsible.Trigger class="py-3 gap-2 cursor-pointer" style={{ height: "auto" }}>
-          <Icon name="sliders" size="small" class="text-icon-base shrink-0" />
+          <Icon name="models" size="small" class="text-icon-base shrink-0" />
           <Tooltip
             placement="top"
-            value="Configure AI models used by different agents. Each agent type (scout, sentinel, inspect, etc.) can use different models for specialized tasks."
+            value="Configure AI models used by different agents. Each agent type (alice, sentinel, scout, etc.) can use different models for specialized tasks."
           >
             <div class="flex flex-col flex-1 min-w-0 text-left">
-              <span class="text-12-medium text-text-strong">Subagent Models</span>
+              <span class="text-12-medium text-text-strong">Agent Models</span>
               <span class="text-11-regular text-text-weaker truncate">{displayProfile()}</span>
             </div>
           </Tooltip>
-          <Show when={subagentModels.loading()}>
+          <Show when={agentModels.loading()}>
             <span class="text-11-regular text-text-weaker shrink-0">Loading...</span>
           </Show>
           <Collapsible.Arrow />
@@ -237,29 +210,23 @@ export function SubagentModelsPanel() {
         <Collapsible.Content>
           <div class="flex flex-col gap-2 pb-3">
             <Switch>
-              <Match when={subagentModels.error()}>
-                <span class="text-12-regular text-error">{subagentModels.error()}</span>
+              <Match when={agentModels.error()}>
+                <span class="text-12-regular text-error">{agentModels.error()}</span>
               </Match>
-              <Match when={subagentModels.subagents().length === 0}>
+              <Match when={agentModels.agents().length === 0}>
                 <span class="text-12-regular text-text-weaker">—</span>
               </Match>
               <Match when={true}>
-                <For each={subagentModels.subagents()}>
+                <For each={agentModels.agents()}>
                   {(agent) => {
-                    const modelOverride = createMemo(() => subagentModels.subagentModels()[agent.name])
-                    const isLocked = createMemo(() => {
-                      const locks = subagentModels.modelLocks()
-                      return locks[agent.name] ?? false
-                    })
+                    const modelOverride = createMemo(() => agentModels.agentModels()[agent.name])
 
                     return (
-                      <SubagentRow
+                      <AgentRow
                         name={agent.name}
-                        modelLock={isLocked()}
                         modelOverride={modelOverride()}
-                        configuredModel={agent.model}
-                        loading={subagentModels.loading()}
-                        onUpdate={(model) => handleModelSelect(agent.name, model)}
+                        loading={agentModels.loading()}
+                        onUpdate={(model) => agentModels.updateAgentModel(agent.name, model)}
                       />
                     )
                   }}

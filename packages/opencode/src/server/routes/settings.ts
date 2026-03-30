@@ -8,7 +8,7 @@ import { lazy } from "../../util/lazy"
 
 const FeaturesSchema = z.object({
   indexing: z.object({ enabled: z.boolean() }),
-  memory: z.object({ enabled: z.boolean() }),
+  memory: z.object({ enabled: z.boolean(), ttl: z.number().optional() }),
   biblion: z.object({ enabled: z.boolean() }),
   model_lock: z.object({ enabled: z.boolean() }),
   review_max_rounds: z.number(),
@@ -25,6 +25,7 @@ const SettingsUpdated = BusEvent.define("settings.updated", FeaturesResponseSche
 const FeatureKeys = [
   "indexing.enabled",
   "memory.enabled",
+  "memory.ttl",
   "biblion.enabled",
   "model_lock.enabled",
   "review_max_rounds",
@@ -42,7 +43,7 @@ function getFeatures(dir?: string) {
   const { settings, fileNotFound } = VuHitraSettings.readSettings(dir)
   return {
     indexing: { enabled: settings.indexing?.enabled ?? false },
-    memory: { enabled: settings.memory?.enabled ?? false },
+    memory: { enabled: settings.memory?.enabled ?? false, ttl: settings.memory?.ttl ?? 86400 },
     biblion: { enabled: settings.biblion?.enabled ?? false },
     model_lock: { enabled: settings.model_lock?.enabled ?? false },
     review_max_rounds: settings.review_max_rounds ?? 7,
@@ -65,6 +66,12 @@ async function setFeature(key: FeatureKey, value: unknown, dir?: string) {
         throw new Error(`memory.enabled must be a boolean, got ${typeof value}`)
       }
       await VuHitraSettings.writeSettings({ memory: { enabled: value } }, dir)
+      break
+    case "memory.ttl":
+      if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+        throw new Error(`memory.ttl must be a positive integer, got ${value}`)
+      }
+      await VuHitraSettings.setMemoryTtl(value, dir)
       break
     case "biblion.enabled":
       if (typeof value !== "boolean") {
@@ -162,7 +169,7 @@ export const SettingsRoutes = lazy(() =>
         const { key, value, directory } = body
 
         if (!isValidFeatureKey(key)) {
-          return c.json({ error: `Invalid feature key: ${key}. Valid keys: ${FeatureKeys.join(", ")}` }, 400)
+          return c.json({ error: "Invalid feature key" }, 400)
         }
 
         try {
