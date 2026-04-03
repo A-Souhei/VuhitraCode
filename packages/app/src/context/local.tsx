@@ -125,9 +125,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const current = createMemo(() => {
         const settingsLock = sync.data.settings?.model_lock
         if (settingsLock?.enabled && settingsLock.model) {
-          const idx = settingsLock.model.indexOf(":")
-          if (idx !== -1) {
-            const key = { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
+          const parseKey = (value: string) => {
+            for (const sep of [":", "/"]) {
+              const idx = value.indexOf(sep)
+              if (idx <= 0 || idx >= value.length - 1) continue
+              return { providerID: value.slice(0, idx), modelID: value.slice(idx + 1) }
+            }
+            return undefined
+          }
+          const key = parseKey(settingsLock.model)
+          if (key) {
             const found = models.find(key)
             if (found) return found
           }

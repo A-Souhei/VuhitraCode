@@ -209,3 +209,137 @@ describe("session.prompt agent variant", () => {
     }
   })
 })
+
+describe("session.prompt model_lock settings", () => {
+  test("uses locked model from settings even when a different model is passed as input", async () => {
+    const prev = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-openai-key"
+
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const fs = await import("fs/promises")
+          await fs.mkdir(path.join(dir, ".vuhitra"), { recursive: true })
+          await Bun.write(
+            path.join(dir, ".vuhitra", "settings.json"),
+            JSON.stringify({ model_lock: { enabled: true, model: "openai:gpt-5.2" } }),
+          )
+        },
+      })
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const msg = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            model: { providerID: "opencode", modelID: "kimi-k2.5-free" },
+            parts: [{ type: "text", text: "hello" }],
+          })
+
+          if (msg.info.role !== "user") throw new Error("expected user message")
+          expect(msg.info.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prev
+    }
+  })
+
+  test("uses locked model even when agent has its own model_lock", async () => {
+    const prev = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-openai-key"
+
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          agent: {
+            build: {
+              model: "openai/gpt-5.2",
+              model_lock: true,
+            },
+          },
+        },
+        init: async (dir) => {
+          const fs = await import("fs/promises")
+          await fs.mkdir(path.join(dir, ".vuhitra"), { recursive: true })
+          await Bun.write(
+            path.join(dir, ".vuhitra", "settings.json"),
+            JSON.stringify({ model_lock: { enabled: true, model: "openai:gpt-5.2" } }),
+          )
+        },
+      })
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const msg = await SessionPrompt.prompt({
+            sessionID: session.id,
+            agent: "build",
+            noReply: true,
+            parts: [{ type: "text", text: "hello" }],
+          })
+
+          if (msg.info.role !== "user") throw new Error("expected user message")
+          expect(msg.info.model).toEqual({ providerID: "openai", modelID: "gpt-5.2" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prev
+    }
+  })
+
+  test("does not override model when model_lock is disabled", async () => {
+    const prev = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-openai-key"
+
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const fs = await import("fs/promises")
+          await fs.mkdir(path.join(dir, ".vuhitra"), { recursive: true })
+          await Bun.write(
+            path.join(dir, ".vuhitra", "settings.json"),
+            JSON.stringify({ model_lock: { enabled: false, model: "openai:gpt-5.2" } }),
+          )
+        },
+      })
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const msg = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            model: { providerID: "opencode", modelID: "kimi-k2.5-free" },
+            parts: [{ type: "text", text: "hello" }],
+          })
+
+          if (msg.info.role !== "user") throw new Error("expected user message")
+          // lock is disabled, so the input model should be used
+          expect(msg.info.model).toEqual({ providerID: "opencode", modelID: "kimi-k2.5-free" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prev
+    }
+  })
+})

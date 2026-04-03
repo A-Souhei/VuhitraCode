@@ -976,15 +976,15 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
+    const parseSettingsLockModel = (value: string) => {
+      let idx = value.indexOf(":")
+      if (idx === -1) idx = value.indexOf("/")
+      if (idx <= 0 || idx >= value.length - 1) return undefined
+      return { providerID: value.slice(0, idx), modelID: value.slice(idx + 1) }
+    }
     const settingsLock = VuHitraSettings.modelLock()
     const settingsLockModel =
-      settingsLock.enabled && settingsLock.model
-        ? (() => {
-            const idx = settingsLock.model.indexOf(":")
-            if (idx === -1) return undefined
-            return { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
-          })()
-        : undefined
+      settingsLock.enabled && settingsLock.model ? parseSettingsLockModel(settingsLock.model) : undefined
     const model = settingsLockModel
       ? settingsLockModel
       : agent.model_lock && agent.model
@@ -1599,15 +1599,20 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
+    const parseLockedModel = (value: string) => {
+      for (const sep of [":", "/"] as const) {
+        const idx = value.indexOf(sep)
+        if (idx === -1) continue
+        const providerID = value.slice(0, idx)
+        const modelID = value.slice(idx + 1)
+        if (!providerID || !modelID) return undefined
+        return { providerID, modelID }
+      }
+      return undefined
+    }
     const settingsLock = VuHitraSettings.modelLock()
     const settingsLockModel =
-      settingsLock.enabled && settingsLock.model
-        ? (() => {
-            const idx = settingsLock.model.indexOf(":")
-            if (idx === -1) return undefined
-            return { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
-          })()
-        : undefined
+      settingsLock.enabled && settingsLock.model ? parseLockedModel(settingsLock.model) : undefined
     const model = settingsLockModel
       ? settingsLockModel
       : agent.model_lock && agent.model
