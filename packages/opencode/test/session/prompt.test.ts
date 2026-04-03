@@ -342,4 +342,88 @@ describe("session.prompt model_lock settings", () => {
       else process.env.OPENAI_API_KEY = prev
     }
   })
+
+  test("falls through to input model when settings lock has malformed model string", async () => {
+    const prev = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-openai-key"
+
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const fs = await import("fs/promises")
+          await fs.mkdir(path.join(dir, ".vuhitra"), { recursive: true })
+          await Bun.write(
+            path.join(dir, ".vuhitra", "settings.json"),
+            JSON.stringify({ model_lock: { enabled: true, model: "invalid-no-separator" } }),
+          )
+        },
+      })
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const msg = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            model: { providerID: "opencode", modelID: "kimi-k2.5-free" },
+            parts: [{ type: "text", text: "hello" }],
+          })
+
+          if (msg.info.role !== "user") throw new Error("expected user message")
+          // malformed model string cannot be parsed, so the input model should be used
+          expect(msg.info.model).toEqual({ providerID: "opencode", modelID: "kimi-k2.5-free" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prev
+    }
+  })
+
+  test("falls through to input model when lock is enabled but model field is missing", async () => {
+    const prev = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-openai-key"
+
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          const fs = await import("fs/promises")
+          await fs.mkdir(path.join(dir, ".vuhitra"), { recursive: true })
+          await Bun.write(
+            path.join(dir, ".vuhitra", "settings.json"),
+            JSON.stringify({ model_lock: { enabled: true } }),
+          )
+        },
+      })
+
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+
+          const msg = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            model: { providerID: "opencode", modelID: "kimi-k2.5-free" },
+            parts: [{ type: "text", text: "hello" }],
+          })
+
+          if (msg.info.role !== "user") throw new Error("expected user message")
+          // no model field in lock, so the input model should be used
+          expect(msg.info.model).toEqual({ providerID: "opencode", modelID: "kimi-k2.5-free" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prev
+    }
+  })
 })

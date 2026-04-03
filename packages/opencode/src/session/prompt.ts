@@ -962,6 +962,18 @@ export namespace SessionPrompt {
     })
   }
 
+  function parseSettingsLockModel(value: string) {
+    for (const sep of [":", "/"] as const) {
+      const idx = value.indexOf(sep)
+      if (idx === -1) continue
+      const providerID = value.slice(0, idx)
+      const modelID = value.slice(idx + 1)
+      if (!providerID || !modelID) return undefined
+      return { providerID, modelID }
+    }
+    return undefined
+  }
+
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
 
@@ -976,12 +988,6 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
-    const parseSettingsLockModel = (value: string) => {
-      let idx = value.indexOf(":")
-      if (idx === -1) idx = value.indexOf("/")
-      if (idx <= 0 || idx >= value.length - 1) return undefined
-      return { providerID: value.slice(0, idx), modelID: value.slice(idx + 1) }
-    }
     const settingsLock = VuHitraSettings.modelLock()
     const settingsLockModel =
       settingsLock.enabled && settingsLock.model ? parseSettingsLockModel(settingsLock.model) : undefined
@@ -1599,25 +1605,23 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
-    const parseLockedModel = (value: string) => {
-      for (const sep of [":", "/"] as const) {
-        const idx = value.indexOf(sep)
-        if (idx === -1) continue
-        const providerID = value.slice(0, idx)
-        const modelID = value.slice(idx + 1)
-        if (!providerID || !modelID) return undefined
-        return { providerID, modelID }
-      }
-      return undefined
-    }
+    const saved2 = session.profile
+      ? await Profiles.agentModel(session.profile, agent.name)
+      : await VuHitraSettings.agentModel(agent.name)
+    const validSaved =
+      saved2?.providerID && saved2?.modelID
+        ? (await Provider.getModel(saved2.providerID, saved2.modelID).catch(() => undefined))
+          ? { providerID: saved2.providerID, modelID: saved2.modelID }
+          : undefined
+        : undefined
     const settingsLock = VuHitraSettings.modelLock()
     const settingsLockModel =
-      settingsLock.enabled && settingsLock.model ? parseLockedModel(settingsLock.model) : undefined
+      settingsLock.enabled && settingsLock.model ? parseSettingsLockModel(settingsLock.model) : undefined
     const model = settingsLockModel
       ? settingsLockModel
       : agent.model_lock && agent.model
         ? agent.model
-        : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
+        : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,

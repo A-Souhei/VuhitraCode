@@ -177,7 +177,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const set = (model: ModelKey | undefined, options?: { recent?: boolean }) => {
         const settingsLock = sync.data.settings?.model_lock
-        if (settingsLock?.enabled && settingsLock.model) return
+        if (settingsLock?.enabled) return
         if (agent.current()?.model) return
         batch(() => {
           const currentAgent = agent.current()
@@ -192,7 +192,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const locked = createMemo(() => {
         const settingsLock = sync.data.settings?.model_lock
-        if (settingsLock?.enabled && settingsLock.model) return true
+        if (settingsLock?.enabled) return true
         return !!agent.current()?.model
       })
 
