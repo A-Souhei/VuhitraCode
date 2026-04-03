@@ -123,6 +123,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const current = createMemo(() => {
+        const settingsLock = sync.data.settings?.model_lock
+        if (settingsLock?.enabled && settingsLock.model) {
+          const idx = settingsLock.model.indexOf(":")
+          if (idx !== -1) {
+            const key = { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
+            const found = models.find(key)
+            if (found) return found
+          }
+        }
         const a = agent.current()
         if (!a) return undefined
         const key = getFirstValidModel(
@@ -160,6 +169,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
 
       const set = (model: ModelKey | undefined, options?: { recent?: boolean }) => {
+        const settingsLock = sync.data.settings?.model_lock
+        if (settingsLock?.enabled && settingsLock.model) return
         if (agent.current()?.model) return
         batch(() => {
           const currentAgent = agent.current()
@@ -172,7 +183,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       setModel = set
 
-      const locked = createMemo(() => !!agent.current()?.model)
+      const locked = createMemo(() => {
+        const settingsLock = sync.data.settings?.model_lock
+        if (settingsLock?.enabled && settingsLock.model) return true
+        return !!agent.current()?.model
+      })
 
       return {
         ready: models.ready,

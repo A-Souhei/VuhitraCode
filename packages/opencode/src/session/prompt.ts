@@ -976,8 +976,18 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
-    const model =
-      agent.model_lock && agent.model
+    const settingsLock = VuHitraSettings.modelLock()
+    const settingsLockModel =
+      settingsLock.enabled && settingsLock.model
+        ? (() => {
+            const idx = settingsLock.model.indexOf(":")
+            if (idx === -1) return undefined
+            return { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
+          })()
+        : undefined
+    const model = settingsLockModel
+      ? settingsLockModel
+      : agent.model_lock && agent.model
         ? agent.model
         : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const full =
@@ -1589,8 +1599,20 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
-    const model =
-      agent.model_lock && agent.model ? agent.model : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
+    const settingsLock = VuHitraSettings.modelLock()
+    const settingsLockModel =
+      settingsLock.enabled && settingsLock.model
+        ? (() => {
+            const idx = settingsLock.model.indexOf(":")
+            if (idx === -1) return undefined
+            return { providerID: settingsLock.model.slice(0, idx), modelID: settingsLock.model.slice(idx + 1) }
+          })()
+        : undefined
+    const model = settingsLockModel
+      ? settingsLockModel
+      : agent.model_lock && agent.model
+        ? agent.model
+        : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -1957,7 +1979,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         if (!stats?.isFile() && rawPath.startsWith("/")) {
           const alt = path.resolve(Instance.worktree, rawPath.slice(1))
           const altStats = await fs.stat(alt).catch(() => undefined)
-          if (altStats?.isFile()) { filepath = alt; stats = altStats }
+          if (altStats?.isFile()) {
+            filepath = alt
+            stats = altStats
+          }
         }
         if (!stats?.isFile()) continue
 
