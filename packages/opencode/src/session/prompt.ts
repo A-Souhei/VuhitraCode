@@ -962,6 +962,18 @@ export namespace SessionPrompt {
     })
   }
 
+  function parseSettingsLockModel(value: string) {
+    for (const sep of [":", "/"] as const) {
+      const idx = value.indexOf(sep)
+      if (idx === -1) continue
+      const providerID = value.slice(0, idx)
+      const modelID = value.slice(idx + 1)
+      if (!providerID || !modelID) return undefined
+      return { providerID, modelID }
+    }
+    return undefined
+  }
+
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
 
@@ -976,8 +988,12 @@ export namespace SessionPrompt {
           ? { providerID: saved.providerID, modelID: saved.modelID }
           : undefined
         : undefined
-    const model =
-      agent.model_lock && agent.model
+    const settingsLock = VuHitraSettings.modelLock()
+    const settingsLockModel =
+      settingsLock.enabled && settingsLock.model ? parseSettingsLockModel(settingsLock.model) : undefined
+    const model = settingsLockModel
+      ? settingsLockModel
+      : agent.model_lock && agent.model
         ? agent.model
         : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const full =
@@ -1589,8 +1605,23 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       await SessionRevert.cleanup(session)
     }
     const agent = await Agent.get(input.agent)
-    const model =
-      agent.model_lock && agent.model ? agent.model : (input.model ?? agent.model ?? (await lastModel(input.sessionID)))
+    const saved2 = session.profile
+      ? await Profiles.agentModel(session.profile, agent.name)
+      : await VuHitraSettings.agentModel(agent.name)
+    const validSaved =
+      saved2?.providerID && saved2?.modelID
+        ? (await Provider.getModel(saved2.providerID, saved2.modelID).catch(() => undefined))
+          ? { providerID: saved2.providerID, modelID: saved2.modelID }
+          : undefined
+        : undefined
+    const settingsLock = VuHitraSettings.modelLock()
+    const settingsLockModel =
+      settingsLock.enabled && settingsLock.model ? parseSettingsLockModel(settingsLock.model) : undefined
+    const model = settingsLockModel
+      ? settingsLockModel
+      : agent.model_lock && agent.model
+        ? agent.model
+        : (input.model ?? validSaved ?? agent.model ?? (await lastModel(input.sessionID)))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
@@ -1957,7 +1988,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         if (!stats?.isFile() && rawPath.startsWith("/")) {
           const alt = path.resolve(Instance.worktree, rawPath.slice(1))
           const altStats = await fs.stat(alt).catch(() => undefined)
-          if (altStats?.isFile()) { filepath = alt; stats = altStats }
+          if (altStats?.isFile()) {
+            filepath = alt
+            stats = altStats
+          }
         }
         if (!stats?.isFile()) continue
 

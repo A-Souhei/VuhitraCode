@@ -73,7 +73,7 @@ export type State = {
     memory?: { enabled: boolean }
     indexing?: { enabled: boolean }
     biblion?: { enabled: boolean }
-    model_lock?: { enabled: boolean }
+    model_lock?: { enabled: false } | { enabled: true; model: string }
     review_max_rounds?: number
     explore_max_instances?: number
     compaction_threshold?: number

@@ -169,7 +169,10 @@ export async function bootstrapDirectory(input: {
           memory: { enabled: data.memory?.enabled ?? false },
           indexing: { enabled: data.indexing?.enabled ?? false },
           biblion: { enabled: data.biblion?.enabled ?? false },
-          model_lock: { enabled: data.model_lock?.enabled ?? false },
+          model_lock:
+            data.model_lock?.enabled && data.model_lock?.model
+              ? { enabled: true as const, model: data.model_lock.model }
+              : { enabled: false as const },
           review_max_rounds: data.review_max_rounds,
           explore_max_instances: data.explore_max_instances,
           compaction_threshold: data.compaction_threshold,
