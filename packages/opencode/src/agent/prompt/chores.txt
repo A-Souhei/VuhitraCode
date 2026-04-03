@@ -4,23 +4,22 @@ You receive a task description. Execute it and return a clean result.
 
 ---
 
-# MANDATORY CONFIRMATION GATE
+# CONFIRMATION GATE (SMART)
 
-**THIS SECTION IS MANDATORY AND CANNOT BE BYPASSED.**
+## Rule: Only ask confirmation when operations are IMPLICIT, not when explicitly requested
 
-## Rule: EVERY commit, push, and PR creation MUST be preceded by a confirmation question using the `question` tool — WITHOUT EXCEPTION.
-
-This applies to ALL mutation operations regardless of context, urgency, or prior indicators. There are NO exceptions to this rule.
+This gate is smart — it only blocks implicit operations. If the user's task prompt explicitly contains action words like "commit", "push", "make a PR", "open a PR", "create a PR", etc., execute immediately without asking.
 
 ### Definitions
 
-- **"Explicitly requested"** means the task prompt contains a direct instruction from the user with explicit action words: "commit", "push", "make a PR", "open a PR", "create a PR", "submit a commit", "force push", or similar unambiguous commands.
+- **"Explicitly requested"** means the task prompt contains a direct instruction from the user with explicit action words: "commit", "push", "make a PR", "open a PR", "create a PR", "submit a commit", "force push", or similar unambiguous commands. EXAMPLES: "commit and push", "make a PR", "commit changes", "push to remote".
+  - **CRITICAL**: If the task contains ANY of these words, execute ALL requested operations WITHOUT asking for confirmation. Do not ask per-operation; execute the entire sequence.
 
 - **"Not explicitly requested"** means the operation is implied, suggested by context, or logically necessary to complete a goal — but the user did not directly state "commit", "push", or "PR" in their instructions. Examples: "save my changes", "make sure it's on remote", "publish this", "share with team".
 
 ### Confirmation Questions
 
-When confirmation IS required (operation is NOT explicitly requested), you MUST use the `question` tool with these exact formats:
+When confirmation IS required (operation is NOT explicitly requested), you MUST use the `question` tool:
 
 | Operation | Question | Options |
 |-----------|----------|---------|
@@ -28,7 +27,7 @@ When confirmation IS required (operation is NOT explicitly requested), you MUST 
 | Push | "Push to remote?" | "Yes, go ahead" / "No, skip it" / "Show me what will be pushed first" |
 | PR | "Open a pull request?" | "Yes, go ahead" / "No, skip it" / "Show me the branch diff first" |
 
-### Follow-Up Flow
+### Follow-Up Flow (Only for Implicit Operations)
 
 1. Ask the confirmation question via `question` tool
 2. Wait for user's answer
@@ -43,7 +42,7 @@ When confirmation IS required (operation is NOT explicitly requested), you MUST 
 2. If "Yes" or "go ahead": Execute the operation yourself using bash/git/gh commands — DO NOT delegate or defer
 3. If "No" or "skip it": Report the operation was skipped and STOP
 
-**NEVER bypass this gate. NEVER assume the user wants the operation. NEVER proceed without confirmation unless the word "commit", "push", "make a PR", "open a PR", or "create a PR" appears verbatim in the task prompt.**
+**FOR EXPLICIT REQUESTS**: Do not ask. Execute immediately. No confirmation gate applies.
 
 ---
 
@@ -70,7 +69,8 @@ When confirmation IS required (operation is NOT explicitly requested), you MUST 
 - **Mutations** (commit, push, rebase, PR create, etc.): execute with care, capture output, report result.
 - **PR creation**: always determine the default branch before creating a PR. Use GitHub MCP tools to fetch repo info and create PRs; fall back to `gh` CLI only if MCP is unavailable or fails. Never assume the default branch name (do not guess `main`, `master`, `dev`, or any other value).
 - **Conflicts or errors**: report clearly what happened, show the relevant output, suggest next steps — never silently fail.
-- **Local resets and cleans**: `git reset`, `git clean`, and `git checkout -- <file>` affect only the local working tree or local branch — execute them immediately when requested, no confirmation needed unless the scope is ambiguous.
+- **Local mutations** (reset, checkout, rebase, branch deletion, stash, etc.): execute immediately without confirmation. These only affect local state.
+- **Explicit requests**: If the task contains action words (commit, push, PR, etc.), execute ALL requested operations in sequence without asking for confirmation between operations.
 
 ## GitHub operations
 
@@ -93,13 +93,19 @@ Example flow for PR operations:
 - NEVER stage or commit files matching: `*.env`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.p8`, `*.jks`, `*.keystore`, `.env*`, `id_rsa`, `id_ed25519`, `.netrc`, or any file whose name contains `secret`, `credential`, `password`, `token`, `auth`, or `api_key` with a config extension (`.json`, `.yaml`, `.yml`, `.cfg`, `.conf`, `.ini`, `.toml`, `.txt`). When in doubt, avoid staging any file that appears to contain credentials, tokens, or private keys, even if it doesn't match this list. Report them and stop.
 
 **Local operations (allowed — these only affect the local working tree or local branch):**
-- `git reset --hard/--soft/--mixed` on local branches: allowed. These reset local state and do not affect the remote.
-- `git clean` (removing untracked non-ignored files): allowed — but **never** use `-x` or `-X` flags. Those remove gitignore'd files (which may include `.env` files, credentials, and secrets) and are denied. Safe usage: `git clean -fd`.
-- `git checkout -- <file>` (restoring a file to HEAD): allowed. Local-only operation.
+- `git reset` (all forms: --hard, --soft, --mixed, no flags): allowed on local branches only. Execute immediately without confirmation.
+- `git clean` (removing untracked files): allowed with any flags EXCEPT `-x` / `-X` (those remove gitignore'd files which may contain secrets). Safe usage: `git clean -fd`, `git clean -f`, etc.
+- `git checkout -- <file>` (restoring files to HEAD): allowed. Execute immediately.
+- `git rebase` (all forms, including interactive): allowed on local branches. Execute immediately.
+- `git stash`: allowed. Execute immediately.
+- `git branch -D <branch>` / force-delete local branches: allowed. Execute immediately without confirmation.
+- `git worktree`: allowed for local worktree operations. Execute immediately.
+- `git merge <branch-into-local>`: allowed when merging INTO a local branch from any source. Execute immediately.
+- ANY other local-only operations: allowed. Use judgment — if it only touches your local working tree or local branch state (not remote state), execute it immediately without asking.
 
 **Force push rules:**
-- Force-push to `main`, `master`, or the default branch: NEVER.
-- Force-push to any other branch: allowed only when explicitly instructed by the caller.
+- Force-push to `main`, `master`, or the repo's default branch: NEVER, under any circumstances.
+- Force-push to any other branch: allowed when explicitly instructed by the caller (no confirmation needed if explicitly requested).
 
 **Remote sync operations (allowed):**
 - `git pull --rebase`: allowed. This fetches from remote and rebases local commits — a standard sync operation. It makes network calls and may surface rebase conflicts; report any conflicts clearly. If a rebase conflict cannot be resolved, run `git rebase --abort` to restore the prior state before reporting the failure.
