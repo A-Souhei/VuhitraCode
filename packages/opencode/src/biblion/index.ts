@@ -58,6 +58,8 @@ export namespace Biblion {
     context?: string
     solution?: string
     steps?: string[]
+    project_id?: string
+    project_path?: string
   }
 
   interface State {
@@ -87,8 +89,7 @@ export namespace Biblion {
   // ─── Config helpers ───────────────────────────────────────────────────────────
 
   function collectionName() {
-    const s = state()
-    return (s.collectionName ??= "biblion_" + Instance.project.id.replace(/[^a-zA-Z0-9]+/g, "_"))
+    return "biblion_global"
   }
 
   let _qdrantUrl: string | undefined
@@ -118,6 +119,13 @@ export namespace Biblion {
   let _useRedis: boolean | undefined
   function useRedis() {
     return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
+  }
+
+  /** Escape a value for safe use inside a RediSearch TAG filter clause `@field:{value}`. */
+  function escapeRedisTag(val: string): string {
+    // RediSearch TAG special chars that must be escaped with a backslash:
+    // , . < > { } [ ] " ' : ; ! @ # $ % ^ & * ( ) - + = ~ | / \ space
+    return val.replace(/[,.<>{}\[\]"':;!@#$%^&*()\-+=~|/ \\]/g, "\\$&")
   }
 
   let _redisUrl: string | undefined
@@ -239,6 +247,7 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
+      projectId?: string,
     ): Promise<
       {
         id: string
@@ -250,15 +259,21 @@ export namespace Biblion {
         used_count?: number
         query?: string
         created_at?: string
+        project_id?: string
+        project_path?: string
       }[]
     > {
       const name = collectionName()
       const url = qdrantUrl()
+      const body: Record<string, unknown> = { vector, limit: topK, with_payload: true }
+      if (projectId) {
+        body.filter = { must: [{ key: "project_id", match: { value: projectId } }] }
+      }
       const response = await fetch(`${url}/collections/${name}/points/search`, {
         method: "POST",
         headers: qdrantHeaders(),
         signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({ vector, limit: topK, with_payload: true }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error(`Qdrant search failed: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
@@ -276,6 +291,8 @@ export namespace Biblion {
             used_count?: number
             query?: string
             created_at?: string
+            project_id?: string
+            project_path?: string
           },
       )
     },
@@ -336,6 +353,18 @@ export namespace Biblion {
       if (!response.ok) throw new Error(`Failed to delete all points: ${response.status} ${response.statusText}`)
     },
 
+    async deleteByProject(projectId: string) {
+      const name = collectionName()
+      const url = qdrantUrl()
+      const response = await fetch(`${url}/collections/${name}/points/delete`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({ filter: { must: [{ key: "project_id", match: { value: projectId } }] } }),
+      })
+      if (!response.ok) throw new Error(`Failed to delete project points: ${response.status} ${response.statusText}`)
+    },
+
     async delete(id: string) {
       const name = collectionName()
       const url = qdrantUrl()
@@ -363,19 +392,30 @@ export namespace Biblion {
       if (!response.ok) throw new Error(`Failed to update quality: ${response.status} ${response.statusText}`)
     },
 
-    async list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
+    async list(
+      projectId?: string,
+    ): Promise<
+      { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
+    > {
       const name = collectionName()
       const url = qdrantUrl()
+      const body: Record<string, unknown> = { limit: 1000, with_payload: true, with_vector: false }
+      if (projectId) {
+        body.filter = { must: [{ key: "project_id", match: { value: projectId } }] }
+      }
       const response = await fetch(`${url}/collections/${name}/points/scroll`, {
         method: "POST",
         headers: qdrantHeaders(),
         signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({ limit: 1000, with_payload: true, with_vector: false }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error(`Failed to list points: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
         result: {
-          points: { id: string; payload: { type: string; tags: string; content: string } }[]
+          points: {
+            id: string
+            payload: { type: string; tags: string; content: string; project_id?: string; project_path?: string }
+          }[]
           next_page_offset?: unknown
         }
       }
@@ -424,6 +464,10 @@ export namespace Biblion {
           "NUMERIC",
           "token_count",
           "NUMERIC",
+          "project_id",
+          "TAG",
+          "project_path",
+          "TEXT",
           "vector",
           "VECTOR",
           "HNSW",
@@ -471,6 +515,10 @@ export namespace Biblion {
           String(p.payload.used_count ?? 0),
           "created_at",
           String(p.payload.created_at ?? ""),
+          "project_id",
+          String(p.payload.project_id ?? ""),
+          "project_path",
+          String(p.payload.project_path ?? ""),
           "vector",
           redis.encodeVector(p.vector),
         )
@@ -481,6 +529,7 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
+      projectId?: string,
     ): Promise<
       {
         id: string
@@ -492,21 +541,26 @@ export namespace Biblion {
         used_count?: number
         query?: string
         created_at?: string
+        project_id?: string
+        project_path?: string
       }[]
     > {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
+      const knnQuery = projectId
+        ? `(@project_id:{${escapeRedisTag(projectId)}})=>[KNN ${topK} @vector $vec AS score]`
+        : `*=>[KNN ${topK} @vector $vec AS score]`
       const result = (await client.call(
         "FT.SEARCH",
         indexName,
-        `*=>[KNN ${topK} @vector $vec AS score]`,
+        knnQuery,
         "PARAMS",
         "2",
         "vec",
         vecBuf,
         "RETURN",
-        "9",
+        "11",
         "type",
         "tags",
         "content",
@@ -515,6 +569,8 @@ export namespace Biblion {
         "used_count",
         "created_at",
         "query",
+        "project_id",
+        "project_path",
         "id",
         "SORTBY",
         "score",
@@ -531,6 +587,8 @@ export namespace Biblion {
         used_count?: number
         query?: string
         created_at?: string
+        project_id?: string
+        project_path?: string
       }[] = []
       for (let i = 1; i < result.length; i += 2) {
         if (i + 1 >= result.length) break
@@ -544,7 +602,9 @@ export namespace Biblion {
           qualityStr = "",
           usedCountStr = "",
           query = "",
-          created_at = ""
+          created_at = "",
+          project_id = "",
+          project_path = ""
         for (let j = 0; j < fields.length; j += 2) {
           if (fields[j] === "type") type = fields[j + 1]
           if (fields[j] === "tags") tags = fields[j + 1]
@@ -554,6 +614,8 @@ export namespace Biblion {
           if (fields[j] === "used_count") usedCountStr = fields[j + 1]
           if (fields[j] === "query") query = fields[j + 1]
           if (fields[j] === "created_at") created_at = fields[j + 1]
+          if (fields[j] === "project_id") project_id = fields[j + 1]
+          if (fields[j] === "project_path") project_path = fields[j + 1]
         }
         const prefix = redis.keyPrefix()
         const id = typeof docId === "string" && docId.startsWith(prefix) ? docId.slice(prefix.length) : String(docId)
@@ -571,6 +633,8 @@ export namespace Biblion {
             used_count: usedCountStr !== "" ? parseInt(usedCountStr, 10) : undefined,
             query: query || undefined,
             created_at: created_at || undefined,
+            project_id: project_id || undefined,
+            project_path: project_path || undefined,
           })
       }
       return hits
@@ -637,6 +701,34 @@ export namespace Biblion {
       }
     },
 
+    async deleteByProject(projectId: string) {
+      const client = getRedisClient()
+      const prefix = redis.keyPrefix()
+      const collection = collectionName()
+      const indexName = collectionName()
+      const tagFilter = `@project_id:{${escapeRedisTag(projectId)}}`
+      // Page at offset 0 each time: after each delete the matched set shrinks,
+      // so re-querying from 0 is correct and avoids stale-offset issues.
+      while (true) {
+        const result = (await client.call(
+          "FT.SEARCH",
+          indexName,
+          tagFilter,
+          "NOCONTENT",
+          "LIMIT",
+          "0",
+          "100",
+        )) as unknown[]
+        const keys = (result as unknown[]).slice(1) as string[]
+        if (keys.length === 0) break
+        const toDelete: string[] = keys.flatMap((key) => {
+          const id = typeof key === "string" && key.startsWith(prefix) ? key.slice(prefix.length) : String(key)
+          return [key as string, `${collection}:meta:${id}`]
+        })
+        await client.del(...toDelete)
+      }
+    },
+
     async delete(id: string) {
       const client = getRedisClient()
       const prefix = redis.keyPrefix()
@@ -655,10 +747,78 @@ export namespace Biblion {
       await pipeline.exec()
     },
 
-    async list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
+    async list(
+      projectId?: string,
+    ): Promise<
+      { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
+    > {
       const client = getRedisClient()
       const prefix = redis.keyPrefix()
-      const entries: { id: string; type: string; tags: string; content: string }[] = []
+      const entries: {
+        id: string
+        type: string
+        tags: string
+        content: string
+        project_id?: string
+        project_path?: string
+      }[] = []
+
+      if (projectId) {
+        // Use FT.SEARCH with TAG filter to avoid full keyspace scan
+        const indexName = collectionName()
+        const tagFilter = `@project_id:{${escapeRedisTag(projectId)}}`
+        let offset = 0
+        const batchSize = 100
+        while (true) {
+          const result = (await client.call(
+            "FT.SEARCH",
+            indexName,
+            tagFilter,
+            "RETURN",
+            "5",
+            "type",
+            "tags",
+            "content",
+            "project_id",
+            "project_path",
+            "LIMIT",
+            String(offset),
+            String(batchSize),
+          )) as unknown[]
+          const total = result[0] as number
+          for (let i = 1; i < result.length; i += 2) {
+            const docId = result[i] as string
+            const fields = result[i + 1] as string[]
+            if (!Array.isArray(fields)) continue
+            let type = "",
+              tags = "",
+              content = "",
+              project_id = "",
+              project_path = ""
+            for (let j = 0; j < fields.length; j += 2) {
+              if (fields[j] === "type") type = fields[j + 1]
+              if (fields[j] === "tags") tags = fields[j + 1]
+              if (fields[j] === "content") content = fields[j + 1]
+              if (fields[j] === "project_id") project_id = fields[j + 1]
+              if (fields[j] === "project_path") project_path = fields[j + 1]
+            }
+            const id = typeof docId === "string" && docId.startsWith(prefix) ? docId.slice(prefix.length) : docId
+            entries.push({
+              id,
+              type,
+              tags,
+              content,
+              project_id: project_id || undefined,
+              project_path: project_path || undefined,
+            })
+          }
+          offset += batchSize
+          if (offset >= total) break
+        }
+        return entries
+      }
+
+      // No filter: full SCAN + HGETALL
       let cursor = "0"
       do {
         const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
@@ -677,6 +837,8 @@ export namespace Biblion {
               type: fields.type ?? "",
               tags: fields.tags ?? "",
               content: fields.content ?? "",
+              project_id: fields.project_id || undefined,
+              project_path: fields.project_path || undefined,
             })
           }
         }
@@ -697,6 +859,7 @@ export namespace Biblion {
     async search(
       vector: number[],
       topK: number,
+      projectId?: string,
     ): Promise<
       {
         id: string
@@ -708,9 +871,11 @@ export namespace Biblion {
         used_count?: number
         query?: string
         created_at?: string
+        project_id?: string
+        project_path?: string
       }[]
     > {
-      return useRedis() ? redis.search(vector, topK) : qdrant.search(vector, topK)
+      return useRedis() ? redis.search(vector, topK, projectId) : qdrant.search(vector, topK, projectId)
     },
     async count() {
       return useRedis() ? redis.count() : qdrant.count()
@@ -724,14 +889,17 @@ export namespace Biblion {
     async deleteAll() {
       return useRedis() ? redis.deleteAll() : qdrant.deleteAll()
     },
+    async deleteByProject(projectId: string) {
+      return useRedis() ? redis.deleteByProject(projectId) : qdrant.deleteByProject(projectId)
+    },
     async delete(id: string) {
       return useRedis() ? redis.delete(id) : qdrant.delete(id)
     },
     async updateQuality(id: string, quality: number) {
       return useRedis() ? redis.updateQuality(id, quality) : qdrant.updateQuality(id, quality)
     },
-    async list() {
-      return useRedis() ? redis.list() : qdrant.list()
+    async list(projectId?: string) {
+      return useRedis() ? redis.list(projectId) : qdrant.list(projectId)
     },
   }
 
@@ -773,6 +941,8 @@ export namespace Biblion {
         tags: (entry.tags ?? []).join(","),
         query: entry.query ?? "",
         created_at: entry.created_at ?? new Date().toISOString(),
+        project_id: entry.project_id ?? "",
+        project_path: entry.project_path ?? "",
       })
     } catch (e) {
       log.warn("failed to store metadata in redis", { id, error: String(e) })
@@ -856,6 +1026,8 @@ export namespace Biblion {
         token_count,
         session_id: entry.session_id,
         branch: entry.branch,
+        project_id: Instance.project.id,
+        project_path: Instance.directory,
       }
 
       if (entry.problem) payload.problem = entry.problem
@@ -888,44 +1060,8 @@ export namespace Biblion {
   }
 
   export async function search(query: string, topK = 5): Promise<string[]> {
-    if (state().status.type !== "ready") return []
-    const vector = await embed(query)
-    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
-
-    // For Redis backend, fetch fresh used_count from meta keys in parallel
-    const usedCounts = useRedis()
-      ? await Promise.all(hits.map((h) => getUsedCount(h.id)))
-      : hits.map((h) => h.used_count ?? 0)
-
-    // Build entries with similarity scores for hybrid scoring
-    const entries = hits.map((h, i) => ({
-      entry: {
-        id: h.id,
-        type: h.type,
-        tags: h.tags.split(",").filter(Boolean),
-        content: h.content,
-        used_count: usedCounts[i],
-        quality: h.quality ?? Scoring.DEFAULT_QUALITY,
-      },
-      similarity: h.score,
-    }))
-
-    const scored = Scoring.scoreEntries(entries, {
-      similarityWeight: VuHitraSettings.cacheSimilarityWeight(),
-      usageWeight: VuHitraSettings.cacheUsageWeight(),
-    })
-
-    // Increment used_count for top results (non-blocking)
-    scored.slice(0, topK).forEach((s) => {
-      incrementUsedCount(s.entry.id).catch((e) =>
-        Log.Default.warn("failed to increment used_count", { error: String(e) }),
-      )
-    })
-
-    return scored.slice(0, topK).map((s) => {
-      const result = `[${s.entry.type}] tags: ${s.entry.tags.join(",")}\n${s.entry.content}`
-      return result
-    })
+    const results = await searchWithScores(query, topK)
+    return results.map((s) => `[${s.type}] tags: ${s.tags.join(",")}\n${s.content}`)
   }
 
   export interface SearchEntry {
@@ -938,12 +1074,14 @@ export namespace Biblion {
     used_count: number
     similarity: number
     score: number
+    project_id?: string
+    project_path?: string
   }
 
-  export async function searchWithScores(query: string, topK = 5): Promise<SearchEntry[]> {
+  export async function searchWithScores(query: string, topK = 5, projectId?: string): Promise<SearchEntry[]> {
     if (state().status.type !== "ready") return []
     const vector = await embed(query)
-    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates())
+    const hits = await store.search(vector, VuHitraSettings.cacheMaxCandidates(), projectId)
 
     // For Redis backend, fetch fresh used_count from meta keys in parallel
     const usedCounts = useRedis()
@@ -959,6 +1097,8 @@ export namespace Biblion {
         tags: h.tags.split(",").filter(Boolean),
         quality: h.quality ?? Scoring.DEFAULT_QUALITY,
         used_count: usedCounts[i],
+        project_id: h.project_id,
+        project_path: h.project_path,
       },
       similarity: h.score,
     }))
@@ -985,12 +1125,18 @@ export namespace Biblion {
       used_count: s.entry.used_count,
       similarity: s.similarity,
       score: s.score,
+      project_id: s.entry.project_id,
+      project_path: s.entry.project_path,
     }))
   }
 
-  export async function list(): Promise<{ id: string; type: string; tags: string; content: string }[]> {
+  export async function list(
+    projectId?: string,
+  ): Promise<
+    { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
+  > {
     if (state().status.type !== "ready") return []
-    return store.list()
+    return store.list(projectId)
   }
 
   export async function deleteEntry(id: string): Promise<void> {
@@ -1014,7 +1160,22 @@ export namespace Biblion {
     }
   }
 
-  export async function clear(): Promise<void> {
+  export async function clear(projectId?: string): Promise<void> {
+    const s = state()
+    if (s.status.type !== "ready") return
+    await store.deleteByProject(projectId ?? Instance.project.id)
+    if (state() !== s) return
+    if (s.status.type !== "ready") return
+    const [entryCount, tokenCount] = await Promise.all([store.count(), store.sumTokenCount()])
+    if (state() !== s) return
+    if (s.status.type !== "ready") return
+    s.entryCount = entryCount
+    s.tokenCount = tokenCount
+    s.status = { ...s.status, entry_count: entryCount, token_count: tokenCount }
+    Bus.publish(Event.Updated, s.status)
+  }
+
+  export async function clearAll(): Promise<void> {
     const s = state()
     if (s.status.type !== "ready") return
     await store.deleteAll()
