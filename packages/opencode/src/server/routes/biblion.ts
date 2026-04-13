@@ -10,6 +10,7 @@ const Entry = z.object({
   type: z.string(),
   tags: z.string(),
   content: z.string(),
+  project_id: z.string().optional(),
 })
 
 export const BiblionRoutes = lazy(() =>
@@ -58,10 +59,20 @@ export const BiblionRoutes = lazy(() =>
           },
         },
       }),
+      validator(
+        "query",
+        z.object({
+          project_id: z.string().optional().describe("Optional project ID to filter entries"),
+        }),
+      ),
       async (c) => {
         try {
+          const { project_id } = c.req.valid("query")
           const entries = await Biblion.list()
-          return c.json(entries)
+          // Strip project_path from all entries before returning
+          const safe = entries.map(({ project_path: _pp, ...e }) => e)
+          if (!project_id) return c.json(safe)
+          return c.json(safe.filter((entry) => entry.project_id === project_id))
         } catch (e) {
           return c.json({ success: false, error: "List failed" }, 500)
         }
@@ -96,13 +107,23 @@ export const BiblionRoutes = lazy(() =>
         z.object({
           query: z.string().describe("Search query string"),
           limit: z.number().min(1).max(100).optional().default(5).describe("Maximum number of results to return"),
+          project_id: z.string().optional().describe("Optional project ID to filter search results"),
         }),
       ),
       async (c) => {
         try {
-          const { query, limit } = c.req.valid("json")
-          const results = await Biblion.search(query, limit)
-          return c.json(results)
+          const { query, limit, project_id } = c.req.valid("json")
+          // project_id filter is pushed down to the backend via native payload filtering
+          const results = await Biblion.searchWithScores(query, limit, project_id)
+          return c.json(
+            results.map((r) => ({
+              id: r.id,
+              type: r.type,
+              content: r.content,
+              tags: r.tags,
+              score: r.score,
+            })),
+          )
         } catch (e) {
           return c.json({ success: false, error: "Search failed" }, 500)
         }
@@ -176,7 +197,7 @@ export const BiblionRoutes = lazy(() =>
     .delete(
       "/clear",
       describeRoute({
-        summary: "Clear all biblion entries",
+        summary: "Clear biblion entries. Without project_id, clears ALL entries from all projects.",
         operationId: "biblion.clear",
         responses: {
           200: {
@@ -197,9 +218,20 @@ export const BiblionRoutes = lazy(() =>
           },
         },
       }),
+      validator(
+        "query",
+        z.object({
+          project_id: z.string().optional().describe("If provided, only entries for this project are removed"),
+        }),
+      ),
       async (c) => {
         try {
-          await Biblion.clear()
+          const { project_id } = c.req.valid("query")
+          if (project_id) {
+            await Biblion.clear(project_id)
+          } else {
+            await Biblion.clearAll()
+          }
           return c.json({ success: true })
         } catch (e) {
           return c.json({ success: false, error: "Clear failed" }, 500)

@@ -193,11 +193,20 @@ export namespace LLM {
       PermissionNext.evaluate("biblion_read", "*", input.agent.permission).action === "allow"
     ) {
       if (userText.trim()) {
-        const entries = await Biblion.search(userText).catch((e) => {
+        const scored = await Biblion.searchWithScores(userText).catch((e) => {
           l.warn("biblion search failed", { error: String(e) })
-          return [] as string[]
+          return [] as Biblion.SearchEntry[]
         })
-        if (entries.length > 0) {
+        if (scored.length > 0) {
+          const { entries, projectIds } = scored.reduce(
+            (acc, s) => {
+              acc.entries.push(`[${s.type}] tags: ${s.tags.join(",")}\n${s.content}`)
+              if (s.project_id) acc.projectIds.push(s.project_id)
+              return acc
+            },
+            { entries: [] as string[], projectIds: [] as string[] },
+          )
+
           system.push(
             "<biblion_context>\n" +
               "The following are codebase knowledge entries relevant to this task. " +
@@ -206,9 +215,15 @@ export namespace LLM {
               "\n</biblion_context>",
           )
 
+          const projCount = new Set(projectIds).size
+          const title =
+            projCount > 0
+              ? `◈ Biblion — ${scored.length} entr${scored.length !== 1 ? "ies" : "y"} from ${projCount} project${projCount !== 1 ? "s" : ""}`
+              : `◈ Biblion — ${scored.length} entr${scored.length !== 1 ? "ies" : "y"}`
+
           void Bus.publish(TuiEvent.ToastShow, {
-            title: `◈ Biblion — ${entries.length} entr${entries.length !== 1 ? "ies" : "y"}`,
-            message: `${entries.length} knowledge entr${entries.length !== 1 ? "ies" : "y"} loaded`,
+            title,
+            message: `${scored.length} knowledge entr${scored.length !== 1 ? "ies" : "y"} loaded`,
             variant: "info",
             duration: 5000,
           })
