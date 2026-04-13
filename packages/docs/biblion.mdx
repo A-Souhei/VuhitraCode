@@ -6,6 +6,45 @@ icon: "book"
 
 vuhitracode's biblion system provides a persistent knowledge base for storing and retrieving codebase knowledge using vector embeddings. It captures architecture decisions, patterns, dependencies, APIs, configurations, and workflows for future reference.
 
+## Global Shared Dashboard
+
+Biblion operates as a **global, monolithic knowledge base** shared across all projects on your machine. This design allows knowledge to be accumulated and reused across projects while maintaining clear project attribution.
+
+### Key Features
+
+- **Single Shared Collection**: All projects write to and read from the same `biblion_global` collection, eliminating duplicate knowledge storage.
+- **Project Attribution**: Each entry is automatically tagged with `project_id` and `project_path` metadata, tracking the origin project for accountability and filtering.
+- **Filtered Retrieval**: Use query parameters to filter entries by project:
+  - `/biblion/search?project_id=myproject` - Get entries from a specific project
+  - `/biblion/list?project_id=myproject` - List entries scoped to a project
+- **Safe Clearing**: When you call `clear()` on a project, only entries tagged with that project's `project_id` are deleted. Knowledge from other projects is preserved.
+- **Cross-Project Learning**: Agents can discover relevant patterns and solutions from other projects in the knowledge base, accelerating development.
+
+### Example: Filtering by Project
+
+```bash
+# Search entries from a specific project
+curl -X POST http://localhost:4096/biblion/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "authentication flow",
+    "project_id": "my-api-service",
+    "limit": 5
+  }'
+
+# List all entries from a project
+curl http://localhost:4096/biblion/list?project_id=my-api-service
+```
+
+### Clear Project Entries
+
+```bash
+# Clear only entries from the current project
+curl -X DELETE http://localhost:4096/biblion/clear?project_id=my-api-service
+```
+
+This removes only entries tagged with the specified `project_id`, leaving knowledge from other projects intact.
+
 ## How It Works
 
 The biblion system uses vector embeddings to store and retrieve codebase knowledge semantically. When the Learn agent explores a codebase, it stores findings in biblion. Later, agents can search biblion to quickly understand relevant context without re-exploring the entire codebase.
@@ -127,13 +166,25 @@ curl -X POST http://localhost:4096/biblion/write \
 
 <Note>Content is automatically sanitized before storage. Credentials, API keys, and secrets are redacted.</Note>
 
-### Clear All Entries
+### Clear Project Entries
+
+Clear only entries from a specific project:
+
+```bash
+curl -X DELETE http://localhost:4096/biblion/clear?project_id=myproject
+```
+
+Clear all entries from all projects (use with caution):
 
 ```bash
 curl -X DELETE http://localhost:4096/biblion/clear
 ```
 
-<Warning>This action cannot be undone. All biblion entries will be permanently deleted.</Warning>
+<Warning>
+  Clearing without a project_id parameter will delete ALL biblion entries from ALL projects. This action cannot be
+  undone. When clearing a specific project, only entries tagged with that project_id are removed, preserving knowledge
+  from other projects.
+</Warning>
 
 ## Environment Variables
 
@@ -162,8 +213,8 @@ Configure biblion backends using environment variables:
   Use consistent tags across entries for easier retrieval. Tag by feature, component, or domain.
 </Card>
 
-<Card icon="refresh" title="Clear When Switching">
-  Clear biblion when switching to a different project to avoid stale knowledge.
+<Card icon="share" title="Leverage Shared Knowledge">
+  Take advantage of the global knowledge base to discover patterns and solutions from other projects on your machine.
 </Card>
 
 </CardGroup>
