@@ -13,6 +13,14 @@ const Entry = z.object({
   project_id: z.string().optional(),
 })
 
+const SearchResult = z.object({
+  id: z.string(),
+  type: z.string(),
+  content: z.string(),
+  tags: z.array(z.string()),
+  score: z.number(),
+})
+
 export const BiblionRoutes = lazy(() =>
   new Hono()
     .get(
@@ -68,11 +76,10 @@ export const BiblionRoutes = lazy(() =>
       async (c) => {
         try {
           const { project_id } = c.req.valid("query")
-          const entries = await Biblion.list()
+          // project_id filter is pushed down to the backend (Qdrant payload filter / Redis TAG filter)
+          const entries = await Biblion.list(project_id)
           // Strip project_path from all entries before returning
-          const safe = entries.map(({ project_path: _pp, ...e }) => e)
-          if (!project_id) return c.json(safe)
-          return c.json(safe.filter((entry) => entry.project_id === project_id))
+          return c.json(entries.map(({ project_path: _pp, ...e }) => e))
         } catch (e) {
           return c.json({ success: false, error: "List failed" }, 500)
         }
@@ -88,7 +95,7 @@ export const BiblionRoutes = lazy(() =>
             description: "Search results",
             content: {
               "application/json": {
-                schema: resolver(z.string().array()),
+                schema: resolver(SearchResult.array()),
               },
             },
           },

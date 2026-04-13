@@ -14,9 +14,9 @@ Biblion operates as a **global, monolithic knowledge base** shared across all pr
 
 - **Single Shared Collection**: All projects write to and read from the same `biblion_global` collection, eliminating duplicate knowledge storage.
 - **Project Attribution**: Each entry is automatically tagged with `project_id` and `project_path` metadata, tracking the origin project for accountability and filtering.
-- **Filtered Retrieval**: Use query parameters to filter entries by project:
-  - `/biblion/search?project_id=myproject` - Get entries from a specific project
-  - `/biblion/list?project_id=myproject` - List entries scoped to a project
+- **Filtered Retrieval**: Filter entries by project using the appropriate method per endpoint:
+  - `POST /biblion/search` — pass `"project_id"` in the JSON request body
+  - `GET /biblion/list?project_id=myproject` — pass `project_id` as a query parameter
 - **Safe Clearing**: When you call `clear()` on a project, only entries tagged with that project's `project_id` are deleted. Knowledge from other projects is preserved.
 - **Cross-Project Learning**: Agents can discover relevant patterns and solutions from other projects in the knowledge base, accelerating development.
 

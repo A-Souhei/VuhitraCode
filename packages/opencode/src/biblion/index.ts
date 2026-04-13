@@ -121,6 +121,13 @@ export namespace Biblion {
     return (_useRedis ??= !!(Env.get("REDIS_URL") || Env.get("REDIS_HOST")))
   }
 
+  /** Escape a value for safe use inside a RediSearch TAG filter clause `@field:{value}`. */
+  function escapeRedisTag(val: string): string {
+    // RediSearch TAG special chars that must be escaped with a backslash:
+    // , . < > { } [ ] " ' : ; ! @ # $ % ^ & * ( ) - + = ~ | / \ space
+    return val.replace(/[,.<>{}\[\]"':;!@#$%^&*()\-+=~|/ \\]/g, "\\$&")
+  }
+
   let _redisUrl: string | undefined
   function redisUrl() {
     return (_redisUrl ??=
@@ -385,16 +392,22 @@ export namespace Biblion {
       if (!response.ok) throw new Error(`Failed to update quality: ${response.status} ${response.statusText}`)
     },
 
-    async list(): Promise<
+    async list(
+      projectId?: string,
+    ): Promise<
       { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
     > {
       const name = collectionName()
       const url = qdrantUrl()
+      const body: Record<string, unknown> = { limit: 1000, with_payload: true, with_vector: false }
+      if (projectId) {
+        body.filter = { must: [{ key: "project_id", match: { value: projectId } }] }
+      }
       const response = await fetch(`${url}/collections/${name}/points/scroll`, {
         method: "POST",
         headers: qdrantHeaders(),
         signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({ limit: 1000, with_payload: true, with_vector: false }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error(`Failed to list points: ${response.status} ${response.statusText}`)
       const data = (await response.json()) as {
@@ -535,9 +548,8 @@ export namespace Biblion {
       const client = getRedisClient()
       const indexName = collectionName()
       const vecBuf = redis.encodeVector(vector)
-      // Escape special chars for Redis TAG filter (project IDs are typically UUIDs/simple strings)
       const knnQuery = projectId
-        ? `(@project_id:{${projectId.replace(/[-]/g, "\\-")}})=>[KNN ${topK} @vector $vec AS score]`
+        ? `(@project_id:{${escapeRedisTag(projectId)}})=>[KNN ${topK} @vector $vec AS score]`
         : `*=>[KNN ${topK} @vector $vec AS score]`
       const result = (await client.call(
         "FT.SEARCH",
@@ -693,27 +705,28 @@ export namespace Biblion {
       const client = getRedisClient()
       const prefix = redis.keyPrefix()
       const collection = collectionName()
-      let cursor = "0"
-      do {
-        const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
-        cursor = next
-        if (keys.length > 0) {
-          const pipeline = client.pipeline()
-          for (const key of keys) pipeline.hget(key, "project_id")
-          const results = ((await pipeline.exec()) ?? []) as ([Error | null, string | null] | null)[]
-          const toDelete: string[] = []
-          for (let i = 0; i < keys.length; i++) {
-            const res = results[i]
-            if (!res || res[0]) continue
-            if (res[1] === projectId) {
-              toDelete.push(keys[i])
-              const id = keys[i].startsWith(prefix) ? keys[i].slice(prefix.length) : keys[i]
-              toDelete.push(`${collection}:meta:${id}`)
-            }
-          }
-          if (toDelete.length > 0) await client.del(...toDelete)
-        }
-      } while (cursor !== "0")
+      const indexName = collectionName()
+      const tagFilter = `@project_id:{${escapeRedisTag(projectId)}}`
+      // Page at offset 0 each time: after each delete the matched set shrinks,
+      // so re-querying from 0 is correct and avoids stale-offset issues.
+      while (true) {
+        const result = (await client.call(
+          "FT.SEARCH",
+          indexName,
+          tagFilter,
+          "NOCONTENT",
+          "LIMIT",
+          "0",
+          "100",
+        )) as unknown[]
+        const keys = (result as unknown[]).slice(1) as string[]
+        if (keys.length === 0) break
+        const toDelete: string[] = keys.flatMap((key) => {
+          const id = typeof key === "string" && key.startsWith(prefix) ? key.slice(prefix.length) : String(key)
+          return [key as string, `${collection}:meta:${id}`]
+        })
+        await client.del(...toDelete)
+      }
     },
 
     async delete(id: string) {
@@ -734,7 +747,9 @@ export namespace Biblion {
       await pipeline.exec()
     },
 
-    async list(): Promise<
+    async list(
+      projectId?: string,
+    ): Promise<
       { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
     > {
       const client = getRedisClient()
@@ -747,6 +762,63 @@ export namespace Biblion {
         project_id?: string
         project_path?: string
       }[] = []
+
+      if (projectId) {
+        // Use FT.SEARCH with TAG filter to avoid full keyspace scan
+        const indexName = collectionName()
+        const tagFilter = `@project_id:{${escapeRedisTag(projectId)}}`
+        let offset = 0
+        const batchSize = 100
+        while (true) {
+          const result = (await client.call(
+            "FT.SEARCH",
+            indexName,
+            tagFilter,
+            "RETURN",
+            "5",
+            "type",
+            "tags",
+            "content",
+            "project_id",
+            "project_path",
+            "LIMIT",
+            String(offset),
+            String(batchSize),
+          )) as unknown[]
+          const total = result[0] as number
+          for (let i = 1; i < result.length; i += 2) {
+            const docId = result[i] as string
+            const fields = result[i + 1] as string[]
+            if (!Array.isArray(fields)) continue
+            let type = "",
+              tags = "",
+              content = "",
+              project_id = "",
+              project_path = ""
+            for (let j = 0; j < fields.length; j += 2) {
+              if (fields[j] === "type") type = fields[j + 1]
+              if (fields[j] === "tags") tags = fields[j + 1]
+              if (fields[j] === "content") content = fields[j + 1]
+              if (fields[j] === "project_id") project_id = fields[j + 1]
+              if (fields[j] === "project_path") project_path = fields[j + 1]
+            }
+            const id = typeof docId === "string" && docId.startsWith(prefix) ? docId.slice(prefix.length) : docId
+            entries.push({
+              id,
+              type,
+              tags,
+              content,
+              project_id: project_id || undefined,
+              project_path: project_path || undefined,
+            })
+          }
+          offset += batchSize
+          if (offset >= total) break
+        }
+        return entries
+      }
+
+      // No filter: full SCAN + HGETALL
       let cursor = "0"
       do {
         const [next, keys] = (await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", "100")) as [string, string[]]
@@ -826,8 +898,8 @@ export namespace Biblion {
     async updateQuality(id: string, quality: number) {
       return useRedis() ? redis.updateQuality(id, quality) : qdrant.updateQuality(id, quality)
     },
-    async list() {
-      return useRedis() ? redis.list() : qdrant.list()
+    async list(projectId?: string) {
+      return useRedis() ? redis.list(projectId) : qdrant.list(projectId)
     },
   }
 
@@ -1058,11 +1130,13 @@ export namespace Biblion {
     }))
   }
 
-  export async function list(): Promise<
+  export async function list(
+    projectId?: string,
+  ): Promise<
     { id: string; type: string; tags: string; content: string; project_id?: string; project_path?: string }[]
   > {
     if (state().status.type !== "ready") return []
-    return store.list()
+    return store.list(projectId)
   }
 
   export async function deleteEntry(id: string): Promise<void> {
