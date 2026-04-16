@@ -83,7 +83,7 @@ export namespace VuHitraSettings {
   }
 
   export function memoryTtl(): number {
-    return state().memory?.ttl ?? 86400
+    return state().memory?.ttl ?? 3124608000
   }
 
   export async function setMemoryTtl(n: number, dir?: string) {

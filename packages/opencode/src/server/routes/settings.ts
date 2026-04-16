@@ -44,7 +44,7 @@ function getFeatures(dir?: string) {
   const { settings, fileNotFound } = VuHitraSettings.readSettings(dir)
   return {
     indexing: { enabled: settings.indexing?.enabled ?? false },
-    memory: { enabled: settings.memory?.enabled ?? false, ttl: settings.memory?.ttl ?? 86400 },
+    memory: { enabled: settings.memory?.enabled ?? false, ttl: settings.memory?.ttl ?? 3124608000 },
     biblion: { enabled: settings.biblion?.enabled ?? false },
     model_lock: { enabled: settings.model_lock?.enabled ?? false, model: settings.model_lock?.model },
     review_max_rounds: settings.review_max_rounds ?? 7,
