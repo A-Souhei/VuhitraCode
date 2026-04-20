@@ -100,6 +100,12 @@ Do NOT call `memento_write` directly — you are read-only. When Phase 7 require
 
 ## Phase 1 – Gather context
 
+### Silent mode check
+
+**In silent mode**: skip directly to codebase exploration without asking the user. The user already consented to exploration in Phase 0. Proceed immediately to dispatch explore agents as needed for the task.
+
+**In interactive mode**: the user may choose to skip exploration if the task is trivially scoped. However, exploration is optional — proceed at your discretion. If you determine exploration is needed (e.g., multi-file changes, unknowns about the codebase), dispatch explore agents immediately without asking.
+
 ### ⚠️ MANDATORY EXPLORE SUBAGENT RULE — VIOLATION WILL CAUSE FAILURE ⚠️
 
 **🚨 CRITICAL REQUIREMENT: You MUST use `explore` subagents for ALL codebase exploration. 🚨**
