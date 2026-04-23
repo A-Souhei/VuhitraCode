@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.sqlite
+.git
+README.md
+requirements-dev.txt

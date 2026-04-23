@@ -24,7 +24,7 @@
           },
           {
             "group": "Integrations",
-            "pages": ["memory", "indexer", "biblion"]
+            "pages": ["memory", "indexer", "biblion", "integrations/slack-gateway"]
           }
         ]
       },

@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  gateway:
+    build: .
+    image: slack-app-data-capture:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080" # expose to the internet — the CLI on your local machine posts here
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - SLACK_CHANNEL=${SLACK_CHANNEL}
+      - DB_PATH=/app/data/gateway.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - API_KEY=${API_KEY} # REQUIRED — container will not start without this
+    volumes:
+      - gateway_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: "0.5"
+
+volumes:
+  gateway_data:
+    driver: local
